@@ -7,9 +7,7 @@ import time
 
 import numpy as np
 
-# import param_bench.train.comms.comms_utils as comms_utils
-# import comms_utils
-import param_bench.train.comms.comms_utils as comms_utils
+import comms_utils
 
 # pytorch
 import torch
@@ -319,9 +317,7 @@ def runComms(comms_world_info, commsParams):
 
     # Run-loop
     if commsParams.nw_stack == "pytorch-nccl":
-        # from param_bench.train.comms.pytorch_nccl_backend import PyTorchNCCLBackend
-        # from pytorch_nccl_backend import PyTorchNCCLBackend
-        from param_bench.train.comms.pytorch_nccl_backend import PyTorchNCCLBackend
+        from pytorch_nccl_backend import PyTorchNCCLBackend
 
         backendObj = PyTorchNCCLBackend(comms_world_info, commsParams)
     elif commsParams.nw_stack == "pytorch-xla-tpu":

@@ -6,10 +6,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-# from param_bench.train.comms.comms_utils import backendFunctions
-# from comms_utils import backendFunctions
-from param_bench.train.comms.comms_utils import backendFunctions
-
+from comms_utils import backendFunctions
 
 class PyTorchNCCLBackend(backendFunctions):
     # TO_DO/PROPOSAL: Should make it inherit from generic backend object?
