@@ -6,7 +6,7 @@ PArametrized Recommendation and Ai Models (PARAM) benchmark is a repository of c
 
 ## License
 
-**PARAM_Bench** is released under the MIT license. Please see the [LICENSE](LICENSE) file for more information.
+**PARAM_Bench** is released under the MIT license. Please see the [`LICENSE`](LICENSE) file for more information.
 
 ## Contributing
 
