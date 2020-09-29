@@ -1,4 +1,4 @@
-# Contributing to PARAM-Bench
+# Contributing to PARAM_Bench
 We want to make contributing to this project as easy and transparent as
 possible.
 
