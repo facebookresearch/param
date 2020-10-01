@@ -1,21 +1,21 @@
 # PARAM benchmark - Communication benchmarks
 
-PARAM-Comms is an effort to develop unified benchmarking framework to
-characterize training platform backends.
+PARAM-Comms is an effort to develop a unified benchmarking framework to
+characterize training platform backends. Currently, the benchmark supports
+Pytorch-NCCL and PyTorch-XLA backends.
 
 The PARAM-Comms benchmark offers a single point solution to perform both top-down
 (DLRM application) and bottoms-up (collectives) operations for any given
 communication backend.
 
-Currently the benchmark supports Pytorch-NCCL backend, and PyTorch-XLA backend.
-
-The bottoms-up benchmark (`comms.py`) is designed similar to nccl-tests, and the
-top-down benchmark (`dlrm.py`) is similar to opensource dlrm benchmark except it
+The Collective-Comms benchmark (`comms.py`) is designed similar to nccl-tests
+for evaluating collective operations, such as All-reduce and All-to-all, through PyTorch backends.
+The DLRM-Comms benchmark (`dlrm.py`) is similar to the open-source DLRM benchmark except it
 only implements communication primitives.
 
 ## Usage:
 
-### The bottoms-up benchmark (`comms.py`)
+### Collective-Comms benchmark (`comms.py`)
 ```bash
 mpirun -np <num-processes> -N <processes per node> --hostfile <file contains host list> ./comms.py \
     --master-ip 127.0.0.1
@@ -32,7 +32,7 @@ mpirun -np 16 -N 8 --hostfile ./hfile ./comms.py --master-ip 127.0.0.1 --b 8 --e
     --f 2 --z 1 --collective all_to_all
 ```
 
-### The top-down benchmark (`dlrm.py`)
+### DLRM-Comms benchmark (`dlrm.py`)
 ```bash
 mpirun -np <num-processes> -N <processes per node> --hostfile <file contains host list> ./dlrm.py \
     --master-ip <master-node-ip-address>
