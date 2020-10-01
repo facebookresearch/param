@@ -10,7 +10,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from param_bench.train.comms.pt.comms_utils import backendFunctions
+from comms_utils import backendFunctions
 
 
 class PyTorchNCCLBackend(backendFunctions):
