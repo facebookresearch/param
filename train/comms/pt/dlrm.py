@@ -20,9 +20,9 @@ import os
 import json
 import subprocess
 
-import param_bench.train.comms.pt.dlrm_data as dd
-from param_bench.train.comms.pt.pytorch_nccl_backend import PyTorchNCCLBackend
-import param_bench.train.comms.pt.comms_utils as comms_utils
+import dlrm_data as dd
+from pytorch_nccl_backend import PyTorchNCCLBackend
+import comms_utils as comms_utils
 
 # Global parameters
 rowDim = 0
