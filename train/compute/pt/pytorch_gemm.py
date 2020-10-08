@@ -3,14 +3,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-# measuring gemm (matmul, mm) performance using pytorch
-# using one matrix
-# exaple: python pytorch_gemm.py -m 4096 -n 4096 -k 4096  --verify  --testgpu --dtype=float16
-
 import time
-#import numpy as np
 import torch
-
 
 def measure_cpu(a, b, steps, m):
 
@@ -18,8 +12,10 @@ def measure_cpu(a, b, steps, m):
     start = time.perf_counter()
     for i in range(steps):
         c = torch.mm(a, b)
+        # To be consistent with TPU
+        # Add data dependency to prevent loop elimination
         i1 = i % m
-        a[i1][0] = a[i1][0] + c[i1][0]   # prevent mm done only once, seems not necessary ?
+        a[i1][0] = a[i1][0] + c[i1][0]
     end = time.perf_counter()
     c.to('cpu')
     return end - start
@@ -32,8 +28,10 @@ def measure_gpu(a, b, steps, m):
     start = time.perf_counter()
     for i in range(steps):
         c = torch.mm(a, b)
+        # To be consistent with TPU
+        # Add data dependency to prevent loop elimination
         i1 = i % m
-        a[i1][0] = a[i1][0] + c[i1][0]   # prevent mm done only once
+        a[i1][0] = a[i1][0] + c[i1][0]
     torch.cuda.synchronize()
     end = time.perf_counter()
     c.to('cpu')
@@ -51,8 +49,11 @@ def measure_xla(a, b, steps, m):
     start = time.perf_counter()
     for _ in range(steps):
         c = torch.mm(a, b)
-        # i1 = i % m
-        # a[i1][0] = a[i1][0] + c[i1][0]   #This will slow down TPU performance significantly
+        # Add data dependency to prevent loop elimination
+        # The lazy evaluation will eliminate the loop
+        # Subject to change later
+        i1 = i % m
+        a[i1][0] = a[i1][0] + c[i1][0]
         sync(c, c.device)
     end = time.perf_counter()
     c.to('cpu')

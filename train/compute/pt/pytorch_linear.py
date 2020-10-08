@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # Copyright (c) Facebook, Inc. and its affiliates.
 #
 # This source code is licensed under the MIT license found in the
@@ -171,7 +169,6 @@ def main(
     if data_type == "float16":
         apex.amp.initialize(
             model, optimizer, opt_level="O2", verbosity=1
-            # model, optimizer, opt_level="O3", verbosity=1
         )
 
     train(

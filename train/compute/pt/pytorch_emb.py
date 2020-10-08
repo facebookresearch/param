@@ -3,17 +3,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-# measuring embeddingbag performance using pytorch
-# 1. Table lookup index is generated together for all iterations
-#    Currently we see very similar performance across iterations,
-#    even with same indices for each iteration
-#    So, use same indices for different iteration now.
-#
-# 2. Test case:
-#    python3 pytorch_emb.py --features=30000000 --embdim=128 --nnz=100 --batch=8192 --testgpu=1 --verify=1 --steps=10
-#
-# 3. Using XlaEmbedding Bag to replace torch.nn.embeddingbag with XLA on TPU now
-#
 import time
 import torch
 import torch.nn as nn
@@ -37,7 +26,6 @@ class XlaEmbeddingBag(nn.Module):
 
     def forward(self, sparse_index_group_batch, sparse_offset_group_batch):
         emb = self.embtable(sparse_index_group_batch)
-        # XXX: only works w/ constant offset atm
         bsz = emb.size(0) // self.offset
         emb = emb.reshape(bsz, self.offset, *emb.size()[1:])
         reduce_fn = getattr(torch, self.mode)
@@ -50,9 +38,7 @@ def measure_cpu(warmups, steps, h_emb, h_indices, h_offsets):
     for i in range(warmups + steps):
         start = time.perf_counter()
         results = h_emb(h_indices, h_offsets)
-        # results = emb1(h_indices)
         end  = time.perf_counter()
-        # print("Time {0:.6f} ".format(end - start))
         if (i >= warmups):
             emb_times += end - start
     end1 = time.perf_counter()
@@ -79,7 +65,6 @@ def measure_gpu(warmups, steps, h_emb, h_indices, h_offsets):
             results = g_emb(g_indices, g_offsets)
             torch.cuda.synchronize()
             end = time.perf_counter()
-            # print("Time: {0:.6f} ".format(end - start))
 
             if (i >= warmups):
                 emb_times += end - start
@@ -94,8 +79,6 @@ def measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, args):
     import torch_xla
     import torch_xla.core.xla_model as xm
     import os
-    # import math
-    # import torch_xla.debug.metrics as met
 
     tsize = int(os.environ.get("MODEL_PARTITION_SIZE", 3000000))
 
@@ -107,7 +90,6 @@ def measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, args):
     print("Found {0} devices: {1}".format(len(allrealdev), allrealdev))
 
     dev = xm.xla_device()
-    # dev = xm.xla_device(n=2, devkind='TPU')
     if (args.features > tsize):
         if args.usexlabag:
             tsplit = torch.split(h_emb.embtable.weight, tsize, dim=0)
@@ -148,7 +130,6 @@ def measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, args):
             emb_times += end - start
 
     end1 = time.perf_counter()
-    # print(met.metrics_report())
 
     return end1 - start1, emb_times, results
 
@@ -193,10 +174,7 @@ def main():
 
     torch.manual_seed(random_seed)
 
-    # 1. measure on CPU first
-    # h_indices  = torch.randint(0, num_features, (warmups+steps, batch_size, nnz))
     h_indices = torch.randint(0, num_features, (batch_size*nnz,))
-    # h_indices = torch.randint(0, num_features, (batch_size, nnz))
     h_offsets = torch.zeros(batch_size, dtype=torch.int64)
     for i in range(batch_size):
         h_offsets[i] = i * nnz
