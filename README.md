@@ -4,7 +4,7 @@ PARAM Benchmarks is a repository of communication and compute micro-benchmarks a
 
 PARAM complements two broad categories of commonly used benchmarks:
 1. C++ based stand-alone compute and communication benchmarks using cuDNN, MKL, NCCL, MPI libraries - e.g., NCCL tests (https://github.com/NVIDIA/nccl-tests), OSU MPI benchmarks (https://mvapich.cse.ohio-state.edu/benchmarks/), and DeepBench (https://github.com/baidu-research/DeepBench).
-2. Application benchmarks such as Deep Learning Recommendation Model (DLRM) and the broader MLPerf benchmarks. MLPerf is a de-facto industry standard benchmark covering a wide range of AI workloads including computer vision and natural language processing. Recent addition of DLRM to MLPerf 0.7 is a great step towards making it more representative of FB’s AI workloads.
+2. Application benchmarks such as Deep Learning Recommendation Model (DLRM) and the broader MLPerf benchmarks. Its worth noting that while MLPerf is the de-facto industry standard for benchmarking ML applications we hope to compliment this effort with broader workloads that are of more interest to Facebook with more in-depth analysis of each within this branch of Application benchmarks.
 
 Our initial release of PARAM benchmarks focuses on AI training and comprises of:
 1. Communication: PyTorch based collective benchmarks across arbitrary message sizes, effectiveness of compute-communication overlap, and DLRM communication patterns in fwd/bwd pass
