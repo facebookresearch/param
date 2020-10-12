@@ -16,39 +16,71 @@ The TPU implementation is through PyTorch/XLA.
 
 ## Usage
 
-### GEMM :
+A driver (`driver.py`) is developed, which can be used to run different kernels.
+For each kernel, one or more datasets have been defined as 'A', 'B', 'C', etc.
 
 ```bash
-python pytorch_gemm.py \
-    --msize/-m \
-    --nsize/-n \
-    --ksize/-k \
-    --dtype \
-    --testgpu \
-    --testcpu \
-    --testtpu \
-    --steps \
-    --warmups
+python3 driver.py -h
+usage: driver.py [-h] [--warmups WARMUPS] [--steps STEPS] --device {cpu,gpu,tpu} {gemm,emb,linear} ...
+
+Measuring the Compute Kernel Performance Using PyTorch
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --warmups WARMUPS     warmup times
+  --steps STEPS         repeat times
+  --device {cpu,gpu,tpu}
+                        valid devices
+
+kernels:
+  {gemm,emb,linear}
+    gemm                measure mm performance (m,k)*(k,n)=(m,n)
+    emb                 measure EmbeddingBag performance
+    linear              measure mlp performance
+```
+
+### Testing GEMM :
+
+```bash
+python3 driver.py --steps=100 --device='cpu' gemm --dataset='A'
+
+Measuring the performance of  gemm  on device =  cpu
+Steps = 100  warmups = 10
+with matrix dataset  A , Data type:  float32
+
+----------------------------------------------------------------
+         M         N          K          Time(s)      Rate(GF/s)
+----------------------------------------------------------------
+       128,       4096,       4096,       0.519193     827.240
+       256,       4096,       4096,       1.005778     854.058
+       512,       4096,       4096,       2.214854     775.666
+      1024,       4096,       4096,       3.388758     1013.933
+       128,       1024,       1024,       0.555641     48.311
+       256,       1024,       1024,       0.145774     368.291
+       512,       1024,       1024,       0.177422     605.189
+      1024,       1024,       1024,       0.215082     998.447
 
 ```
-Example: measure float performance on GPU:
-```bash
-python pytorch_gemm.py -m 1024 -n 2048 -k 1024 --testgpu --dtype=float32
-```
 
-### MLP
+### Testing EmbeddingBag
 ```bash
-python pytorch_linear.py \
-    --device \
-    --optimizer-type \
-    --data-type \
-    --layer-num \
-    --batch-size \
-    --input-size \
-    --output-size \
-    --hidden-size \
-    --num-batches
+python3 driver.py --steps=100 --device='cpu' emb --dataset='A'
+
+Measuring the performance of  emb  on device =  cpu
+Steps = 10  warmup = 1
+with emb data A.
+---------------------------------------------------------------------------------
+    Features    embdim    nnz     batch      Time(s)/step   Data(MB)   BW(GB/s)
+---------------------------------------------------------------------------------
+  14000000,     128,      30,      2048,      0.002067,       31.5,    15.222
+  14000000,     128,      30,      4096,      0.004611,       62.9,    13.644
+  14000000,     128,      30,      8192,      0.006464,      125.8,    19.466
+  14000000,     128,      30,     16384,      0.009102,      251.7,    27.649
+
 ```
+Note that on TPU, due to the current performance concern of EmbeddingBag, we
+also support an alternative implementation, XlaEmbeddingBag, which can be
+invoked through --usexlabag
 
 Example: Measure the performance of a MLP with 18 hidden layer, layer size 1024
 ```bash
@@ -57,30 +89,30 @@ python pytorch_linear.py --device gpu --layer-num 18  --batch-size 128 --input-s
        --data-type=float16 --optimizer-type=sgd
 ```
 
-### EmbeddingBag
+### Testing MLP Linear
 ```bash
-python pytorch_emb.py \
-    --features \
-    --embdim \
-    --nnz \
-    --batch \
-    --steps \
-    --warmups \
-    --testcpu \
-    --testgpu \
-    --testtpu \
-    --randomseed \
-    --usexlabag
+python3 driver.py --steps=100 --device='cpu' linear --dataset='A'
+
+Measuring the performance of  linear  on device =  cpu
+Steps = 10  warmups = 1
+with linear dataset  A , Data type:  float
+--------------------------------------------------------------------------------
+ #Layer    Input    Hidden    Output   Batch   Time(s)/step  QPS      Rate(GF/s)
+--------------------------------------------------------------------------------
+
+    18,    1024,    1024,    1024,     128,    0.344426,     371.6,       46.8
+    18,    1024,    1024,    1024,     256,    0.206910,    1237.3,      155.7
+    18,    1024,    1024,    1024,     512,    0.279407,    1832.5,      230.6
+
 ```
 
-Note that on TPU, due to the current performance concern of EmbeddingBag, we
-also support an alternative implementation, XlaEmbeddingBag, which can be
-invoked through --usexlabag
-
-Example: Measure the EmbeddingBag performance for a table(26000000, 128) with 
-batch size 512 and pooling factor 28 on TPU:
+In addition, you can run individual kernels using
 ```bash
-python pytorch_emb.py --features=26000000 --embdim=128 --nnz=28 --batch=512
---testtpu
+python3 pytorch_gemm.py ...
 ```
-
+```bash
+python3 pytorch_emb.py ...
+```
+```bash
+python3 pytorch_linear.py ...
+```

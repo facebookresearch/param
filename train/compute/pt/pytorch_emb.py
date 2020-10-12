@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import time
+import sys
 import torch
 import torch.nn as nn
 
@@ -33,65 +34,66 @@ class XlaEmbeddingBag(nn.Module):
 
 def measure_cpu(warmups, steps, h_emb, h_indices, h_offsets):
 
-    emb_times = 0
-    start1 = time.perf_counter()
+    start = time.perf_counter()
     for i in range(warmups + steps):
-        start = time.perf_counter()
         results = h_emb(h_indices, h_offsets)
-        end  = time.perf_counter()
-        if (i >= warmups):
-            emb_times += end - start
-    end1 = time.perf_counter()
+        if (i < warmups):
+            start = time.perf_counter()
+    end = time.perf_counter()
 
-    return end1 - start1, emb_times, results
+    return end - start, results
 
 
 def measure_gpu(warmups, steps, h_emb, h_indices, h_offsets):
 
-    ncuda = torch.cuda.device_count()
-    print("There are {} cuda devices".format(ncuda))
-    print("The current cuda device name is {} ".format(torch.cuda.get_device_name()))
+    # ncuda = torch.cuda.device_count()
+    # print("There are {} cuda devices".format(ncuda))
+    # print("The current cuda device name is {} ".format(torch.cuda.get_device_name()))
     cuda0 = torch.device('cuda:0')
-    emb_times = 0
     with torch.cuda.device(cuda0):
         g_emb  = h_emb.to(cuda0)
         g_indices = h_indices.to(cuda0)
         g_offsets = h_offsets.to(cuda0)
         torch.cuda.synchronize()
 
-        start1 = time.perf_counter()
+        start = time.perf_counter()
         for i in range(warmups + steps):
-            start = time.perf_counter()
             results = g_emb(g_indices, g_offsets)
-            torch.cuda.synchronize()
-            end = time.perf_counter()
+            # torch.cuda.synchronize()
+            if (i < warmups):
+                torch.cuda.synchronize()
+                start = time.perf_counter()
+        torch.cuda.synchronize()
+        end = time.perf_counter()
 
-            if (i >= warmups):
-                emb_times += end - start
-
-        end1 = time.perf_counter()
-
-    return end1 - start1, emb_times, results
+    return end - start, results
 
 
-def measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, args):
+def measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, usexlabag, batch, nnz):
 
     import torch_xla
     import torch_xla.core.xla_model as xm
     import os
 
-    tsize = int(os.environ.get("MODEL_PARTITION_SIZE", 3000000))
+    # If emb table is too large will cause protobuf error,
+    # we have to split them
+    tsize = int(os.environ.get("MODEL_PARTITION_SIZE", 60000000))
 
     def syncTPU(tensor):
         torch_xla._XLAC._xla_sync_multi([tensor], devices=[], wait=True, sync_xla_data=True)
 
-    alldev = xm.get_xla_supported_devices()
-    allrealdev = xm.xla_real_devices(alldev)
-    print("Found {0} devices: {1}".format(len(allrealdev), allrealdev))
+    # alldev = xm.get_xla_supported_devices()
+    # allrealdev = xm.xla_real_devices(alldev)
+    # print("Found {0} devices: {1}".format(len(allrealdev), allrealdev))
 
     dev = xm.xla_device()
-    if (args.features > tsize):
-        if args.usexlabag:
+    if usexlabag:
+        features = h_emb.n
+    else:
+        features = h_emb.weight.shape[0]
+
+    if (features > tsize):
+        if usexlabag:
             tsplit = torch.split(h_emb.embtable.weight, tsize, dim=0)
         else:
             tsplit = torch.split(h_emb.weight, tsize, dim=0)
@@ -100,41 +102,96 @@ def measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, args):
             tsplit[i] = chunk.to(dev)
 
         t = nn.Parameter(torch.ones(10, 10))
-        if args.usexlabag:
+        if usexlabag:
             h_emb.embtable.weight = t
             t_emb = h_emb.to(dev)
             tsplit = torch.cat(tsplit)
             t_emb.embtable.weight = nn.Parameter(tsplit)
-            print("Xla EMB weight shape: ", t_emb.embtable.weight.shape, " on device: ", str(dev))
+            # print("Xla EMB weight shape: ", t_emb.embtable.weight.shape, " on device: ", str(dev))
         else:
             h_emb.weight = t
             t_emb = h_emb.to(dev)
             tsplit = torch.cat(tsplit)
             t_emb.weight = nn.Parameter(tsplit)
-            print("EMB weight shape: ", t_emb.weight.shape, " on device: ", str(dev))
+            # print("EMB weight shape: ", t_emb.weight.shape, " on device: ", str(dev))
     else:
         t_emb = h_emb.to(dev)
 
     t_indices = h_indices.to(dev)
     t_offsets = h_offsets.to(dev)
 
-    emb_times = 0.0
-    start1 = time.perf_counter()
-    for i in range(warmups + steps):
-        start = time.perf_counter()
-        results = t_emb(t_indices, t_offsets)
-        syncTPU(results)
-        end = time.perf_counter()
-        print("Time: {0:.6f} ".format(end - start))
-        if (i >= warmups):
-            emb_times += end - start
+    start = time.perf_counter()
+    results = t_emb(t_indices, t_offsets)
+    start = time.perf_counter()
+    for _ in range(steps):
+        h_indices = torch.randint(0, features, (batch*nnz,))
+        results += t_emb(t_indices, t_offsets)
+#    print(torch_xla._XLAC._get_xla_tensors_text([results]))
+    syncTPU(results)
 
-    end1 = time.perf_counter()
+    end = time.perf_counter()
+    results = results.cpu()
 
-    return end1 - start1, emb_times, results
+    return end - start,results
 
 
-def main():
+def run_single(args, features, embdim, nnz, batch):
+
+    device = args.device
+    random_seed = args.randomseed
+    warmups = args.warmups
+    steps = args.steps
+
+    torch.manual_seed(random_seed)
+
+    h_indices = torch.randint(0, features, (batch*nnz,))
+    h_offsets = torch.zeros(batch, dtype=torch.int64)
+    for i in range(batch):
+        h_offsets[i] = i * nnz
+
+    # Use xlabag now on TPU
+    # EmbeddingBag is not optimized by PyTorch/XLA currently
+    if (not device == 'tpu' or not args.usexlabag):
+        print("RIGHT")
+        h_emb = nn.EmbeddingBag(features, embdim, mode='sum')
+        total_bytes = batch * nnz * embdim * h_emb.weight.element_size()
+    else:
+        # print("using XlaBag instead of torch.nn.EmbeddingBag now")
+        h_emb = XlaEmbeddingBag(features, embdim, "sum", nnz)
+        total_bytes = batch * nnz * embdim * h_emb.embtable.weight.element_size()
+
+    h_results = torch.zeros(batch, embdim)
+
+    if device == 'cpu':
+        emb_times, h_results = measure_cpu(warmups, steps, h_emb, h_indices, h_offsets)
+
+    elif device == 'gpu':
+        if torch.cuda.is_available():
+            emb_times, h_results = measure_gpu(warmups, steps, h_emb, h_indices, h_offsets)
+        else:
+            print("CUDA is not available, could not run on GPU")
+            sys.exit(1)
+
+    else:
+        emb_times, t_results = measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, args.usexlabag, batch, nnz)
+
+    return emb_times, total_bytes
+
+def run(args, dataset):
+
+    print("---------------------------------------------------------------------------------")
+    print("    Features    embdim    nnz     batch      Time(s)/step   Data(MB)   BW(GB/s)")
+    print("---------------------------------------------------------------------------------")
+
+    for i in range(len(dataset)):
+        features, embdim, nnz, batch = dataset[i]
+        elap, total_bytes = run_single(args, features, embdim, nnz, batch)
+        elap /= args.steps
+        total_bytes /= 1.0e6
+        print("{0:10},  {1:6},  {2:6},  {3:8},    {4:10.6f}, {5:10.1f},  {6:8.3f}".format(features,
+            embdim, nnz, batch, elap, total_bytes, total_bytes / elap / 1.0e3))
+
+if __name__ == "__main__":
 
     import argparse
 
@@ -149,93 +206,19 @@ def main():
     parser.add_argument("--steps", type=int, default=10)
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--randomseed", type=int, default=0)
-    parser.add_argument("--testcpu", action='store_true', default=False)
-    parser.add_argument("--testgpu", action='store_true', default=False)
-    parser.add_argument("--testtpu", action='store_true', default=False)
-    parser.add_argument("--verify", action='store_true', default=False)
-    parser.add_argument("--usexlabag", action='store_true', default=False)
+    parser.add_argument("-t", "--dtype", type=str, default="float32")
+    parser.add_argument("-d", "--device", choices=['cpu', 'gpu', 'tpu'], type=str, default='cpu')
+    parser.add_argument("--usexlabag", action='store_true')
 
     args = parser.parse_args()
 
     num_features = args.features
-    embed_dim = args.embdim
+    embdim = args.embdim
     nnz = args.nnz
-    batch_size = args.batch
+    batch = args.batch
     steps = args.steps
     warmups = args.warmups
 
-    random_seed = args.randomseed
+    d = [(num_features, embdim, nnz, batch)]
+    run(args, d)
 
-    print("Test problem size:")
-    print("Number of features : ", num_features)
-    print("Embedding size     : ", embed_dim)
-    print("Nnz_per_input      : ", nnz)
-    print("Number of batches  : ", batch_size)
-
-    torch.manual_seed(random_seed)
-
-    h_indices = torch.randint(0, num_features, (batch_size*nnz,))
-    h_offsets = torch.zeros(batch_size, dtype=torch.int64)
-    for i in range(batch_size):
-        h_offsets[i] = i * nnz
-    print("Finished generating indices")
-    if (not args.usexlabag):
-        h_emb = nn.EmbeddingBag(num_features, embed_dim, mode='sum')
-        total_bytes = batch_size * nnz * embed_dim * h_emb.weight.element_size()
-    else:
-        print("using XlaBag instead of torch.nn.EmbeddingBag now")
-        h_emb = XlaEmbeddingBag(num_features, embed_dim, "sum", nnz)
-        total_bytes = batch_size * nnz * embed_dim * h_emb.embtable.weight.element_size()
-    print("Finished generating tables. Using mem: ", total_bytes)
-    h_results = torch.zeros(batch_size, embed_dim)
-    g_results = torch.zeros(batch_size, embed_dim)
-    t_results = torch.zeros(batch_size, embed_dim)
-
-    total_times = 0
-
-    if (args.testcpu or args.verify):
-
-        total_times, emb_times, h_results = measure_cpu(warmups, steps, h_emb, h_indices, h_offsets)
-        print("CPU: total test time: {0:.6f} seconds, emb {1:.6f} seconds  for {2:6d} steps ".format(total_times, emb_times, steps))
-        print("CPU: total bytes {0}, mem bw {1:.3f} GB/s".format(total_bytes, total_bytes * 1.0 * steps / emb_times / 1.0e9))
-        print("CPU results: ", h_results)
-
-    if (args.testgpu and torch.cuda.is_available()):
-
-        total_times, emb_times, g_results = measure_gpu(warmups, steps, h_emb, h_indices, h_offsets)
-        print("---------")
-        print("GPU: total test time: {0:.6f} seconds, emb {1:.6f} seconds  for {2:6d} steps ".format(total_times, emb_times, steps))
-        print("GPU: total bytes {0}, mem bw {1:.3f} GB/s".format(total_bytes, total_bytes * 1.0 * steps / emb_times / 1.0e9))
-        print("---------")
-        print("GPU results: ", g_results)
-        g_results = g_results.to('cpu')
-
-        if (args.verify and args.testcpu):
-            if (torch.equal(h_results, g_results)):
-                print("Success! CPU results and GPU results match!\n")
-            else:
-                print("Failed!  CPU and GPU results does not match!\n")
-                print("CPU results:")
-                print(h_results)
-                print("GPU results:")
-                print(g_results)
-
-    if (args.testtpu):
-
-        total_times, emb_times, t_results = measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, args)
-
-        print("---------")
-        print("TPU: total test time: {0:.6f} seconds, emb {1:.6f} seconds  for {2:6d} steps ".format(total_times, emb_times, steps))
-        print("TPU: total bytes {0}, mem bw {1:.3f} GB/s".format(total_bytes, total_bytes * 1.0 * steps / emb_times / 1.0e9))
-        print("---------")
-        print("TPU results: ", t_results)
-        t_results = t_results.to('cpu')
-
-        if (args.verify and args.testcpu):
-            if (torch.equal(h_results, t_results)):
-                print("Success! CPU results and TPU results match!\n")
-            else:
-                print("Failed!  CPU and TPU results does not match!\n")
-
-if __name__ == "__main__":
-    main()
