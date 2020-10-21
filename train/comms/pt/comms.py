@@ -9,12 +9,14 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 # import bisect # import shutil
 import time
+import logging
+logging.getLogger().setLevel(logging.INFO)
+
+import comms_utils
 import numpy as np
-
-import comms_utils as comms_utils
-
 # pytorch
 import torch
+
 
 CUDA_MAX_THREADS = 1024
 
@@ -78,9 +80,13 @@ def initializeCollectiveArgs(commsParams, backendFuncs):
         world_size,
         group,
         curDevice,
-    ) = comms_utils.get_rank_details(backendFuncs)  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes.
+    ) = comms_utils.get_rank_details(
+        backendFuncs
+    )  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes.
 
-    comms_utils.fixBeginSize(commsParams, world_size)  # Ensuring that all-reduce and all-to-all has atleast one member per rank.
+    comms_utils.fixBeginSize(
+        commsParams, world_size
+    )  # Ensuring that all-reduce and all-to-all has atleast one member per rank.
     backendFuncs.sayHello()  # Informs us where each process is running.
     allSizes = comms_utils.getSizes(
         commsParams.beginSize, commsParams.endSize, commsParams.stepFactor
@@ -106,6 +112,15 @@ def initializeCollectiveArgs(commsParams, backendFuncs):
     op = backendFuncs.get_reduce_op("sum")
     collectiveArgs.op = op
     collectiveArgs.dst = commsParams.dst
+    if commsParams.bitwidth < 32:
+        logging.warning(f'communication bitwidth set to {commsParams.bitwidth}')
+        try:
+            from internals import initialize_collectiveArgs_internal
+            initialize_collectiveArgs_internal(collectiveArgs, commsParams)
+        except ImportError:
+            if commsParams.collective != "reduce" and  commsParams.collective != "all_reduce":
+                raise NotImplementedError(f"quantized communication for {commsParams.collective} is currently unsupported.")
+            pass
 
     computeFunc = None
     if commsParams.mode != "comms":  # Compute mode related initialization.
@@ -141,6 +156,7 @@ def initializeCollectiveArgs(commsParams, backendFuncs):
         allSizes,
         computeFunc,
     )
+
 
 def reportBenchTime(collectiveArgs, commsParams, allSizes, tensorList, results):
     collectiveArgs.collective = commsParams.collective
@@ -180,6 +196,7 @@ def reportBenchTime(collectiveArgs, commsParams, allSizes, tensorList, results):
                 str("%.3f" % (busBW)),
             )
         )
+
 
 def benchTime(index, commsParams, backendFuncs):
     # Get NW stack specific parameters
@@ -249,7 +266,6 @@ def benchTime(index, commsParams, backendFuncs):
         collectiveArgs.dataSize = curSize
         collectiveArgs.numElements = numElements
         collectiveArgs.waitObj = None
-
         # collectiveArgs has all the information on the experiment.
         timeElapsedNS, algBW, busBW, memSize, x = runColl(
             collectiveArgs, comm_fn=collectiveFunc, compute_fn=computeFunc
@@ -286,6 +302,12 @@ def benchTime(index, commsParams, backendFuncs):
         timeElapsedTensor.nelement() * timeElapsedTensor.element_size()
     )
     collectiveArgs.numElements = timeElapsedTensor.nelement()
+    # collective, no need to quantize :)
+    collectiveArgs.all2all_qcomm = (
+        collectiveArgs.allreduce_qcomm
+    ) = (
+        collectiveArgs.reducescatter_allgather_qcomm
+    ) = collectiveArgs.reduce_qcomm = None
     collectiveArgs.waitObj = backendFuncs.all_gather(collectiveArgs, retFlag=True)
     backendFuncs.complete_accel_ops(collectiveArgs)
 
@@ -343,102 +365,117 @@ def main():
     ### parse arguments ###
     parser = argparse.ArgumentParser(
         description="PARAM-Comm Benchmark",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     # experiment related parameters
     parser.add_argument(
-        "--backend", type=str, default="nccl",
-        help="The backend to be used in PyTorch distributed process group"
+        "--backend",
+        type=str,
+        default="nccl",
+        help="The backend to be used in PyTorch distributed process group",
     )  # alternative is DLRM mode.
     parser.add_argument(
-        "--mode", type=str, default="comms",
-        help="benchmark mode"
+        "--mode", type=str, default="comms", help="benchmark mode"
     )  # alternative is DLRM mode or comm-compute mode
-    parser.add_argument("--b", type=str, default="8",
-        help="minimum size, in bytes, to start with"
+    parser.add_argument(
+        "--b", type=str, default="8", help="minimum size, in bytes, to start with"
     )  # COMMS mode, begin the sweep at.
-    parser.add_argument("--e", type=str, default="64",
-        help="maximum size, in bytes, to end at"
+    parser.add_argument(
+        "--e", type=str, default="64", help="maximum size, in bytes, to end at"
     )  # COMMS mode, end the sweep at.
     parser.add_argument(
-        "--f", type=int, default=2,
-        help="multiplication factor between sizes"
+        "--f", type=int, default=2, help="multiplication factor between sizes"
     )  # COMMS mode, multiplication factor.
     parser.add_argument(
-        "--z", type=int, default=1,
-        help="use blocking mode for collectives"
+        "--z", type=int, default=1, help="use blocking mode for collectives"
     )  # 'sync/blocking' : 1 , 'async/non-blocking' : 0
 
-    parser.add_argument("--w", type=int, default=5,
-        help="number of warmup iterations"
+    parser.add_argument(
+        "--w", type=int, default=5, help="number of warmup iterations"
     )  # number of warmup-iterations
-    parser.add_argument("--n", type=int, default=5,
-        help="number of iterations"
+    parser.add_argument(
+        "--n", type=int, default=5, help="number of iterations"
     )  # number of iterations
     parser.add_argument(
-        "--collective", type=str, default="all_reduce",
-        help='Collective to benchmark, supports ' + str(supportedCollectives)
+        "--collective",
+        type=str,
+        default="all_reduce",
+        help="Collective to benchmark, supports " + str(supportedCollectives),
     )  # collective op to benchmark
     parser.add_argument(
-        "--master-ip", type=str, default="127.0.0.1",
-        help="The master-IP to coordinate"
+        "--master-ip", type=str, default="127.0.0.1", help="The master-IP to coordinate"
     )  # The master-IP to coordinate.
     parser.add_argument(
-        "--master-port", type=str, default="29500",
-        help="The master-port to coordinate"
+        "--master-port", type=str, default="29500", help="The master-port to coordinate"
     )  # The master-port to coordinate.
     parser.add_argument(
-        "--nw-stack", type=str, default="pytorch-nccl",
-        help="network stack to be used, supports " + str(supportedNwstacks)
+        "--nw-stack",
+        type=str,
+        default="pytorch-nccl",
+        help="network stack to be used, supports " + str(supportedNwstacks),
     )  # The network stack to profile.
     parser.add_argument(
         "--dtype", type=torch.dtype, default=torch.float32
     )  # will be overwritten based on args.data_type and dtypeMap.
     parser.add_argument(
-        "--data-type", type=str, default="float32",
-        help="the base data type, supports " + str(supportedDtype)
+        "--data-type",
+        type=str,
+        default="float32",
+        help="the base data type, supports " + str(supportedDtype),
     )  # The data type
 
     parser.add_argument(
-        "--num-tpu-cores", type=int, default=1,
-        help="number of TPU cores to be used"
+        "--num-tpu-cores", type=int, default=1, help="number of TPU cores to be used"
     )  # number of TPU cores
 
     # For comm-compute or compute mode
     parser.add_argument(
-        "--kernel", type=str, default="gemm",
-        help="compute kernel"
+        "--kernel", type=str, default="gemm", help="compute kernel"
     )  # Compute kernel: "gemm"
     parser.add_argument(
-        "--num-compute", type=int, default=100,
-        help="one collective for every NUM_COMPUTE compute kernels"
+        "--num-compute",
+        type=int,
+        default=100,
+        help="one collective for every NUM_COMPUTE compute kernels",
     )  # Launch one coll for every n compute kernels
     # For GEMM
     parser.add_argument(
-        "--mm-dim", type=int, default=100,
-        help="dimension size for GEMM compute kernel"
+        "--mm-dim", type=int, default=100, help="dimension size for GEMM compute kernel"
     )  # Matrix multiplication dim n, A[n,n] * B [n,n]
     # For emb lookup
-    parser.add_argument("--emb-dim", type=int, default=128,
-        help="dimension size for Embedding table compute kernel"
+    parser.add_argument(
+        "--emb-dim",
+        type=int,
+        default=128,
+        help="dimension size for Embedding table compute kernel",
     )  # Embedding table dimension
     parser.add_argument(
-        "--num-embs", type=int, default=100000,
-        help="Embedding table hash size for Embedding table compute kernel"
+        "--num-embs",
+        type=int,
+        default=100000,
+        help="Embedding table hash size for Embedding table compute kernel",
     )  # Embedding table hash size
-    parser.add_argument("--avg-len", type=int, default=28,
-        help="Average lookup operations per sample"
+    parser.add_argument(
+        "--avg-len", type=int, default=28, help="Average lookup operations per sample"
     )  # Average #lookup per sample
     parser.add_argument(
-        "--batch-size", type=int, default=512,
-        help="number of samples reading the table concurrently"
+        "--batch-size",
+        type=int,
+        default=512,
+        help="number of samples reading the table concurrently",
     )  # #Samples reading the table concurrently
     parser.add_argument(
-        "--root", type=int, default=0,
-        help="root process for reduce benchmark"
+        "--root", type=int, default=0, help="root process for reduce benchmark"
     )  # root process for reduce (and gather, scatter, bcast, etc., if support in the future)
     # TODO: check the correctness of root, should be between 0 to [world_size -1]
 
+    parser.add_argument(
+        "--bitwidth",
+        type=int,
+        default=32,
+        help="quantization bitwidth",
+        choices=[4, 8, 16, 32],
+    )
     args, leftovers = parser.parse_known_args()
     args.b = comms_utils.parsesize(args.b)
     args.e = comms_utils.parsesize(args.e)

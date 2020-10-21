@@ -9,8 +9,33 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from comms_utils import backendFunctions, collectiveArgsHolder
 
-from comms_utils import backendFunctions
+
+try:
+    from internals import all_to_allv_internal, all_to_all_internal
+except ImportError:
+    pass
+
+
+def _downcast(input, bitwidth):
+    if bitwidth == 16:
+        return input.to(torch.float16)
+    elif bitwidth == 8:
+        return input.to(torch.int8)
+    else:
+        raise NotImplementedError("Unsupported bitwidth. Set bitwidth = 4/8/16/32.")
+
+
+# a future object or a tensor
+def _dequantize(obj):
+    if obj is None:
+        # invoked in a irrelevant rank
+        return None
+    elif type(obj) == torch.Tensor:
+        return obj.to(torch.float16)
+    else:
+        return [obj.value()[0].to(torch.float32)]
 
 
 class PyTorchNCCLBackend(backendFunctions):
@@ -27,55 +52,78 @@ class PyTorchNCCLBackend(backendFunctions):
 
     # Collectives
     def all_reduce(self, collectiveArgs, retFlag=False):
+        if collectiveArgs.allreduce_qcomm != 32:
+            quantized = _downcast(
+                collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
+            )
+        else:
+            quantized = collectiveArgs.ipTensor
         retObj = dist.all_reduce(
-            collectiveArgs.ipTensor,
+            quantized,
             op=collectiveArgs.op,
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
-        if(retFlag):
-            return retObj
+        if collectiveArgs.asyncOp:
+            retObj = retObj.get_future().then(_dequantize)
         else:
-            return
+            retObj = _dequantize(quantized)
+
+        if retFlag:
+            return retObj
 
     def reduce(self, collectiveArgs, retFlag=False):
+        if collectiveArgs.reduce_qcomm != 32:
+            quantized = _downcast(
+                collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
+            )
+        else:
+            quantized = collectiveArgs.ipTensor
         retObj = dist.reduce(
-            collectiveArgs.ipTensor,
+            quantized,
             dst=collectiveArgs.dst,
             op=collectiveArgs.op,
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
-        if retFlag:
-            return retObj
+        if collectiveArgs.asyncOp:
+            retObj = retObj.get_future().then(_dequantize)
         else:
-            return
+            retObj = _dequantize(quantized)
 
-    def all_to_all(self, collectiveArgs, retFlag=False):
-        retObj = dist.all_to_all_single(
-            collectiveArgs.opTensor,
-            collectiveArgs.ipTensor,
-            group=collectiveArgs.group,
-            async_op=collectiveArgs.asyncOp,
-        )  # synchronicity is maintained in runColl
         if retFlag:
             return retObj
+
+    def all_to_all(self, collectiveArgs: collectiveArgsHolder, retFlag=False):
+        if collectiveArgs.all2all_qcomm:
+            work = all_to_all_internal(collectiveArgs)
         else:
-            return
+            work = dist.all_to_all_single(
+                collectiveArgs.opTensor,
+                collectiveArgs.ipTensor,
+                None,
+                None,
+                group=collectiveArgs.group,
+                async_op=collectiveArgs.asyncOp,
+            )
+
+        if retFlag:
+            return work
 
     def all_to_allv(self, collectiveArgs, retFlag=False):
-        retObj = dist.all_to_all_single(
-            collectiveArgs.opTensor,
-            collectiveArgs.ipTensor,
-            collectiveArgs.opTensor_split,
-            collectiveArgs.ipTensor_split,
-            group=collectiveArgs.group,
-            async_op=collectiveArgs.asyncOp,
-        )  # synchronicity is maintained in runColl
-        if retFlag:
-            return retObj
+        if collectiveArgs.all2all_qcomm:
+            work = all_to_allv_internal(collectiveArgs)
         else:
-            return
+            work = dist.all_to_all_single(
+                collectiveArgs.opTensor,
+                collectiveArgs.ipTensor,
+                collectiveArgs.opTensor_split,
+                collectiveArgs.ipTensor_split,
+                group=collectiveArgs.group,
+                async_op=collectiveArgs.asyncOp,
+            )
+        if retFlag:
+            return work
 
     def all_gather(self, collectiveArgs, retFlag=False):
         retObj = dist.all_gather(
@@ -86,8 +134,6 @@ class PyTorchNCCLBackend(backendFunctions):
         )  # synchronicity is maintained in runColl
         if retFlag:
             return retObj
-        else:
-            return
 
     def complete_accel_ops(self, collectiveArgs, initOp=False):
         if initOp is True:
@@ -95,6 +141,7 @@ class PyTorchNCCLBackend(backendFunctions):
             dist.all_reduce(temp)
         if collectiveArgs.waitObj is not None:
             collectiveArgs.waitObj.wait()
+
         torch.cuda.synchronize(collectiveArgs.device)
 
     def barrier(self, collectiveArgs):

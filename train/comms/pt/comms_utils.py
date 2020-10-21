@@ -283,11 +283,14 @@ class commsParamsHolder:
         self.batch_size = args.batch_size
         self.benchTime = benchTime
 
+        #quantization
+        self.bitwidth = args.bitwidth
+
 
 class collectiveArgsHolder:
     def __init__(self):
         # A holding object for all the parameters related to a collective operation/experiment.
-        self.group = []
+        self.group = None
         self.device = {}
         self.world_size = 0
 
@@ -321,3 +324,8 @@ class collectiveArgsHolder:
         self.dataSize = 0
         self.numElements = 0
         self.dst = 0
+
+        self.all2all_qcomm = None
+        self.reducescatter_allgather_qcomm = None
+        self.allreduce_qcomm = 32 #set it as the bitwidth for now. when the actual kernel lands, change
+        self.reduce_qcomm = 32
