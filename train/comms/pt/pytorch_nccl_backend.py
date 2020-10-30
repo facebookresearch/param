@@ -143,6 +143,8 @@ class PyTorchNCCLBackend(backendFunctions):
             collectiveArgs.waitObj.wait()
 
         torch.cuda.synchronize(collectiveArgs.device)
+        # sync with all ranks
+        self.barrier(collectiveArgs)
 
     def barrier(self, collectiveArgs):
         dist.barrier(collectiveArgs.group)

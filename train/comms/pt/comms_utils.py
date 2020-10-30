@@ -8,7 +8,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import os
 import sys
 from abc import ABC, abstractmethod
-
+import torch
 
 def gracefulExit():
     # TODO: Is this the best way to exit?
@@ -329,3 +329,85 @@ class collectiveArgsHolder:
         self.reducescatter_allgather_qcomm = None
         self.allreduce_qcomm = 32 #set it as the bitwidth for now. when the actual kernel lands, change
         self.reduce_qcomm = 32
+
+class paramCommsBench(ABC):
+    def __init__(self, supportedNwstacks=None):
+        self.supportedNwstacks = supportedNwstacks
+        self.supported_tpu_core_valuses = [1, 8]
+        self.dtypeMap = {
+            "float32": torch.float32,
+            "int32": torch.int32,
+            "float16": torch.half,
+            "float64": torch.double,
+        }
+        self.supportedDtype = list(self.dtypeMap.keys())
+        self.backendFuncs = ""
+        self.collectiveArgs = collectiveArgsHolder()
+        self.comm_size = 1
+        self.my_rank = -1
+
+    @abstractmethod
+    def runBench(self, *args, **kwargs):
+        """ Must override to start the desired benchmarking """
+        pass
+
+    @abstractmethod
+    def benchTime(self, *args, **kwargs):
+        """ Must override to run the desired benchmarking """
+        pass
+
+    @abstractmethod
+    def reportBenchTime(self, *args, **kwargs):
+        """ Must override to report/print the desired output """
+        pass
+
+    @abstractmethod
+    def readArgs(self, parser):
+        """ Basic/Common arguments for all PARAM-Comm benchmarks """
+        parser.add_argument(
+            "--master-ip", type=str, default="127.0.0.1",
+            help="The master-IP to coordinate"
+        )  # The master-IP to coordinate.
+        parser.add_argument(
+            "--master-port", type=str, default="29500",
+            help="The master-port to coordinate"
+        )  # The master-port to coordinate.
+        parser.add_argument(
+            "--nw-stack", type=str, default="pytorch-nccl",
+            help="network stack to be used, supports " + str(self.supportedNwstacks)
+        )  # The network stack to profile.
+        parser.add_argument(
+            "--dtype", type=torch.dtype, default=torch.float32
+        )  # will be overwritten based on args.data_type and dtypeMap.
+        parser.add_argument(
+            "--data-type", type=str, default="float32",
+            help="the base data type, supports " + str(self.supportedDtype)
+        )  # The data type
+        parser.add_argument(
+            "--num-tpu-cores", type=int, default=1,
+            help="number of TPU cores to be used"
+        )  # number of TPU cores
+        pass
+
+    @abstractmethod
+    def checkArgs(self, args):
+        """ Validate some basic/common arguments for all PARAM-Comm benchmarks """
+        if args.nw_stack not in self.supportedNwstacks:
+            print(
+                "\t ERROR: Specified backend: %s is not one of the supported backends: %s. Make sure the input is using the correct case."
+                % (args.nw_stack, str(self.supportedNwstacks))
+            )
+            gracefulExit()
+        if args.data_type not in self.supportedDtype:
+            print(
+                "\t ERROR: Specified dtype: %d is not one of the supported commstyle: %s"
+                % (args.data_type, str(self.supportedDtype))
+            )
+            gracefulExit()
+        if args.num_tpu_cores not in self.supported_tpu_core_valuses:
+            print(
+                "\t ERROR: TPU core value: %d is not one of the supported values: %s "
+                % (args.num_tpu_cores, self.supported_tpu_core_valuses)
+            )
+            gracefulExit()
+        pass
