@@ -273,6 +273,7 @@ class commsParamsHolder:
         self.numIters = args.n
         self.collective = args.collective
         self.mode = args.mode
+        self.device = args.device
 
         self.kernel = args.kernel
         self.num_compute = args.num_compute
@@ -345,6 +346,9 @@ class paramCommsBench(ABC):
         self.collectiveArgs = collectiveArgsHolder()
         self.comm_size = 1
         self.my_rank = -1
+
+    def isCudaAvail(self):
+        return torch.cuda.is_available()
 
     @abstractmethod
     def runBench(self, *args, **kwargs):

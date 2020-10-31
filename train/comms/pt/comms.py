@@ -47,7 +47,7 @@ class commsCollBench(paramCommsBench):
         )  # number of iterations
         # experiment related parameters
         parser.add_argument(
-            "--backend", type=str, default="nccl",
+            "--backend", type=str, default=("nccl" if self.isCudaAvail() else "mpi"),
             help="The backend to be used in PyTorch distributed process group"
         )  # alternative is DLRM mode.
         parser.add_argument(
@@ -113,6 +113,11 @@ class commsCollBench(paramCommsBench):
             help="quantization bitwidth",
             choices=[4, 8, 16, 32],
         )
+        parser.add_argument('--device', type=str,
+            default=("cuda" if self.isCudaAvail() else "cpu"),
+            choices=['cpu', 'cuda', 'tpu'],
+            help='data placement'
+        ) # device to place data for collective benchmarking
 
         return parser.parse_known_args()
 
@@ -145,6 +150,10 @@ class commsCollBench(paramCommsBench):
                 "\t ERROR: In COMMS-mode, the begin-size: %d is larger than the end-size: %d "
                 % (args.b, args.e)
             )
+
+        if args.device == "cpu" and args.backend == "nccl":
+            raise ValueError("NCCL is not supported for device type CPU")
+
 
     def runColl(self, comm_fn=None, compute_fn=None):
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)

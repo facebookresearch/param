@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
+import logging
 
 import numpy as np
 import torch
@@ -142,7 +143,8 @@ class PyTorchNCCLBackend(backendFunctions):
         if collectiveArgs.waitObj is not None:
             collectiveArgs.waitObj.wait()
 
-        torch.cuda.synchronize(collectiveArgs.device)
+        if self.commsParams.device == "cuda":
+            torch.cuda.synchronize(collectiveArgs.device)
         # sync with all ranks
         self.barrier(collectiveArgs)
 
@@ -207,7 +209,19 @@ class PyTorchNCCLBackend(backendFunctions):
         return self.comms_world_info.world_size
 
     def get_device(self):
-        return torch.device("cuda:%d" % self.get_local_rank())
+        """ set/get current device: 'cpu' or 'cuda' """
+        my_dev = torch.device(self.commsParams.device)
+        if self.commsParams.device == "cuda":
+            # explicitly select the device ordinal based on the local rank
+            my_dev = torch.device("cuda:%d" % self.get_local_rank())
+            torch.cuda.device(my_dev)
+        elif self.commsParams.device != "cpu":
+            # sanity check, such error should be catched when parsing arguments
+            raise ValueError(f"{self.commsParams.device} is not a valid device option")
+
+        logging.info(f"rank {self.get_global_rank()} set torch devie to {str(my_dev)}")
+
+        return my_dev
 
     def get_group(self, world_size):
         return dist.new_group(i for i in range(world_size))
