@@ -391,6 +391,11 @@ class paramCommsBench(ABC):
             "--num-tpu-cores", type=int, default=1,
             help="number of TPU cores to be used"
         )  # number of TPU cores
+        parser.add_argument(
+            "--backend", type=str, default=("nccl" if self.isCudaAvail() else "mpi"),
+            help="The backend to be used in PyTorch distributed process group",
+            choices=["nccl","gloo","mpi","ucc"]
+        )  #  backend used for the network stack
         pass
 
     @abstractmethod

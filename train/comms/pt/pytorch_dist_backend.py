@@ -39,7 +39,7 @@ def _dequantize(obj):
         return [obj.value()[0].to(torch.float32)]
 
 
-class PyTorchNCCLBackend(backendFunctions):
+class PyTorchDistBackend(backendFunctions):
     def sayHello(self):
         myhost = os.uname()[1]
         global_rank = self.get_global_rank()
