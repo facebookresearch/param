@@ -1103,6 +1103,7 @@ class commsDLRMBench(paramCommsBench):
         self.expt_config['nw_stack'] = args.nw_stack
         self.expt_config['collective'] = 'all_reduce'  # dummy params for now
         self.expt_config['warmup_batches'] = args.warmup_batches
+        self.expt_config['device'] = "cuda"
 
         if(mpi_env_params['global_rank'] == 0):
             print("\t expt_config: %s " % (self.expt_config))
