@@ -470,7 +470,6 @@ class commsCollBench(paramCommsBench):
         # Init the desired backend
         if commsParams.nw_stack == "pytorch-nccl":
             from pytorch_nccl_backend import PyTorchNCCLBackend
-            #from param_bench.train.comms.pt.fb.pytorch_nccl_backend import PyTorchNCCLBackend
 
             backendObj = PyTorchNCCLBackend(comms_world_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":

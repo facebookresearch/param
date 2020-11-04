@@ -143,7 +143,8 @@ class PyTorchNCCLBackend(backendFunctions):
         if collectiveArgs.waitObj is not None:
             collectiveArgs.waitObj.wait()
 
-        if self.commsParams.device == "cuda":
+        dev_str = self.commsParams['device'] if isinstance(self.commsParams, dict) else self.commsParams.device
+        if dev_str == "cuda":
             torch.cuda.synchronize(collectiveArgs.device)
         # sync with all ranks
         self.barrier(collectiveArgs)
@@ -210,14 +211,16 @@ class PyTorchNCCLBackend(backendFunctions):
 
     def get_device(self):
         """ set/get current device: 'cpu' or 'cuda' """
-        my_dev = torch.device(self.commsParams.device)
-        if self.commsParams.device == "cuda":
+        # TODO: this is a temporary workaround; need to unify the type of commsParams in comms and dlrm
+        dev_str = self.commsParams['device'] if isinstance(self.commsParams, dict) else self.commsParams.device
+        my_dev = torch.device(dev_str)
+        if dev_str == "cuda":
             # explicitly select the device ordinal based on the local rank
             my_dev = torch.device("cuda:%d" % self.get_local_rank())
-            torch.cuda.device(my_dev)
-        elif self.commsParams.device != "cpu":
+            torch.cuda.set_device(my_dev)
+        elif dev_str != "cpu":
             # sanity check, such error should be catched when parsing arguments
-            raise ValueError(f"{self.commsParams.device} is not a valid device option")
+            raise ValueError(f"{dev_str} is not a valid device option")
 
         logging.info(f"rank {self.get_global_rank()} set torch devie to {str(my_dev)}")
 

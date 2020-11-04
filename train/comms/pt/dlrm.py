@@ -436,6 +436,8 @@ class paramDLRM_Net(nn.Module):
         if(args.model == "dlrm"):  # open-source DLRM.
             ln_emb = np.fromstring(args.arch_embedding_size, dtype=int, sep="-")
             n_emb = len(ln_emb)
+            if n_emb <= world_size:
+                raise ValueError("Embedding size should match process count, please fix '--arch-embedding-size' and try again")
             _, n_emb_per_rank = self.get_split_lengths_by_len(n_emb, global_rank, world_size)
             dims_per_rank = []
             local_emb_slice = []
@@ -877,7 +879,7 @@ class commsDLRMBench(paramCommsBench):
 
                 res_mean_percentiles = []
                 res_percentiles = []
-                print("\t iters \t region \t memory (B) \t\t Latency(us):min\tp50\tp75\t\tp95")
+                print("\t{}\t{:>36}\t{:>12}\t{:>12}\t{:>12}\t{:>12}\t{:>12}\t{:>12}".format("iters","region","memory (B)","Latency(us):min","p50","p75","p95","sum(p50)"))
                 for region_idx, cur_region in enumerate(all_timers):
                     # For each region, get data from different ranks. Compute percentiles for a given region.
                     all_rank_latency = []
@@ -928,13 +930,13 @@ class commsDLRMBench(paramCommsBench):
                         print("\n")
                     print(cur_line)
 
-                print("\t%d\t%36s\t%12s\t%12s\t%12s" % (measuredIters, "total_time", "0.0", "0.0", '%.3f' % (sum_latency)))
+                print("\t%d\t%36s\t%12s\t%12s\t%12s" % (measuredIters, "total_time", "N/A", "N/A", '%.3f' % (sum_latency)))
                 print("\n\n -----------------------------------------------------------------------------------------------------------------------------\n\n")
                 for cur_line in res_mean_percentiles:
                     if('iter_time' in cur_line):
                         print("\n")
                     print(cur_line)
-                print("\t%d\t%36s\t%12s\t%12s\t%12s" % (measuredIters, "total_time", "0.0", "0.0", '%.3f' % (sum_mean_latency)))
+                print("\t%d\t%36s\t%12s\t%12s\t%12s" % (measuredIters, "total_time", "N/A", "N/A", '%.3f' % (sum_mean_latency)))
                 print("\n\n -----------------------------------------------------------------------------------------------------------------------------\n\n")
 
     def benchTime(self, global_rank, world_size, timers, mConfig, curDevice, curDeviceData, args):
@@ -1093,7 +1095,7 @@ class commsDLRMBench(paramCommsBench):
 
         # Once layer-dimensions are inferred, we can use the rest of the code (I think!)
         self.expt_config['numDevices'] = mpi_env_params['world_size']
-        self.expt_config['numBatches'] = args.num_batches  # WARNING: Should ensure that dataSize = int(N) * numDevices * batchSize
+        self.expt_config['numBatches'] = args.num_batches + args.warmup_batches  # NOTE: Should ensure that dataSize = int(N) * numDevices * batchSize
         self.expt_config['numBatchesPerEpoch'] = args.mini_batch_size
         self.expt_config['dataSize'] = mpi_env_params['world_size'] * self.expt_config['numBatches'] * self.expt_config['numBatchesPerEpoch']
         self.expt_config['embedLayers'] = []  # scaledEmbedLayers
@@ -1103,6 +1105,7 @@ class commsDLRMBench(paramCommsBench):
         self.expt_config['nw_stack'] = args.nw_stack
         self.expt_config['collective'] = 'all_reduce'  # dummy params for now
         self.expt_config['warmup_batches'] = args.warmup_batches
+        self.expt_config['device'] = "cuda"
 
         if(mpi_env_params['global_rank'] == 0):
             print("\t expt_config: %s " % (self.expt_config))
