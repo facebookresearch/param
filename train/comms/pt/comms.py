@@ -9,7 +9,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import time
 import logging
-logging.getLogger().setLevel(logging.INFO)
 
 import comms_utils
 import numpy as np

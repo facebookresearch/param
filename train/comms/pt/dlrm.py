@@ -436,7 +436,7 @@ class paramDLRM_Net(nn.Module):
         if(args.model == "dlrm"):  # open-source DLRM.
             ln_emb = np.fromstring(args.arch_embedding_size, dtype=int, sep="-")
             n_emb = len(ln_emb)
-            if n_emb <= world_size:
+            if n_emb < world_size:
                 raise ValueError("Embedding size should match process count, please fix '--arch-embedding-size' and try again")
             _, n_emb_per_rank = self.get_split_lengths_by_len(n_emb, global_rank, world_size)
             dims_per_rank = []

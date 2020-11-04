@@ -9,6 +9,7 @@ import os
 import sys
 from abc import ABC, abstractmethod
 import torch
+import logging
 
 def gracefulExit():
     # TODO: Is this the best way to exit?
@@ -391,7 +392,11 @@ class paramCommsBench(ABC):
             "--num-tpu-cores", type=int, default=1,
             help="number of TPU cores to be used"
         )  # number of TPU cores
-        pass
+        parser.add_argument(
+            "--log", type=str, default="ERROR",
+            help="Logging level",
+            choices=["DEBUG","INFO","WARNING","ERROR","CRITICAL"]
+        )  # logging level
 
     @abstractmethod
     def checkArgs(self, args):
@@ -414,4 +419,8 @@ class paramCommsBench(ABC):
                 % (args.num_tpu_cores, self.supported_tpu_core_valuses)
             )
             gracefulExit()
-        pass
+        # check and set log level
+        numeric_level = getattr(logging, args.log.upper(), None)
+        if not isinstance(numeric_level, int):
+            raise ValueError("Invalid log level: %s" % args.log)
+        logging.basicConfig(level=numeric_level)
