@@ -46,10 +46,6 @@ class commsCollBench(paramCommsBench):
         )  # number of iterations
         # experiment related parameters
         parser.add_argument(
-            "--backend", type=str, default=("nccl" if self.isCudaAvail() else "mpi"),
-            help="The backend to be used in PyTorch distributed process group"
-        )  # alternative is DLRM mode.
-        parser.add_argument(
             "--mode", type=str, default="comms",
             help="benchmark mode"
         )  # alternative is DLRM mode or comm-compute mode
@@ -468,9 +464,9 @@ class commsCollBench(paramCommsBench):
     def runBench(self, comms_world_info, commsParams):
         # Init the desired backend
         if commsParams.nw_stack == "pytorch-nccl":
-            from pytorch_nccl_backend import PyTorchNCCLBackend
+            from pytorch_dist_backend import PyTorchDistBackend
 
-            backendObj = PyTorchNCCLBackend(comms_world_info, commsParams)
+            backendObj = PyTorchDistBackend(comms_world_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":
             from tpu_backend import PyTorchTPUBackend
 

@@ -21,7 +21,7 @@ import json
 import subprocess
 
 import dlrm_data as dd
-from pytorch_nccl_backend import PyTorchNCCLBackend
+from pytorch_dist_backend import PyTorchDistBackend
 import comms_utils as comms_utils
 from comms_utils import paramCommsBench
 
@@ -1041,7 +1041,7 @@ class commsDLRMBench(paramCommsBench):
         if(self.expt_config['nw_stack'] == "pytorch-nccl"):
             # WARNING: expt_config is different from commsParams but using it as a placeholder here!
             # FIXME: can we make it common
-            self.backendFuncs = PyTorchNCCLBackend(comms_world_info, self.expt_config)
+            self.backendFuncs = PyTorchDistBackend(comms_world_info, self.expt_config)
             self.backendFuncs.initialize_backend(comms_world_info.master_ip, comms_world_info.master_port, backend="nccl")
         else:
             print("\t Input backend: %s not supported! " % (self.expt_config['nw_stack']))
