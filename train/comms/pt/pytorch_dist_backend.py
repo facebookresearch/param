@@ -3,8 +3,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import os
 import logging
+import os
 
 import numpy as np
 import torch
@@ -217,7 +217,6 @@ class PyTorchDistBackend(backendFunctions):
         if dev_str == "cuda":
             # explicitly select the device ordinal based on the local rank
             my_dev = torch.device("cuda:%d" % self.get_local_rank())
-            torch.cuda.set_device(my_dev)
         elif dev_str != "cpu":
             # sanity check, such error should be catched when parsing arguments
             raise ValueError(f"{dev_str} is not a valid device option")
@@ -229,12 +228,25 @@ class PyTorchDistBackend(backendFunctions):
     def get_group(self, world_size):
         return dist.new_group(i for i in range(world_size))
 
+    def set_device(self):
+        if self.get_local_rank() > torch.cuda.device_count():
+            raise ValueError(
+                "Insufficient #GPUs: "
+                f"available {torch.cuda.device_count()} "
+                f"requested {self.get_local_rank()}"
+            )
+        torch.cuda.set_device(self.get_local_rank())
+
     # Init functions
     def __init__(self, comms_world_info, commsParams):
         self.comms_world_info = comms_world_info
         self.commsParams = commsParams
 
     def initialize_backend(self, master_ip, master_port, backend="gloo"):
+        # Set CUDA device before initializing backend
+        # Required for backends that don't do lazy initialization, e.g. UCC
+        self.set_device()
+
         global_rank = self.get_global_rank()
         world_size = self.get_world_size()
         # Torch initializaiton
