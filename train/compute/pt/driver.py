@@ -30,6 +30,7 @@ if __name__ == "__main__":
     parser_emb.add_argument('-d', '--dataset', choices=['A', 'B'], default='A')
     parser_emb.add_argument("--randomseed", type=int, default=0)
     parser_emb.add_argument("--usexlabag", action='store_true', help='use xlabad instead of embeddingbag')
+    parser_emb.add_argument("--alpha", default=0.0, help="Zipf param. Use uniform if == 0.0")
 
     parser_linear = subparsers.add_parser('linear', help='measure mlp performance')
     parser_linear.add_argument('--optimizer-type', default='sgd', help='Optimizer: SGD', choices=['sgd'])
