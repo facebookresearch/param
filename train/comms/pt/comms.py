@@ -7,18 +7,17 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import time
-import logging
-
-import comms_utils
-import numpy as np
 import argparse
+import logging
+import time
 
 import comms_utils as comms_utils
-from comms_utils import paramCommsBench
+import numpy as np
 
 # pytorch
 import torch
+from comms_utils import paramCommsBench
+
 
 ### TODO: add these to class variables?
 supportedCommStyle = [0, 1]  # 0 : non-blocking, 1 : blocking.
@@ -34,71 +33,82 @@ class commsCollBench(paramCommsBench):
     def __init__(self):
         super().__init__(supportedNwstacks=["pytorch-nccl", "pytorch-xla-tpu"])
 
-    #def readCollArgs(self, parser):
+    # def readCollArgs(self, parser):
     def readArgs(self, parser):
         # read the common/basic arguments
         super().readArgs(parser)
-        parser.add_argument("--w", type=int, default=5,
-            help="number of warmup iterations"
+        parser.add_argument(
+            "--w", type=int, default=5, help="number of warmup iterations"
         )  # number of warmup-iterations
-        parser.add_argument("--n", type=int, default=5,
-            help="number of iterations"
+        parser.add_argument(
+            "--n", type=int, default=5, help="number of iterations"
         )  # number of iterations
         # experiment related parameters
         parser.add_argument(
-            "--mode", type=str, default="comms",
-            help="benchmark mode"
+            "--mode", type=str, default="comms", help="benchmark mode"
         )  # alternative is DLRM mode or comm-compute mode
-        parser.add_argument("--b", type=str, default="8",
-            help="minimum size, in bytes, to start with"
+        parser.add_argument(
+            "--b", type=str, default="8", help="minimum size, in bytes, to start with"
         )  # COMMS mode, begin the sweep at.
-        parser.add_argument("--e", type=str, default="64",
-            help="maximum size, in bytes, to end at"
+        parser.add_argument(
+            "--e", type=str, default="64", help="maximum size, in bytes, to end at"
         )  # COMMS mode, end the sweep at.
         parser.add_argument(
-            "--f", type=int, default=2,
-            help="multiplication factor between sizes"
+            "--f", type=int, default=2, help="multiplication factor between sizes"
         )  # COMMS mode, multiplication factor.
         parser.add_argument(
-            "--z", type=int, default=1,
-            help="use blocking mode for collectives"
+            "--z", type=int, default=1, help="use blocking mode for collectives"
         )  # 'sync/blocking' : 1 , 'async/non-blocking' : 0
         parser.add_argument(
-            "--collective", type=str, default="all_reduce",
-            help='Collective to benchmark, supports ' + str(supportedCollectives)
+            "--collective",
+            type=str,
+            default="all_reduce",
+            help="Collective to benchmark, supports " + str(supportedCollectives),
         )  # collective op to benchmark
         # For comm-compute or compute mode
         parser.add_argument(
-            "--kernel", type=str, default="gemm",
-            help="compute kernel"
+            "--kernel", type=str, default="gemm", help="compute kernel"
         )  # Compute kernel: "gemm"
         parser.add_argument(
-            "--num-compute", type=int, default=100,
-            help="one collective for every NUM_COMPUTE compute kernels"
+            "--num-compute",
+            type=int,
+            default=100,
+            help="one collective for every NUM_COMPUTE compute kernels",
         )  # Launch one coll for every n compute kernels
         # For GEMM
         parser.add_argument(
-            "--mm-dim", type=int, default=100,
-            help="dimension size for GEMM compute kernel"
+            "--mm-dim",
+            type=int,
+            default=100,
+            help="dimension size for GEMM compute kernel",
         )  # Matrix multiplication dim n, A[n,n] * B [n,n]
         # For emb lookup
-        parser.add_argument("--emb-dim", type=int, default=128,
-            help="dimension size for Embedding table compute kernel"
+        parser.add_argument(
+            "--emb-dim",
+            type=int,
+            default=128,
+            help="dimension size for Embedding table compute kernel",
         )  # Embedding table dimension
         parser.add_argument(
-            "--num-embs", type=int, default=100000,
-            help="Embedding table hash size for Embedding table compute kernel"
+            "--num-embs",
+            type=int,
+            default=100000,
+            help="Embedding table hash size for Embedding table compute kernel",
         )  # Embedding table hash size
-        parser.add_argument("--avg-len", type=int, default=28,
-            help="Average lookup operations per sample"
+        parser.add_argument(
+            "--avg-len",
+            type=int,
+            default=28,
+            help="Average lookup operations per sample",
         )  # Average #lookup per sample
         parser.add_argument(
-            "--batch-size", type=int, default=512,
-            help="number of samples reading the table concurrently"
+            "--batch-size",
+            type=int,
+            default=512,
+            help="number of samples reading the table concurrently",
         )  # #Samples reading the table concurrently
         parser.add_argument(
-            "--root", type=int, default=0,
-            help="root process for reduce benchmark"
+            "--root", type=int, default=0, help="root process for reduce benchmark"
         )  # root process for reduce (and gather, scatter, bcast, etc., if support in the future)
         # TODO: check the correctness of root, should be between 0 to [world_size -1]
         parser.add_argument(
@@ -108,11 +118,13 @@ class commsCollBench(paramCommsBench):
             help="quantization bitwidth",
             choices=[4, 8, 16, 32],
         )
-        parser.add_argument('--device', type=str,
+        parser.add_argument(
+            "--device",
+            type=str,
             default=("cuda" if self.isCudaAvail() else "cpu"),
-            choices=['cpu', 'cuda', 'tpu'],
-            help='data placement'
-        ) # device to place data for collective benchmarking
+            choices=["cpu", "cuda", "tpu"],
+            help="data placement",
+        )  # device to place data for collective benchmarking
 
         return parser.parse_known_args()
 
@@ -148,7 +160,6 @@ class commsCollBench(paramCommsBench):
 
         if args.device == "cpu" and args.backend == "nccl":
             raise ValueError("NCCL is not supported for device type CPU")
-
 
     def runColl(self, comm_fn=None, compute_fn=None):
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
@@ -210,9 +221,13 @@ class commsCollBench(paramCommsBench):
             world_size,
             group,
             curDevice,
-        ) = comms_utils.get_rank_details(self.backendFuncs)  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes.
+        ) = comms_utils.get_rank_details(
+            self.backendFuncs
+        )  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes.
 
-        comms_utils.fixBeginSize(commsParams, world_size)  # Ensuring that all-reduce and all-to-all has atleast one member per rank.
+        comms_utils.fixBeginSize(
+            commsParams, world_size
+        )  # Ensuring that all-reduce and all-to-all has atleast one member per rank.
         self.backendFuncs.sayHello()  # Informs us where each process is running.
         allSizes = comms_utils.getSizes(
             commsParams.beginSize, commsParams.endSize, commsParams.stepFactor
@@ -225,7 +240,7 @@ class commsCollBench(paramCommsBench):
             )
             print("\t global_rank: %d commsParams: %s " % (global_rank, commsParams))
 
-        #self.collectiveArgs = comms_utils.collectiveArgsHolder()
+        # self.collectiveArgs = comms_utils.collectiveArgsHolder()
         self.collectiveArgs.group = group
         self.collectiveArgs.device = curDevice
         self.collectiveArgs.world_size = world_size
@@ -240,13 +255,23 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.dst = commsParams.dst
 
         if commsParams.bitwidth < 32:
-            logging.warning(f'communication bitwidth set to {commsParams.bitwidth}')
+            if commsParams.dtype != torch.float32:
+                raise NotImplementedError(
+                    f"quantization for {commsParams.dtype} is not supported. Use float32 instead."
+                )
+            logging.warning(f"communication bitwidth set to {commsParams.bitwidth}")
             try:
                 from internals import initialize_collectiveArgs_internal
                 initialize_collectiveArgs_internal(self.collectiveArgs, commsParams)
             except ImportError:
-                if commsParams.collective != "reduce" and  commsParams.collective != "all_reduce":
-                    raise NotImplementedError("quantized communication for %s is currently unsupported." % commsParams.collective)
+                if (
+                    commsParams.collective != "reduce"
+                    and commsParams.collective != "all_reduce"
+                ):
+                    raise NotImplementedError(
+                        "quantized communication for %s is currently unsupported."
+                        % commsParams.collective
+                    )
                 pass
 
         computeFunc = None
@@ -282,9 +307,9 @@ class commsCollBench(paramCommsBench):
                 self.collectiveArgs.EmbWeights = self.backendFuncs.alloc_empty(
                     [num_embeddings, emb_dim], torch.double, curDevice
                 )
-                self.collectiveArgs.TableOffsets = torch.LongTensor([0, num_embeddings]).to(
-                    curDevice
-                )
+                self.collectiveArgs.TableOffsets = torch.LongTensor(
+                    [0, num_embeddings]
+                ).to(curDevice)
                 self.collectiveArgs.Indices = torch.LongTensor(
                     np.random.randint(0, num_embeddings - 1, avg_length * batch_size)
                 ).to(curDevice)
@@ -452,7 +477,20 @@ class commsCollBench(paramCommsBench):
             timeElapsedTensor.nelement() * timeElapsedTensor.element_size()
         )
         self.collectiveArgs.numElements = timeElapsedTensor.nelement()
-        self.collectiveArgs.waitObj = backendFuncs.all_gather(self.collectiveArgs, retFlag=True)
+
+        if self.collectiveArgs.reducescatter_allgather_qcomm is not None:
+            try:
+                logging.warning("Removing installed quantization handlers.")
+                from internals import remove_quantization_handlers
+                remove_quantization_handlers(self.collectiveArgs)
+            except ImportError:
+                pass
+            finally:
+                assert self.collectiveArgs.reducescatter_allgather_qcomm is None
+
+        self.collectiveArgs.waitObj = backendFuncs.all_gather(
+            self.collectiveArgs, retFlag=True
+        )
         backendFuncs.complete_accel_ops(self.collectiveArgs)
 
         if global_rank == 0:
@@ -478,6 +516,7 @@ class commsCollBench(paramCommsBench):
         self.backendFuncs = backendObj
         backendObj.benchmark_comms()
         return
+
 
 def main():
     collBenchObj = commsCollBench()
@@ -513,8 +552,11 @@ def main():
         args.master_ip, args.master_port, args.num_tpu_cores, mpi_env_params
     )
 
-    commsParams = comms_utils.commsParamsHolder(args, element_size, collBenchObj.benchTime)
+    commsParams = comms_utils.commsParamsHolder(
+        args, element_size, collBenchObj.benchTime
+    )
     collBenchObj.runBench(comms_world_info, commsParams)
+
 
 if __name__ == "__main__":
     main()

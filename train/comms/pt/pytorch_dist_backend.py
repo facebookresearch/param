@@ -29,14 +29,24 @@ def _downcast(input, bitwidth):
 
 
 # a future object or a tensor
+# okay to use float32 because a prior check that ensures
+# the original dtype is float32.
 def _dequantize(obj):
     if obj is None:
         # invoked in a irrelevant rank
         return None
     elif type(obj) == torch.Tensor:
-        return obj.to(torch.float16)
+        # only call to() if it is not a float32 tensor
+        if obj.dtype != torch.float32:
+            return obj.to(torch.float32)
+        else:
+            return obj
     else:
-        return [obj.value()[0].to(torch.float32)]
+        resultTensor = obj.value()[0]
+        if resultTensor.dtype != torch.float32:
+            return resultTensor.to(torch.float32)
+        else:
+            return resultTensor
 
 
 class PyTorchDistBackend(backendFunctions):
@@ -54,6 +64,15 @@ class PyTorchDistBackend(backendFunctions):
     # Collectives
     def all_reduce(self, collectiveArgs, retFlag=False):
         if collectiveArgs.allreduce_qcomm != 32:
+            # note: note that quantized is a new tensor
+            # that is not collectiveArgs.ipTensor.
+            # this means when all_reduce/reduce finished
+            # quantized will hold the result instead of collectiveArgs.ipTensor
+            # this is intended because we don't want to allocate new buffers
+            # every time we call all_reduce (because if we don't, it will be float16 instead of float32).
+            # That also means we can't use the output of  quantized all_reduce's for anything other than
+            #benchmarking purpose.
+            assert collectiveArgs.ipTensor.dtype == torch.float32
             quantized = _downcast(
                 collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
             )
@@ -65,21 +84,24 @@ class PyTorchDistBackend(backendFunctions):
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
-        if collectiveArgs.asyncOp:
-            retObj = retObj.get_future().then(_dequantize)
-        else:
-            retObj = _dequantize(quantized)
+        if collectiveArgs.allreduce_qcomm != 32:
+            if collectiveArgs.asyncOp:
+                retObj = retObj.get_future().then(_dequantize)
+            else:
+                retObj = _dequantize(quantized)
 
         if retFlag:
             return retObj
 
     def reduce(self, collectiveArgs, retFlag=False):
         if collectiveArgs.reduce_qcomm != 32:
+            assert collectiveArgs.ipTensor.dtype == torch.float32
             quantized = _downcast(
                 collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
             )
         else:
             quantized = collectiveArgs.ipTensor
+
         retObj = dist.reduce(
             quantized,
             dst=collectiveArgs.dst,
@@ -87,10 +109,11 @@ class PyTorchDistBackend(backendFunctions):
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
-        if collectiveArgs.asyncOp:
-            retObj = retObj.get_future().then(_dequantize)
-        else:
-            retObj = _dequantize(quantized)
+        if collectiveArgs.reduce_qcomm != 32:
+            if collectiveArgs.asyncOp:
+                retObj = retObj.get_future().then(_dequantize)
+            else:
+                retObj = _dequantize(quantized)
 
         if retFlag:
             return retObj
