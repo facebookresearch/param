@@ -167,7 +167,9 @@ class commsCollBench(paramCommsBench):
         # Initial warmup iters.
         for _ in range(self.collectiveArgs.numWarmupIters):
             if comm_fn is not None:
-                comm_fn(self.collectiveArgs)
+                self.collectiveArgs.waitObj = comm_fn(
+                    self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp
+                )
             if compute_fn is not None:
                 for _ in range(self.collectiveArgs.numComputePerColl):
                     compute_fn(self.collectiveArgs)
@@ -183,7 +185,9 @@ class commsCollBench(paramCommsBench):
         start = time.monotonic()  # available only in py3
         for _ in range(self.collectiveArgs.numIters):
             if comm_fn is not None:
-                comm_fn(self.collectiveArgs)
+                self.collectiveArgs.waitObj = comm_fn(
+                    self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp
+                )
             if compute_fn is not None:
                 for _ in range(self.collectiveArgs.numComputePerColl):
                     # TODO: investigate the cache effect
@@ -262,6 +266,7 @@ class commsCollBench(paramCommsBench):
             logging.warning(f"communication bitwidth set to {commsParams.bitwidth}")
             try:
                 from internals import initialize_collectiveArgs_internal
+
                 initialize_collectiveArgs_internal(self.collectiveArgs, commsParams)
             except ImportError:
                 if (
@@ -482,6 +487,7 @@ class commsCollBench(paramCommsBench):
             try:
                 logging.warning("Removing installed quantization handlers.")
                 from internals import remove_quantization_handlers
+
                 remove_quantization_handlers(self.collectiveArgs)
             except ImportError:
                 pass
