@@ -167,8 +167,8 @@ class commsCollBench(paramCommsBench):
         # Initial warmup iters.
         for _ in range(self.collectiveArgs.numWarmupIters):
             if comm_fn is not None:
-                self.collectiveArgs.waitObj = comm_fn(
-                    self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp
+                self.collectiveArgs.waitObj.append(
+                    comm_fn(self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp)
                 )
             if compute_fn is not None:
                 for _ in range(self.collectiveArgs.numComputePerColl):
@@ -185,8 +185,8 @@ class commsCollBench(paramCommsBench):
         start = time.monotonic()  # available only in py3
         for _ in range(self.collectiveArgs.numIters):
             if comm_fn is not None:
-                self.collectiveArgs.waitObj = comm_fn(
-                    self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp
+                self.collectiveArgs.waitObj.append(
+                    comm_fn(self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp)
                 )
             if compute_fn is not None:
                 for _ in range(self.collectiveArgs.numComputePerColl):
@@ -444,7 +444,7 @@ class commsCollBench(paramCommsBench):
             self.collectiveArgs.asyncOp = asyncOp
             self.collectiveArgs.dataSize = curSize
             self.collectiveArgs.numElements = numElements
-            self.collectiveArgs.waitObj = None
+            self.collectiveArgs.waitObj = []
 
             # self.collectiveArgs has all the information on the experiment.
             timeElapsedNS, algBW, busBW, memSize, x = self.runColl(
@@ -494,8 +494,8 @@ class commsCollBench(paramCommsBench):
             finally:
                 assert self.collectiveArgs.reducescatter_allgather_qcomm is None
 
-        self.collectiveArgs.waitObj = backendFuncs.all_gather(
-            self.collectiveArgs, retFlag=True
+        self.collectiveArgs.waitObj.append(
+            backendFuncs.all_gather(self.collectiveArgs, retFlag=True)
         )
         backendFuncs.complete_accel_ops(self.collectiveArgs)
 

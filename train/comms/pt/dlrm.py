@@ -858,14 +858,18 @@ class commsDLRMBench(paramCommsBench):
                 timeElapsedTensor.nelement() * timeElapsedTensor.element_size()
             )
             self.collectiveArgs.numElements = timeElapsedTensor.nelement()
-            self.collectiveArgs.waitObj = self.backendFuncs.all_gather(self.collectiveArgs, retFlag=True)
+            self.collectiveArgs.waitObj.append(
+                self.backendFuncs.all_gather(self.collectiveArgs, retFlag=True)
+            )
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
             memory_tensor = torch.tensor(combined_memory_list, device=curDevice)
             memory_tensor_list = [torch.ones_like(memory_tensor) for _ in range(world_size)]
             self.collectiveArgs.ipTensor = memory_tensor
             self.collectiveArgs.tensorList = memory_tensor_list
-            self.collectiveArgs.waitObj = self.backendFuncs.all_gather(self.collectiveArgs, retFlag=True)
+            self.collectiveArgs.waitObj.append(
+                self.backendFuncs.all_gather(self.collectiveArgs, retFlag=True)
+            )
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
             sum_latency = 0.0
@@ -1051,7 +1055,7 @@ class commsDLRMBench(paramCommsBench):
         self.backendFuncs.sayHello()
         mConfig = self.paramNN.getLayerDimensions(global_rank, world_size, args)  # supports reading model parameters from json file, or from opensource DLRM CLI format.
         self.collectiveArgs.device = curDevice
-        self.collectiveArgs.waitObj = None
+        self.collectiveArgs.waitObj = []
         self.collectiveArgs.group = group
         self.comm_size = world_size
         self.my_rank = global_rank

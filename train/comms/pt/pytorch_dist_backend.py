@@ -163,8 +163,10 @@ class PyTorchDistBackend(backendFunctions):
         if initOp is True:
             temp = torch.ones([1], device=collectiveArgs.device)
             dist.all_reduce(temp)
-        if collectiveArgs.waitObj is not None:
-            collectiveArgs.waitObj.wait()
+        for waitReq in collectiveArgs.waitObj:
+            if waitReq is not None:
+                waitReq.wait()
+        collectiveArgs.waitObj.clear()
 
         dev_str = self.commsParams['device'] if isinstance(self.commsParams, dict) else self.commsParams.device
         if dev_str == "cuda":

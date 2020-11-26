@@ -326,6 +326,7 @@ class collectiveArgsHolder:
         self.dataSize = 0
         self.numElements = 0
         self.dst = 0
+        self.waitObj = []
 
         self.all2all_qcomm = None
         self.reducescatter_allgather_qcomm = None
