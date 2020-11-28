@@ -71,7 +71,7 @@ class PyTorchDistBackend(backendFunctions):
             # this is intended because we don't want to allocate new buffers
             # every time we call all_reduce (because if we don't, it will be float16 instead of float32).
             # That also means we can't use the output of  quantized all_reduce's for anything other than
-            #benchmarking purpose.
+            # benchmarking purpose.
             assert collectiveArgs.ipTensor.dtype == torch.float32
             quantized = _downcast(
                 collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
@@ -168,7 +168,11 @@ class PyTorchDistBackend(backendFunctions):
                 waitReq.wait()
         collectiveArgs.waitObj.clear()
 
-        dev_str = self.commsParams['device'] if isinstance(self.commsParams, dict) else self.commsParams.device
+        dev_str = (
+            self.commsParams["device"]
+            if isinstance(self.commsParams, dict)
+            else self.commsParams.device
+        )
         if dev_str == "cuda":
             torch.cuda.synchronize(collectiveArgs.device)
         # sync with all ranks
@@ -237,7 +241,11 @@ class PyTorchDistBackend(backendFunctions):
     def get_device(self):
         """ set/get current device: 'cpu' or 'cuda' """
         # TODO: this is a temporary workaround; need to unify the type of commsParams in comms and dlrm
-        dev_str = self.commsParams['device'] if isinstance(self.commsParams, dict) else self.commsParams.device
+        dev_str = (
+            self.commsParams["device"]
+            if isinstance(self.commsParams, dict)
+            else self.commsParams.device
+        )
         my_dev = torch.device(dev_str)
         if dev_str == "cuda":
             # explicitly select the device ordinal based on the local rank
@@ -251,7 +259,8 @@ class PyTorchDistBackend(backendFunctions):
         return my_dev
 
     def get_group(self, world_size):
-        return dist.new_group(i for i in range(world_size))
+        # return the world group to always perform collectives on default PG
+        return dist.GroupMember.WORLD
 
     def set_device(self):
         if self.get_local_rank() > torch.cuda.device_count():
@@ -293,4 +302,5 @@ class PyTorchDistBackend(backendFunctions):
         return
 
     def __del__(self):
+        dist.destroy_process_group()
         pass
