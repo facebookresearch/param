@@ -13,6 +13,7 @@ import time
 
 import comms_utils as comms_utils
 import numpy as np
+from comms_utils import paramCommsBench, gracefulExit
 
 # pytorch
 import torch
@@ -179,7 +180,7 @@ class commsCollBench(paramCommsBench):
             self.collectiveArgs
         )  # should be done regardless of blocking or non-blocking.
 
-        self.backendFuncs.barrier(self.collectiveArgs)
+        self.backendFuncs.barrier(self.collectiveArgs, "runcoll")
 
         # Measuring time.
         start = time.monotonic()  # available only in py3
@@ -214,7 +215,7 @@ class commsCollBench(paramCommsBench):
         )
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
 
-        self.backendFuncs.barrier(self.collectiveArgs)
+        self.backendFuncs.barrier(self.collectiveArgs, "runcoll2")
         return (avgIterNS, algBW, busBW, memSize, x)
 
     def initCollectiveArgs(self, commsParams):
@@ -225,6 +226,7 @@ class commsCollBench(paramCommsBench):
             world_size,
             group,
             curDevice,
+            curHwDevice,
         ) = comms_utils.get_rank_details(
             self.backendFuncs
         )  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes.
@@ -335,6 +337,7 @@ class commsCollBench(paramCommsBench):
             world_size,
             group,
             curDevice,
+            curHwDevice,
             allSizes,
             computeFunc,
         )
@@ -347,12 +350,21 @@ class commsCollBench(paramCommsBench):
             "\n\tCOMMS-RES\tsize (B)\t num-elements\t Latency(us):p50\tp75\t\tp95\t algBW(GB/s)\t busBW(GB/s)"
         )
         for idx, curSize in enumerate(allSizes):
-            latencyAcrossRanks = []
-            for curRankTensor in tensorList:
-                rank_lat = curRankTensor[idx].item()
-                latencyAcrossRanks.append(rank_lat)
+            if commsParams.backend == "xla":
+                latencyAcrossRanks = torch.transpose(
+                    tensorList.view(-1, len(allSizes)), 0, 1
+                )[idx]
+                latencyAcrossRanks = latencyAcrossRanks.cpu().detach().numpy()
+            else:
+                latencyAcrossRanks = []
+                for curRankTensor in tensorList:
+                    rank_lat = curRankTensor[idx].item()
+                    latencyAcrossRanks.append(rank_lat)
 
-            latencyAcrossRanks = np.array(latencyAcrossRanks)
+                latencyAcrossRanks = np.array(latencyAcrossRanks)
+
+            # print("AAA lat size ", curSize, " time ", latencyAcrossRanks)
+
             p50 = np.percentile(latencyAcrossRanks, 50)
             p75 = np.percentile(latencyAcrossRanks, 75)
             p95 = np.percentile(latencyAcrossRanks, 95)
@@ -386,6 +398,7 @@ class commsCollBench(paramCommsBench):
             world_size,
             group,
             curDevice,
+            curHwDevice,
             allSizes,
             computeFunc,
         ) = self.initCollectiveArgs(commsParams)
@@ -437,6 +450,9 @@ class commsCollBench(paramCommsBench):
 
                 elif commsParams.collective == "reduce":
                     collectiveFunc = backendFuncs.reduce
+                else:
+                    print("This should not happen")
+                    gracefulExit()
 
             # Setup the arguments.
             self.collectiveArgs.ipTensor = ipTensor
@@ -470,13 +486,15 @@ class commsCollBench(paramCommsBench):
             del ipTensor
             del opTensor
             backendFuncs.clear_memory()
+            self.backendFuncs.barrier(self.collectiveArgs, "curSize")
 
         # Push the list to device, then do an all-gather.
         timeElapsedTensor = torch.tensor(timeElapsedList, device=curDevice)
-        tensorList = [torch.ones_like(timeElapsedTensor) for _ in range(world_size)]
+        if not commsParams.backend == "xla":
+            tensorList = [torch.ones_like(timeElapsedTensor) for _ in range(world_size)]
+            self.collectiveArgs.tensorList = tensorList
 
         self.collectiveArgs.ipTensor = timeElapsedTensor
-        self.collectiveArgs.tensorList = tensorList
         self.collectiveArgs.asyncOp = False
         self.collectiveArgs.dataSize = (
             timeElapsedTensor.nelement() * timeElapsedTensor.element_size()
@@ -500,10 +518,18 @@ class commsCollBench(paramCommsBench):
         backendFuncs.complete_accel_ops(self.collectiveArgs)
 
         if global_rank == 0:
-            self.reportBenchTime(commsParams, allSizes, tensorList, results)
+            if commsParams.backend == "xla":
+                self.reportBenchTime(
+                    commsParams, allSizes, self.collectiveArgs.opTensor, results
+                )
+            else:
+                self.reportBenchTime(
+                    commsParams, allSizes, self.collectiveArgs.tensorList, results
+                )
 
         # wait rank 0 reports results to avoid other ranks mess up the output
-        self.backendFuncs.barrier(self.collectiveArgs)
+        self.backendFuncs.barrier(self.collectiveArgs, "benchtime")
+        # print("Finished ", global_rank, local_rank)
 
     def runBench(self, comms_world_info, commsParams):
         # Init the desired backend
@@ -512,7 +538,7 @@ class commsCollBench(paramCommsBench):
 
             backendObj = PyTorchDistBackend(comms_world_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":
-            from tpu_backend import PyTorchTPUBackend
+            from pytorch_tpu_backend import PyTorchTPUBackend
 
             backendObj = PyTorchTPUBackend(comms_world_info, commsParams)
         else:

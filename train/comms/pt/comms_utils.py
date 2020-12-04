@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 import torch
 import logging
 
+
 def gracefulExit():
     # TODO: Is this the best way to exit?
     # WARNING: Assuming sys is always used, should find a platform-independent way to gracefully exit.
@@ -98,8 +99,9 @@ def get_rank_details(backendFuncs):
     world_size = backendFuncs.get_world_size()
     group = backendFuncs.get_group(world_size)
     curDevice = backendFuncs.get_device()
+    curHwDevice = backendFuncs.get_hw_device()
 
-    return (local_rank, global_rank, world_size, group, curDevice)
+    return (local_rank, global_rank, world_size, group, curDevice, curHwDevice)
 
 
 def env2int(env_list, default=-1):
@@ -137,6 +139,7 @@ def read_mpi_env_vars():
 
 class backendFunctions(ABC):
     """ Abstract base class, provides common abstraction for all the backends. """
+
     def getBusBW(self, collective, algBW, world_size):
         busBW = algBW
         mulFactor = 1.0
@@ -230,6 +233,10 @@ class backendFunctions(ABC):
         pass
 
     @abstractmethod
+    def get_hw_device(self):
+        pass
+
+    @abstractmethod
     def get_group(self, world_size):
         pass
 
@@ -285,7 +292,7 @@ class commsParamsHolder:
         self.batch_size = args.batch_size
         self.benchTime = benchTime
 
-        #quantization
+        # quantization
         self.bitwidth = args.bitwidth
 
 
@@ -330,8 +337,11 @@ class collectiveArgsHolder:
 
         self.all2all_qcomm = None
         self.reducescatter_allgather_qcomm = None
-        self.allreduce_qcomm = 32 #set it as the bitwidth for now. when the actual kernel lands, change
+        self.allreduce_qcomm = (
+            32  # set it as the bitwidth for now. when the actual kernel lands, change
+        )
         self.reduce_qcomm = 32
+
 
 class paramCommsBench(ABC):
     def __init__(self, supportedNwstacks=None):
@@ -371,37 +381,51 @@ class paramCommsBench(ABC):
     def readArgs(self, parser):
         """ Basic/Common arguments for all PARAM-Comm benchmarks """
         parser.add_argument(
-            "--master-ip", type=str, default="127.0.0.1",
-            help="The master-IP to coordinate"
+            "--master-ip",
+            type=str,
+            default="127.0.0.1",
+            help="The master-IP to coordinate",
         )  # The master-IP to coordinate.
         parser.add_argument(
-            "--master-port", type=str, default="29500",
-            help="The master-port to coordinate"
+            "--master-port",
+            type=str,
+            default="29500",
+            help="The master-port to coordinate",
         )  # The master-port to coordinate.
         parser.add_argument(
-            "--nw-stack", type=str, default="pytorch-nccl",
-            help="network stack to be used, supports " + str(self.supportedNwstacks)
+            "--nw-stack",
+            type=str,
+            default="pytorch-nccl",
+            help="network stack to be used, supports " + str(self.supportedNwstacks),
         )  # The network stack to profile.
         parser.add_argument(
             "--dtype", type=torch.dtype, default=torch.float32
         )  # will be overwritten based on args.data_type and dtypeMap.
         parser.add_argument(
-            "--data-type", type=str, default="float32",
-            help="the base data type, supports " + str(self.supportedDtype)
+            "--data-type",
+            type=str,
+            default="float32",
+            help="the base data type, supports " + str(self.supportedDtype),
         )  # The data type
         parser.add_argument(
-            "--num-tpu-cores", type=int, default=1,
-            help="number of TPU cores to be used"
+            "--num-tpu-cores",
+            type=int,
+            default=1,
+            help="number of TPU cores to be used",
         )  # number of TPU cores
         parser.add_argument(
-            "--log", type=str, default="ERROR",
+            "--log",
+            type=str,
+            default="ERROR",
             help="Logging level",
-            choices=["DEBUG","INFO","WARNING","ERROR","CRITICAL"]
+            choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         )  # logging level
         parser.add_argument(
-            "--backend", type=str, default=("nccl" if self.isCudaAvail() else "mpi"),
+            "--backend",
+            type=str,
+            default=("nccl" if self.isCudaAvail() else "mpi"),
             help="The backend to be used in PyTorch distributed process group",
-            choices=["nccl","gloo","mpi","ucc"]
+            choices=["nccl", "gloo", "mpi", "ucc", "xla"],
         )  #  backend used for the network stack
         pass
 

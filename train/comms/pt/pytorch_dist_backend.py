@@ -178,7 +178,7 @@ class PyTorchDistBackend(backendFunctions):
         # sync with all ranks
         self.barrier(collectiveArgs)
 
-    def barrier(self, collectiveArgs):
+    def barrier(self, collectiveArgs, name="dummy"):
         dist.barrier(collectiveArgs.group)
 
     def get_reduce_op(self, opName):
@@ -257,6 +257,9 @@ class PyTorchDistBackend(backendFunctions):
         logging.info(f"rank {self.get_global_rank()} set torch devie to {str(my_dev)}")
 
         return my_dev
+
+    def get_hw_device(self):
+        self.get_device()
 
     def get_group(self, world_size):
         # return the world group to always perform collectives on default PG
