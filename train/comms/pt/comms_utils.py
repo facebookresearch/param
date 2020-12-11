@@ -277,6 +277,7 @@ class commsParamsHolder:
         self.dst = args.root
 
         self.backend = args.backend
+        self.enable_ucc_plugin = args.enable_ucc_plugin
         self.numWarmupIters = args.w
         self.numIters = args.n
         self.collective = args.collective
@@ -427,6 +428,12 @@ class paramCommsBench(ABC):
             help="The backend to be used in PyTorch distributed process group",
             choices=["nccl", "gloo", "mpi", "ucc", "xla"],
         )  #  backend used for the network stack
+        parser.add_argument(
+            "--enable-ucc-plugin",
+            action="store_true",
+            default=False,
+            help="If backend is plugin based, ignored for non-ucc backends",
+        )  # does backend use plugin
         pass
 
     @abstractmethod
