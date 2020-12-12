@@ -545,8 +545,32 @@ class commsCollBench(paramCommsBench):
             print("\t Error: Unsopported NW stack! ")
             comms_utils.gracefulExit()
 
+        # check for ucc plugin
+        if commsParams.backend == "ucc":
+            # try OSS/setup.py
+            try:
+                import torch_ucc  # noqa
+            except ImportError:
+                if commsParams.enable_ucc_plugin:
+                    # try plugin
+                    try:
+                        from ucc_plugin import initialize_ucc_plugin
+                    except ImportError:
+                        # expect built-in c10d-ucc-pg
+                        pass
+                    else:
+                        initialize_ucc_plugin(commsParams.backend)
+                else:
+                    # expect built-in C10d-ucc-pg
+                    pass
         self.backendFuncs = backendObj
-        backendObj.benchmark_comms()
+        try:
+            backendObj.benchmark_comms()
+        except ValueError as ve:
+            if commsParams.backend == "ucc":
+                logging.critical("PyTorch UCC not implemented? {}"
+                        .format(repr(ve)))
+            raise
         return
 
 
