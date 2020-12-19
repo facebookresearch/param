@@ -545,24 +545,19 @@ class commsCollBench(paramCommsBench):
             print("\t Error: Unsopported NW stack! ")
             comms_utils.gracefulExit()
 
-        # check for ucc plugin
+        # Import ucc plugin
         if commsParams.backend == "ucc":
             # try OSS/setup.py
             try:
                 import torch_ucc  # noqa
             except ImportError:
-                if commsParams.enable_ucc_plugin:
-                    # try plugin
-                    try:
-                        from ucc_plugin import initialize_ucc_plugin
-                    except ImportError:
-                        # expect built-in c10d-ucc-pg
-                        pass
-                    else:
-                        initialize_ucc_plugin(commsParams.backend)
+                try:
+                    from ucc_plugin import initialize_ucc_plugin
+                except ImportError:
+                    raise RuntimeError("Unable to import initialize_ucc_plugin")
                 else:
-                    # expect built-in C10d-ucc-pg
-                    pass
+                    initialize_ucc_plugin(commsParams.backend)
+
         self.backendFuncs = backendObj
         try:
             backendObj.benchmark_comms()
