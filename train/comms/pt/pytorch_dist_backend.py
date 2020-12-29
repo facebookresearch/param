@@ -56,10 +56,22 @@ class PyTorchDistBackend(backendFunctions):
         local_rank = self.get_local_rank()
         world_size = self.get_world_size()
         master_ip = self.comms_world_info.master_ip
-        print(
-            "\t Running on host: %s g-rank: %d, l-rank: %s world_size: %d master_ip: %s"
-            % (myhost, global_rank, local_rank, world_size, master_ip)
-        )
+        device = self.get_device()
+
+        hello_msg = f"[Rank {global_rank:3}] host {myhost}, device: {device}, local_rank: {local_rank} world_size: {world_size}, master_ip: {master_ip}"
+
+        try:
+            from mpi4py import MPI
+        except ImportError:
+            print(hello_msg)
+        else:
+            # if mpi4py exists, use mpi to collect info and print prettier message :)
+            # FIXME: use PG instead?
+            comm = MPI.COMM_WORLD
+
+            all_hello_msgs = comm.gather(hello_msg, root=0)
+            if global_rank == 0:
+                print(all_hello_msgs)
 
     # Collectives
     def all_reduce(self, collectiveArgs, retFlag=False):
@@ -104,7 +116,7 @@ class PyTorchDistBackend(backendFunctions):
 
         retObj = dist.reduce(
             quantized,
-            dst=collectiveArgs.dst,
+            dst=collectiveArgs.srcOrDst,
             op=collectiveArgs.op,
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
@@ -151,8 +163,18 @@ class PyTorchDistBackend(backendFunctions):
 
     def all_gather(self, collectiveArgs, retFlag=False):
         retObj = dist.all_gather(
-            collectiveArgs.tensorList,
-            collectiveArgs.ipTensor,
+            tensor_list=collectiveArgs.opTensor,
+            tensor=collectiveArgs.ipTensor,
+            group=collectiveArgs.group,
+            async_op=collectiveArgs.asyncOp,
+        )  # synchronicity is maintained in runColl
+        if retFlag:
+            return retObj
+
+    def broadcast(self, collectiveArgs, retFlag=False):
+        retObj = dist.broadcast(
+            tensor=collectiveArgs.opTensor,
+            src=collectiveArgs.srcOrDst,
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
@@ -203,7 +225,7 @@ class PyTorchDistBackend(backendFunctions):
             collectiveArgs.ipTensor.nelement() * collectiveArgs.ipTensor.element_size()
         )
 
-    def alloc_random(self, sizeArr, curRankDevice, dtype, scaleFactor=1.0):
+    def alloc_random(self, sizeArr, curRankDevice="cuda", dtype=torch.float32, scaleFactor=1.0):
         ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
         if (scaleFactor) != 0:
             ipTensor = ipTensor / scaleFactor
@@ -239,7 +261,7 @@ class PyTorchDistBackend(backendFunctions):
         return self.comms_world_info.world_size
 
     def get_device(self):
-        """ set/get current device: 'cpu' or 'cuda' """
+        """ get current device: 'cpu' or 'cuda' """
         # TODO: this is a temporary workaround; need to unify the type of commsParams in comms and dlrm
         dev_str = (
             self.commsParams["device"]
@@ -254,8 +276,6 @@ class PyTorchDistBackend(backendFunctions):
             # sanity check, such error should be catched when parsing arguments
             raise ValueError(f"{dev_str} is not a valid device option")
 
-        logging.info(f"rank {self.get_global_rank()} set torch devie to {str(my_dev)}")
-
         return my_dev
 
     def get_hw_device(self):
@@ -266,16 +286,26 @@ class PyTorchDistBackend(backendFunctions):
         return dist.GroupMember.WORLD
 
     def set_device(self):
-        if self.get_local_rank() > torch.cuda.device_count():
-            raise ValueError(
-                "Insufficient #GPUs: "
-                f"available {torch.cuda.device_count()} "
-                f"requested {self.get_local_rank()}"
-            )
-        torch.cuda.set_device(self.get_local_rank())
+        """ set current device: 'cpu' or 'cuda' """
+        dev_str = (
+            self.commsParams["device"]
+            if isinstance(self.commsParams, dict)
+            else self.commsParams.device
+        )
+        if dev_str.startswith("cuda"):
+            if self.get_local_rank() > torch.cuda.device_count():
+                raise ValueError(
+                    "Insufficient #GPUs: "
+                    f"available {torch.cuda.device_count()} "
+                    f"requested {self.get_local_rank()}"
+                )
+            torch.cuda.set_device(self.get_local_rank())
+
+        logging.info(f"rank {self.get_global_rank()} set torch devie to {dev_str}")
 
     # Init functions
     def __init__(self, comms_world_info, commsParams):
+        super().__init__()
         self.comms_world_info = comms_world_info
         self.commsParams = commsParams
 
@@ -305,5 +335,6 @@ class PyTorchDistBackend(backendFunctions):
         return
 
     def __del__(self):
-        dist.destroy_process_group()
+        if dist.is_initialized():
+            dist.destroy_process_group()
         pass

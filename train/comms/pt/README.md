@@ -12,6 +12,8 @@ The Collective-Comms benchmark (`comms.py`) is designed similar to nccl-tests
 for evaluating collective operations, such as All-reduce and All-to-all, through PyTorch backends.
 The DLRM-Comms benchmark (`dlrm.py`) is similar to the open-source DLRM benchmark except it
 only implements communication primitives.
+The Trace Replay benchmark (`commsTraceReplay.py`) is designed to replay the communication patterns captured
+from any distributed PyTorch workloads.
 
 ## Usage:
 
@@ -28,8 +30,8 @@ mpirun -np <num-processes> -N <processes per node> --hostfile <file contains hos
 ```
 Example:
 ```bash
-mpirun -np 16 -N 8 --hostfile ./hfile ./comms.py --master-ip 127.0.0.1 --b 8 --e 256M --n 100 \
-    --f 2 --z 1 --collective all_to_all
+mpirun -np 16 -N 8 --hostfile ./hfile ./comms.py --master-ip $(head -n 1 ./hfile.txt) --b 8 --e 256M --n 100 \
+    --f 2 --z 1 --collective all_to_all --backend nccl --device cuda --log INFO
 ```
 
 ### DLRM-Comms benchmark (`dlrm.py`)
@@ -45,9 +47,22 @@ mpirun -np <num-processes> -N <processes per node> --hostfile <file contains hos
 ```
 Example:
 ```bash
-mpirun -np 16 -N 8 --hostfile ./hfile ./dlrm.py --master-ip <node-1-ip> --mini-batch-size 32 \
+mpirun -np 16 -N 8 --hostfile ./hfile ./dlrm.py --master-ip $(head -n 1 ./hfile.txt) --mini-batch-size 32 \
     --num-batches 100 \
     --arch-mlp-bot 1024-256 \
     --arch-sparse-feature-size 64 \
-    --arch-embedding-size "10000-10000"
+    --arch-embedding-size "10000-10000-10000-10000-10000-10000-10000-10000-10000-10000-10000-10000-10000-10000-10000-10000"
 ```
+
+### Trace Replay benchmark (`commsTraceReplay.py`)
+```bash
+mpirun -np <num-processes> -N <processes per node> --hostfile <file contains host list> ./commsTraceReplay.py \
+    --master-ip 127.0.0.1
+```
+Example:
+```bash
+mpirun -np 16 -N 8 --hostfile ./hfile ./commsTraceReplay.py --master-ip $(head -n 1 ./hfile.txt) \
+    --backend nccl --device cuda \
+    --trace-path /path/to/commTraces
+```
+Note that there should be one trace file (in JSON format) per rank.
