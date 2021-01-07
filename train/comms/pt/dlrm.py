@@ -516,6 +516,9 @@ class paramDLRM_Net(nn.Module):
                 + " is not supported"
             )
 
+        if args.arch_project_size > 0:
+            num_int = num_fea * args.arch_project_size + m_den_out
+
         arch_mlp_top_adjusted = str(num_int) + "-" + args.arch_mlp_top
         ln_top = np.fromstring(arch_mlp_top_adjusted, dtype=int, sep="-")
         if(global_rank == 0):
@@ -569,6 +572,8 @@ class commsDLRMBench(paramCommsBench):
         # MLP layers
         parser.add_argument("--arch-mlp-bot", type=str, default="4-3-2")
         parser.add_argument("--arch-mlp-top", type=str, default="4-2-1")
+        parser.add_argument("--arch-project-size", type=int, default=0, help="project size for the interaction features" )
+        parser.add_argument("--num-workers", type=int, default=0, help="number of workers for DataLoader")
         parser.add_argument("--arch-interaction-op", type=str, default="dot")
         parser.add_argument("--arch-interaction-itself", action="store_true", default=False)
         # data
@@ -1051,7 +1056,7 @@ class commsDLRMBench(paramCommsBench):
             print("\t Input backend: %s not supported! " % (self.expt_config['nw_stack']))
             sys.exit()
 
-        local_rank, global_rank, world_size, group, curDevice = comms_utils.get_rank_details(self.backendFuncs)
+        local_rank, global_rank, world_size, group, curDevice, curHwDevice = comms_utils.get_rank_details(self.backendFuncs)
         self.backendFuncs.sayHello()
         mConfig = self.paramNN.getLayerDimensions(global_rank, world_size, args)  # supports reading model parameters from json file, or from opensource DLRM CLI format.
         self.collectiveArgs.device = curDevice
@@ -1090,7 +1095,6 @@ class commsDLRMBench(paramCommsBench):
     def setBench(self, args, mpi_env_params):
         args.embed_dtype = self.dtypeMap[args.embed_data_type]
         args.data_size = mpi_env_params['world_size'] * args.num_batches * args.mini_batch_size
-        args.num_workers = mpi_env_params['world_size']  # parameter required by dlrm_data_pytorch
         if(mpi_env_params['global_rank'] == 0):
             print("\t mpi-params: %s" % (mpi_env_params))
 
