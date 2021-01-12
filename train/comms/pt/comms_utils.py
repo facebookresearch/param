@@ -140,6 +140,16 @@ def read_mpi_env_vars():
 class backendFunctions(ABC):
     """ Abstract base class, provides common abstraction for all the backends. """
 
+    def __init__(self):
+        self.collectiveFunc = {
+            "all_to_all": self.all_to_all,
+            "all_to_allv": self.all_to_allv,
+            "all_reduce": self.all_reduce,
+            "broadcast": self.broadcast,
+            "all_gather": self.all_gather,
+            "reduce": self.reduce,
+        }
+
     def getBusBW(self, collective, algBW, world_size):
         busBW = algBW
         mulFactor = 1.0
@@ -147,11 +157,11 @@ class backendFunctions(ABC):
             if world_size != 0:
                 mulFactor = 2 * (world_size - 1) / (world_size)
             busBW = algBW * mulFactor
-        elif (collective == "all_to_all") or (collective == "all_to_allv"):
+        elif collective in ("all_to_all", "all_to_allv", "all_gather"):
             if world_size != 0:
                 mulFactor = (world_size - 1) / (world_size)
             busBW = algBW * mulFactor
-        elif collective == "reduce":
+        elif collective in ("reduce", "broadcast"):
             busBW = algBW
         else:
             print(
@@ -261,27 +271,31 @@ class comms_world_info_holder:
         self.master_port = master_port
         self.num_tpu_cores = num_tpu_cores
 
-
-class commsParamsHolder:
-    def __init__(self, args, element_size, benchTime):
-        # A holding object for all the input parameters.
+class commsParamsHolderBase:
+    def __init__(self, args):
+        # A holding object for common input parameters
         self.nw_stack = args.nw_stack
-
         self.dtype = args.dtype
+        self.backend = args.backend
+        self.device = args.device
+
+class commsParamsHolder(commsParamsHolderBase):
+    def __init__(self, args, element_size, benchTime):
+        # A holding object for the input parameters from collective benchmark
+        super().__init__(args)
+
         self.element_size = element_size
         self.beginSize = args.b
         self.endSize = args.e
         self.maxSize = int(args.e // self.element_size)
         self.stepFactor = args.f
         self.blockingFlag = args.z
-        self.dst = args.root
+        self.srcOrDst = args.root
 
-        self.backend = args.backend
         self.numWarmupIters = args.w
         self.numIters = args.n
         self.collective = args.collective
         self.mode = args.mode
-        self.device = args.device
 
         self.kernel = args.kernel
         self.num_compute = args.num_compute
@@ -332,7 +346,6 @@ class collectiveArgsHolder:
         self.asyncOp = -1
         self.dataSize = 0
         self.numElements = 0
-        self.dst = 0
         self.waitObj = []
 
         self.all2all_qcomm = None
@@ -421,6 +434,13 @@ class paramCommsBench(ABC):
             choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         )  # logging level
         parser.add_argument(
+            "--device",
+            type=str,
+            default=("cuda" if self.isCudaAvail() else "cpu"),
+            choices=["cpu", "cuda", "tpu"],
+            help="data placement",
+        )  # device to place data for collective benchmarking
+        parser.add_argument(
             "--backend",
             type=str,
             default=("nccl" if self.isCudaAvail() else "mpi"),
@@ -454,4 +474,4 @@ class paramCommsBench(ABC):
         numeric_level = getattr(logging, args.log.upper(), None)
         if not isinstance(numeric_level, int):
             raise ValueError("Invalid log level: %s" % args.log)
-        logging.basicConfig(level=numeric_level)
+        logging.basicConfig(level=numeric_level, format="[%(asctime)s][%(name)s][%(levelname)s] - %(message)s")

@@ -13,7 +13,6 @@ import time
 
 import comms_utils as comms_utils
 import numpy as np
-from comms_utils import paramCommsBench, gracefulExit
 
 # pytorch
 import torch
@@ -27,7 +26,9 @@ supportedCollectives = [
     "all_reduce",
     "all_to_all",
     "all_to_allv",
-]  # , "scatter", "gather", "all_gather", "broadcast", "all_to_all"]
+    "all_gather",
+    "broadcast",
+]  # , "scatter", "gather"]
 
 # define the collective benchmark
 class commsCollBench(paramCommsBench):
@@ -64,7 +65,8 @@ class commsCollBench(paramCommsBench):
             "--collective",
             type=str,
             default="all_reduce",
-            help="Collective to benchmark, supports " + str(supportedCollectives),
+            help="Collective operation to be evaluated",
+            choices=supportedCollectives,
         )  # collective op to benchmark
         # For comm-compute or compute mode
         parser.add_argument(
@@ -119,13 +121,6 @@ class commsCollBench(paramCommsBench):
             help="quantization bitwidth",
             choices=[4, 8, 16, 32],
         )
-        parser.add_argument(
-            "--device",
-            type=str,
-            default=("cuda" if self.isCudaAvail() else "cpu"),
-            choices=["cpu", "cuda", "tpu"],
-            help="data placement",
-        )  # device to place data for collective benchmarking
 
         return parser.parse_known_args()
 
@@ -200,9 +195,15 @@ class commsCollBench(paramCommsBench):
 
         self.backendFuncs.complete_accel_ops(self.collectiveArgs)
         end = time.monotonic()  # available only in py3
-        x = self.collectiveArgs.opTensor[
-            numElements - 1
-        ].item()  # to ensure collective won't be optimized away.
+        if isinstance(self.collectiveArgs.opTensor, list):
+            # allgather is a list of tensors
+            x = self.collectiveArgs.opTensor[-1][
+                -1
+            ].item()  # to ensure collective won't be optimized away.
+        else:
+            x = self.collectiveArgs.opTensor[
+                numElements - 1
+            ].item()  # to ensure collective won't be optimized away.
 
         elapsedTimeNS = (
             end - start
@@ -254,11 +255,10 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.numWarmupIters = commsParams.numWarmupIters
         self.collectiveArgs.global_rank = global_rank
         self.collectiveArgs.backendFuncs = self.backendFuncs
-        self.collectiveArgs.srcOrDst = ""
         self.collectiveArgs.collective = commsParams.collective
         op = self.backendFuncs.get_reduce_op("sum")
         self.collectiveArgs.op = op
-        self.collectiveArgs.dst = commsParams.dst
+        self.collectiveArgs.srcOrDst = commsParams.srcOrDst
 
         if commsParams.bitwidth < 32:
             if commsParams.dtype != torch.float32:
@@ -427,32 +427,30 @@ class commsCollBench(paramCommsBench):
                 asyncOp = False
 
             if commsParams.mode != "compute":  # comms specific initializations
-                if commsParams.collective == "all_reduce":
-                    collectiveFunc = backendFuncs.all_reduce
-
-                elif commsParams.collective == "all_to_all":
+                if commsParams.collective.startswith("all_to_all"):
+                    # all_to_all(v) requires two tensors
                     opTensor = backendFuncs.alloc_empty(
                         [numElements], commsParams.dtype, curDevice
                     )
-                    collectiveFunc = backendFuncs.all_to_all
-
-                elif commsParams.collective == "all_to_allv":
-                    opTensor = backendFuncs.alloc_empty(
-                        [numElements], commsParams.dtype, curDevice
-                    )
-                    self.collectiveArgs.ipTensor_split = [
-                        int(numElements // world_size) for i in range(world_size)
-                    ]
-                    self.collectiveArgs.opTensor_split = [
-                        int(numElements // world_size) for i in range(world_size)
-                    ]
-                    collectiveFunc = backendFuncs.all_to_allv
-
-                elif commsParams.collective == "reduce":
-                    collectiveFunc = backendFuncs.reduce
-                else:
-                    print("This should not happen")
-                    gracefulExit()
+                    # all_to_allv requires tensors to specify split
+                    if commsParams.collective == "all_to_allv":
+                        self.collectiveArgs.ipTensor_split = [
+                            int(numElements // world_size) for i in range(world_size)
+                        ]
+                        self.collectiveArgs.opTensor_split = [
+                            int(numElements // world_size) for i in range(world_size)
+                        ]
+                elif commsParams.collective == "all_gather":
+                    # allgather requires a tensor list, e.g., List[torch.Tensor]
+                    opTensor = []
+                    for _ in range(world_size):
+                        opTensor.append(
+                            backendFuncs.alloc_empty(
+                                [numElements], commsParams.dtype, curDevice
+                            )
+                        )
+                # set corresponding function pointers
+                collectiveFunc = backendFuncs.collectiveFunc[commsParams.collective]
 
             # Setup the arguments.
             self.collectiveArgs.ipTensor = ipTensor
@@ -490,9 +488,9 @@ class commsCollBench(paramCommsBench):
 
         # Push the list to device, then do an all-gather.
         timeElapsedTensor = torch.tensor(timeElapsedList, device=curDevice)
-        if not commsParams.backend == "xla":
+        if commsParams.backend != "xla":
             tensorList = [torch.ones_like(timeElapsedTensor) for _ in range(world_size)]
-            self.collectiveArgs.tensorList = tensorList
+            self.collectiveArgs.opTensor = tensorList
 
         self.collectiveArgs.ipTensor = timeElapsedTensor
         self.collectiveArgs.asyncOp = False
@@ -518,14 +516,9 @@ class commsCollBench(paramCommsBench):
         backendFuncs.complete_accel_ops(self.collectiveArgs)
 
         if global_rank == 0:
-            if commsParams.backend == "xla":
-                self.reportBenchTime(
-                    commsParams, allSizes, self.collectiveArgs.opTensor, results
-                )
-            else:
-                self.reportBenchTime(
-                    commsParams, allSizes, self.collectiveArgs.tensorList, results
-                )
+            self.reportBenchTime(
+                commsParams, allSizes, self.collectiveArgs.opTensor, results
+            )
 
         # wait rank 0 reports results to avoid other ranks mess up the output
         self.backendFuncs.barrier(self.collectiveArgs, "benchtime")
