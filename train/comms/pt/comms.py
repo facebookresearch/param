@@ -33,7 +33,7 @@ supportedCollectives = [
 # define the collective benchmark
 class commsCollBench(paramCommsBench):
     def __init__(self):
-        super().__init__(supportedNwstacks=["pytorch-nccl", "pytorch-xla-tpu"])
+        super().__init__(supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu"])
 
     # def readCollArgs(self, parser):
     def readArgs(self, parser):
@@ -526,7 +526,7 @@ class commsCollBench(paramCommsBench):
 
     def runBench(self, comms_world_info, commsParams):
         # Init the desired backend
-        if commsParams.nw_stack == "pytorch-nccl":
+        if commsParams.nw_stack == "pytorch-dist":
             from pytorch_dist_backend import PyTorchDistBackend
 
             backendObj = PyTorchDistBackend(comms_world_info, commsParams)
@@ -537,19 +537,6 @@ class commsCollBench(paramCommsBench):
         else:
             print("\t Error: Unsopported NW stack! ")
             comms_utils.gracefulExit()
-
-        # Import ucc plugin
-        if commsParams.backend == "ucc":
-            # try OSS/setup.py
-            try:
-                import torch_ucc  # noqa
-            except ImportError:
-                try:
-                    from ucc_plugin import initialize_ucc_plugin
-                except ImportError:
-                    raise RuntimeError("Unable to import initialize_ucc_plugin")
-                else:
-                    initialize_ucc_plugin(commsParams.backend)
 
         self.backendFuncs = backendObj
         try:

@@ -37,7 +37,7 @@ def writeCommDetails(commsTracePerf, folder="./"):
 
 class commsTraceReplayBench(paramCommsBench):
     def __init__(self):
-        super().__init__(supportedNwstacks=["pytorch-nccl", "pytorch-xla-tpu"])
+        super().__init__(supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu"])
         self.comms_trace = {}
         self.trace_file = ""
         self.is_dry_run = False
@@ -483,7 +483,7 @@ class commsTraceReplayBench(paramCommsBench):
 
     def setBench(self, comms_world_info, commsParams):
         # init backend and corresponding function pointers
-        if commsParams.nw_stack == "pytorch-nccl":
+        if commsParams.nw_stack == "pytorch-dist":
             from pytorch_dist_backend import PyTorchDistBackend
 
             self.backendFuncs = PyTorchDistBackend(comms_world_info, commsParams)

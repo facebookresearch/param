@@ -408,7 +408,7 @@ class paramCommsBench(ABC):
         parser.add_argument(
             "--nw-stack",
             type=str,
-            default="pytorch-nccl",
+            default="pytorch-dist",
             help="network stack to be used, supports " + str(self.supportedNwstacks),
         )  # The network stack to profile.
         parser.add_argument(

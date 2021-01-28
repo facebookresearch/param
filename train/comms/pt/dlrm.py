@@ -546,8 +546,8 @@ class paramDLRM_Net(nn.Module):
 
 class commsDLRMBench(paramCommsBench):
     def __init__(self):
-        # TODO: only support pytorch-nccl as the nw-stack now
-        super().__init__(supportedNwstacks=["pytorch-nccl"])
+        # TODO: only support pytorch-dist as the nw-stack now
+        super().__init__(supportedNwstacks=["pytorch-dist"])
         self.model = ""
         self.mixedDimFlag = False
         self.expt_config = {}
@@ -1047,7 +1047,7 @@ class commsDLRMBench(paramCommsBench):
 
     def runBench(self, mpi_env_params, comms_world_info, args):
         """ Run num-batches iterations of the model (only comms-operations) """
-        if(self.expt_config['nw_stack'] == "pytorch-nccl"):
+        if(self.expt_config['nw_stack'] == "pytorch-dist"):
             # WARNING: expt_config is different from commsParams but using it as a placeholder here!
             # FIXME: can we make it common
             self.backendFuncs = PyTorchDistBackend(comms_world_info, self.expt_config)

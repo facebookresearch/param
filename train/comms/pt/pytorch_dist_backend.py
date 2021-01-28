@@ -309,6 +309,19 @@ class PyTorchDistBackend(backendFunctions):
         self.comms_world_info = comms_world_info
         self.commsParams = commsParams
 
+        # Import ucc plugin
+        if commsParams.backend == "ucc":
+            # try OSS/setup.py
+            try:
+                import torch_ucc  # noqa
+            except ImportError:
+                try:
+                    from ucc_plugin import initialize_ucc_plugin
+                except ImportError:
+                    raise RuntimeError("Unable to import initialize_ucc_plugin")
+                else:
+                    initialize_ucc_plugin(commsParams.backend)
+
     def initialize_backend(self, master_ip, master_port, backend="gloo"):
         # Set CUDA device before initializing backend
         # Required for backends that don't do lazy initialization, e.g. UCC
