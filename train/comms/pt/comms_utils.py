@@ -10,7 +10,8 @@ import sys
 from abc import ABC, abstractmethod
 import torch
 import logging
-
+import random
+random.seed()
 
 def gracefulExit():
     # TODO: Is this the best way to exit?
@@ -170,6 +171,12 @@ class backendFunctions(ABC):
             )
         return busBW
 
+    def alloc_ones(self, sizeArr, curRankDevice="cuda", dtype=torch.float32, scaleFactor=1.0):
+        ipTensor = torch.ones(sizeArr, device=curRankDevice, dtype=dtype)
+        if scaleFactor != 1.0:
+            ipTensor = ipTensor * scaleFactor
+        return ipTensor
+
     @abstractmethod
     def sayHello(self, global_rank, local_rank, world_size, master_ip):
         pass
@@ -291,6 +298,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.stepFactor = args.f
         self.blockingFlag = args.z
         self.srcOrDst = args.root
+        self.dcheck = args.c
 
         self.numWarmupIters = args.w
         self.numIters = args.n
@@ -363,6 +371,7 @@ class paramCommsBench(ABC):
         self.dtypeMap = {
             "float32": torch.float32,
             "int32": torch.int32,
+            "long": torch.long,
             "float16": torch.half,
             "float64": torch.double,
         }
@@ -371,9 +380,51 @@ class paramCommsBench(ABC):
         self.collectiveArgs = collectiveArgsHolder()
         self.comm_size = 1
         self.my_rank = -1
+        # update initVal to test difffernt value
+        self.initVal = 1.0
 
     def isCudaAvail(self):
         return torch.cuda.is_available()
+
+    def dcheck(self, commsParams, curSize, tensor):
+        expRes = self.initVal
+        if (commsParams.collective == "all_reduce") or (
+            self.backendFuncs.get_global_rank() == commsParams.srcOrDst
+            and commsParams.collective == "reduce"
+        ):
+            # NOTE: this is for sum op. and the inital value is "self.initVal"
+            expRes = self.collectiveArgs.world_size * self.initVal
+
+        if isinstance(tensor, list):
+            # for allgather, it's a list of tensors
+            for (rank, t) in enumerate(tensor):
+                for (index, val) in enumerate(t):
+                    if val != expRes:
+                        raise ValueError(
+                            f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{rank}][{index}] = {tensor[index]}, expected {expRes}\n {tensor}"
+                        )
+        else:
+            for (index, val) in enumerate(tensor):
+                if val != expRes:
+                    raise ValueError(
+                        f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{index}] = {tensor[index]}, expected {expRes}\n {tensor}"
+                    )
+
+    def setTensorVal(self, tensor, useRandVal=True):
+        newVal = random.random() if useRandVal else self.initVal
+        # reset values
+        if self.collectiveArgs.collective in ("all_reduce", "reduce"):
+            # all processes use initVal to have predictable results
+            tensor[:] = self.initVal
+        elif self.collectiveArgs.collective == "broadcast":
+            # root process uses initVal and others use random values
+            tensor[:] = self.initVal if (self.backendFuncs.get_global_rank() == self.collectiveArgs.srcOrDst) else newVal
+        elif isinstance(tensor, list):
+            # could be a list of tensor, for all_gather/gather
+            for t in tensor:
+                t[:] = newVal
+        else:
+            tensor[:] = newVal
 
     @abstractmethod
     def runBench(self, *args, **kwargs):

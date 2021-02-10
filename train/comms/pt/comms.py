@@ -59,8 +59,14 @@ class commsCollBench(paramCommsBench):
             "--f", type=int, default=2, help="multiplication factor between sizes"
         )  # COMMS mode, multiplication factor.
         parser.add_argument(
-            "--z", type=int, default=1, help="use blocking mode for collectives"
+            "--z", type=int, default=1, help="use blocking mode for collectives",
+            choices=[0,1]
         )  # 'sync/blocking' : 1 , 'async/non-blocking' : 0
+        parser.add_argument(
+            "--c", type=int, default=0,
+            help="enable data validation check",
+            choices=[0,1]
+        )  # validation check
         parser.add_argument(
             "--collective",
             type=str,
@@ -178,8 +184,10 @@ class commsCollBench(paramCommsBench):
         self.backendFuncs.barrier(self.collectiveArgs, "runcoll")
 
         # Measuring time.
-        start = time.monotonic()  # available only in py3
+        elapsedTimeNS = 0.0
         for _ in range(self.collectiveArgs.numIters):
+            self.setTensorVal(self.collectiveArgs.opTensor)
+            start = time.monotonic()  # available only in py3
             if comm_fn is not None:
                 self.collectiveArgs.waitObj.append(
                     comm_fn(self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp)
@@ -192,7 +200,12 @@ class commsCollBench(paramCommsBench):
                     compute_fn(self.collectiveArgs)
             if not self.collectiveArgs.asyncOp:  # should be sychronous, do wait.
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+            # Measuring time.
+            elapsedTimeNS += (
+                time.monotonic() - start
+            ) * 1e9  # keeping time in NS, helps in divising data by nanosecond
 
+        start = time.monotonic()  # available only in py3
         self.backendFuncs.complete_accel_ops(self.collectiveArgs)
         end = time.monotonic()  # available only in py3
         if isinstance(self.collectiveArgs.opTensor, list):
@@ -205,7 +218,7 @@ class commsCollBench(paramCommsBench):
                 numElements - 1
             ].item()  # to ensure collective won't be optimized away.
 
-        elapsedTimeNS = (
+        elapsedTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
         avgIterNS, algBW = comms_utils.getAlgBW(
@@ -412,12 +425,18 @@ class commsCollBench(paramCommsBench):
             if commsParams.collective == "all_to_all":
                 # numElements = int(numElements // world_size)  # assuming that world_size won't be zero!
                 scaleFactor = 1
-            ipTensor = backendFuncs.alloc_random(
-                [numElements], curDevice, commsParams.dtype, scaleFactor
-            )
+
+            if commsParams.dcheck == 1:
+                # use all ones for easy data validation check
+                ipTensor = backendFuncs.alloc_ones(
+                    [numElements], curDevice, commsParams.dtype, self.initVal
+                )
+            else:
+                ipTensor = backendFuncs.alloc_random(
+                    [numElements], curDevice, commsParams.dtype, scaleFactor
+                )
 
             opTensor = ipTensor
-            # ignoring all_gather, scatter-gather, for now # FUTURE-TODO- make interface accept scatter and gather list.
             asyncOp = True
             collectiveFunc = None
 
@@ -429,8 +448,8 @@ class commsCollBench(paramCommsBench):
             if commsParams.mode != "compute":  # comms specific initializations
                 if commsParams.collective.startswith("all_to_all"):
                     # all_to_all(v) requires two tensors
-                    opTensor = backendFuncs.alloc_empty(
-                        [numElements], commsParams.dtype, curDevice
+                    opTensor = backendFuncs.alloc_random(
+                        [numElements], curDevice, commsParams.dtype, scaleFactor
                     )
                     # all_to_allv requires tensors to specify split
                     if commsParams.collective == "all_to_allv":
@@ -445,8 +464,8 @@ class commsCollBench(paramCommsBench):
                     opTensor = []
                     for _ in range(world_size):
                         opTensor.append(
-                            backendFuncs.alloc_empty(
-                                [numElements], commsParams.dtype, curDevice
+                            backendFuncs.alloc_random(
+                                [numElements], curDevice, commsParams.dtype, scaleFactor
                             )
                         )
                 # set corresponding function pointers
@@ -464,6 +483,10 @@ class commsCollBench(paramCommsBench):
             timeElapsedNS, algBW, busBW, memSize, x = self.runColl(
                 comm_fn=collectiveFunc, compute_fn=computeFunc
             )
+
+            # perfom data validation check on the final opTensor
+            if commsParams.dcheck == 1:
+                self.dcheck(commsParams, curSize, opTensor)
 
             results[curSize] = {}
             results[curSize]["timeUS"] = timeElapsedNS / 1e3

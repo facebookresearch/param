@@ -82,7 +82,10 @@ class PyTorchTPUBackend(backendFunctions):
         )
 
     def alloc_random(self, sizeArr, curRankDevice, dtype, scaleFactor=1.0):
-        ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
+        if dtype in (torch.int32, torch.long):
+            ipTensor = torch.randint(0, 1000, sizeArr, device=curRankDevice, dtype=dtype)
+        else:
+            ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
         # ipTensor = torch.full(
         #     sizeArr, self.get_global_rank(), device=curRankDevice, dtype=dtype
         # )

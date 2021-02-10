@@ -226,7 +226,10 @@ class PyTorchDistBackend(backendFunctions):
         )
 
     def alloc_random(self, sizeArr, curRankDevice="cuda", dtype=torch.float32, scaleFactor=1.0):
-        ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
+        if dtype in (torch.int32, torch.long):
+            ipTensor = torch.randint(0, 1000, sizeArr, device=curRankDevice, dtype=dtype)
+        else:
+            ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
         if (scaleFactor) != 0:
             ipTensor = ipTensor / scaleFactor
         return ipTensor
