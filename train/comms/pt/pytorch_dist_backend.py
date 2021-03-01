@@ -197,11 +197,19 @@ class PyTorchDistBackend(backendFunctions):
         )
         if dev_str == "cuda":
             torch.cuda.synchronize(collectiveArgs.device)
-        # sync with all ranks
-        self.barrier(collectiveArgs)
 
-    def barrier(self, collectiveArgs, name="dummy"):
-        dist.barrier(collectiveArgs.group)
+    def complete_single_op(self, collectiveArgs):
+        """ only wait the first op in the queue """
+        if len(collectiveArgs.waitObj) > 0:
+            waitReq = collectiveArgs.waitObj.pop(0)
+            if waitReq is not None:
+                waitReq.wait()
+
+
+    def barrier(self, collectiveArgs, name="dummy", retFlag=False):
+        retObj = dist.barrier(collectiveArgs.group, async_op=collectiveArgs.asyncOp)
+        if retFlag:
+            return retObj
 
     def get_reduce_op(self, opName):
         if opName == "sum":
@@ -226,8 +234,8 @@ class PyTorchDistBackend(backendFunctions):
         )
 
     def alloc_random(self, sizeArr, curRankDevice="cuda", dtype=torch.float32, scaleFactor=1.0):
-        if dtype in (torch.int32, torch.long):
-            ipTensor = torch.randint(0, 1000, sizeArr, device=curRankDevice, dtype=dtype)
+        if dtype in (torch.uint8, torch.int32, torch.long):
+            ipTensor = torch.randint(0, 10, sizeArr, device=curRankDevice, dtype=dtype)
         else:
             ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
         if (scaleFactor) != 0:

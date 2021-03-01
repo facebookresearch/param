@@ -149,6 +149,7 @@ class backendFunctions(ABC):
             "broadcast": self.broadcast,
             "all_gather": self.all_gather,
             "reduce": self.reduce,
+            "barrier": self.barrier,
         }
 
     def getBusBW(self, collective, algBW, world_size):
@@ -285,6 +286,7 @@ class commsParamsHolderBase:
         self.dtype = args.dtype
         self.backend = args.backend
         self.device = args.device
+        self.blockingFlag = args.z
 
 class commsParamsHolder(commsParamsHolderBase):
     def __init__(self, args, element_size, benchTime):
@@ -296,7 +298,6 @@ class commsParamsHolder(commsParamsHolderBase):
         self.endSize = args.e
         self.maxSize = int(args.e // self.element_size)
         self.stepFactor = args.f
-        self.blockingFlag = args.z
         self.srcOrDst = args.root
         self.dcheck = args.c
 
@@ -498,6 +499,12 @@ class paramCommsBench(ABC):
             help="The backend to be used in PyTorch distributed process group",
             choices=["nccl", "gloo", "mpi", "ucc", "xla"],
         )  #  backend used for the network stack
+        parser.add_argument(
+            "--z", type=int,
+            default=1,
+            help="use blocking mode for collectives",
+            choices=[0,1]
+        )  # 'sync/blocking' : 1 , 'async/non-blocking' : 0
         pass
 
     @abstractmethod

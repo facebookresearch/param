@@ -59,10 +59,6 @@ class commsCollBench(paramCommsBench):
             "--f", type=int, default=2, help="multiplication factor between sizes"
         )  # COMMS mode, multiplication factor.
         parser.add_argument(
-            "--z", type=int, default=1, help="use blocking mode for collectives",
-            choices=[0,1]
-        )  # 'sync/blocking' : 1 , 'async/non-blocking' : 0
-        parser.add_argument(
             "--c", type=int, default=0,
             help="enable data validation check",
             choices=[0,1]
