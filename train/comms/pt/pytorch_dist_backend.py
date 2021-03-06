@@ -25,7 +25,7 @@ def _downcast(input, bitwidth):
     elif bitwidth == 8:
         return input.to(torch.int8)
     else:
-        raise NotImplementedError("Unsupported bitwidth. Set bitwidth = 4/8/16/32.")
+        raise NotImplementedError("Unsupported bitwidth. Set --bitwidth to 8/16/32")
 
 
 # a future object or a tensor
@@ -75,7 +75,9 @@ class PyTorchDistBackend(backendFunctions):
 
     # Collectives
     def all_reduce(self, collectiveArgs, retFlag=False):
-        if collectiveArgs.allreduce_qcomm != 32:
+        if (collectiveArgs.allreduce_qcomm != 32 and collectiveArgs.allreduce_qcomm > 4
+            and collectiveArgs.ipTensor.dtype == torch.float32
+        ):
             # note: note that quantized is a new tensor
             # that is not collectiveArgs.ipTensor.
             # this means when all_reduce/reduce finished
@@ -84,7 +86,6 @@ class PyTorchDistBackend(backendFunctions):
             # every time we call all_reduce (because if we don't, it will be float16 instead of float32).
             # That also means we can't use the output of  quantized all_reduce's for anything other than
             # benchmarking purpose.
-            assert collectiveArgs.ipTensor.dtype == torch.float32
             quantized = _downcast(
                 collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
             )
@@ -147,7 +148,14 @@ class PyTorchDistBackend(backendFunctions):
             return work
 
     def all_to_allv(self, collectiveArgs, retFlag=False):
-        if collectiveArgs.all2all_qcomm:
+        if (
+            collectiveArgs.all2all_qcomm
+            and collectiveArgs.ipTensor.dtype == torch.float32
+            and (
+                collectiveArgs.opTensor.nelement() >= collectiveArgs.quan_threshold
+                or collectiveArgs.ipTensor.nelement() >= collectiveArgs.quan_threshold
+            )
+        ):
             work = all_to_allv_internal(collectiveArgs)
         else:
             work = dist.all_to_all_single(
@@ -234,8 +242,8 @@ class PyTorchDistBackend(backendFunctions):
         )
 
     def alloc_random(self, sizeArr, curRankDevice="cuda", dtype=torch.float32, scaleFactor=1.0):
-        if dtype in (torch.uint8, torch.int32, torch.long):
-            ipTensor = torch.randint(0, 10, sizeArr, device=curRankDevice, dtype=dtype)
+        if dtype in (torch.uint8, torch.int16, torch.int32, torch.long):
+            ipTensor = torch.randint(low=0, high=10, size=sizeArr, device=curRankDevice, dtype=dtype)
         else:
             ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
         if (scaleFactor) != 0:

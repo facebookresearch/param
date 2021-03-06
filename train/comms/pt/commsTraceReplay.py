@@ -69,7 +69,7 @@ class commsTraceReplayBench(paramCommsBench):
             "Double": torch.double,
         }
 
-    def readArgs(self, parser, defaultModel="dlrm"):
+    def readArgs(self, parser):
         # read the common/basic arguments
         super().readArgs(parser)
         parser.add_argument(
@@ -299,7 +299,6 @@ class commsTraceReplayBench(paramCommsBench):
             )
 
         # allocate tensors
-        # FIXME: could we re-use the tensors?
         self.collectiveArgs.ipTensor = self.backendFuncs.alloc_random(
             [curInNumElem],
             curRankDevice=self.collectiveArgs.device,
@@ -484,18 +483,15 @@ class commsTraceReplayBench(paramCommsBench):
         self.backendFuncs.clear_memory()
 
     def runBench(self, comms_world_info, commsParams):
-        self.setBench(comms_world_info, commsParams)
+        # read the json file
+        with open(self.trace_file) as f:
+            logger.info(f"rank-{comms_world_info.global_rank} reading {self.trace_file}")
+            self.comms_trace = json.load(f)
 
         self.initTraceStat()
-        # only perform collectives if not dry run mode
+        # only setup and perform collectives if not dry run mode
         if not self.is_dry_run:
-            self.backendFuncs.initialize_backend(
-                comms_world_info.master_ip,
-                comms_world_info.master_port,
-                backend=commsParams.backend,
-            )
-            self.backendFuncs.sayHello()
-
+            self.setBench(comms_world_info, commsParams)
             # start benchmark
             self.benchTime(commsParams)
         elif comms_world_info.global_rank == 0:
@@ -528,6 +524,13 @@ class commsTraceReplayBench(paramCommsBench):
             print("\t Error: Unsopported NW stack! ")
             comms_utils.gracefulExit()
 
+        self.backendFuncs.initialize_backend(
+                comms_world_info.master_ip,
+                comms_world_info.master_port,
+                backend=commsParams.backend,
+            )
+        self.backendFuncs.sayHello()
+
         # set basic collective info
         (
             local_rank,
@@ -553,11 +556,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.collectiveArgs.asyncOp = not self.is_blocking
         self.collectiveArgs.ipTensor = None
         self.collectiveArgs.opTensor = None
-
-        # read the json file
-        with open(self.trace_file) as f:
-            logger.info(f"rank-{global_rank} reading {self.trace_file}")
-            self.comms_trace = json.load(f)
+        self.collectiveArgs.quant_threshold = commsParams.quant_threshold
 
     def initBench(self, comms_world_info, commsParams, args):
         self.is_dry_run = args.dry_run
@@ -565,6 +564,18 @@ class commsTraceReplayBench(paramCommsBench):
         self.max_msg_cnt = args.max_msg_cnt
         self.is_blocking = args.z
         self.do_warm_up = not args.no_warm_up
+
+        if commsParams.bitwidth < 32:
+            logger.info(f"communication bitwidth set to {commsParams.bitwidth}")
+            try:
+                from internals import initialize_collectiveArgs_internal
+
+                initialize_collectiveArgs_internal(self.collectiveArgs, commsParams)
+            except ImportError:
+                # cannot do quantization, reset bitwidth
+                logger.info("quantization not supported, disabled and continue...")
+                commsParams.bitwidth = 32
+                pass
 
     def setTraceFile(self, args, mpi_env_params):
         # TODO: file name may get changed later

@@ -290,6 +290,7 @@ class commsParamsHolderBase:
         # quantization
         self.bitwidth = args.bitwidth
         self.quant_a2a_embedding_dim = args.quant_a2a_embedding_dim
+        self.quant_threshold = args.quant_threshold
 
 class commsParamsHolder(commsParamsHolderBase):
     def __init__(self, args, element_size, benchTime):
@@ -359,10 +360,10 @@ class collectiveArgsHolder:
         self.all2all_qcomm = None
         self.reducescatter_allgather_qcomm = None
         self.allreduce_qcomm = (
-            32  # set it as the bitwidth for now. when the actual kernel lands, change
+            32  # TODO: set it as the bitwidth for now until the quantization kernels be supported
         )
         self.reduce_qcomm = 32
-
+        self.quant_threshold = 0
 
 class paramCommsBench(ABC):
     def __init__(self, supportedNwstacks=None):
@@ -499,7 +500,8 @@ class paramCommsBench(ABC):
             choices=["nccl", "gloo", "mpi", "ucc", "xla"],
         )  #  backend used for the network stack
         parser.add_argument(
-            "--z", type=int,
+            "--z",
+            type=int,
             default=1,
             help="use blocking mode for collectives",
             choices=[0,1]
@@ -510,14 +512,20 @@ class paramCommsBench(ABC):
             default=32,
             help="Quantization bitwidth",
             choices=[2, 4, 8, 16, 32],
-        )
+        ) # comms quantization
         parser.add_argument(
             "--quant-a2a-embedding-dim",
             type=int,
             default=32,
-            help="Embedding dimension used by quantization alltoall",
+            help="Embedding dimension used by quantization alltoall if enabled",
             choices=[32, 64, 128, 256],
-        )
+        ) # Row dimension for quantization
+        parser.add_argument(
+            "--quant-threshold",
+            type=int,
+            default=33554432,
+            help="threshold of message sizes to perform quantization if enabled",
+        ) # quantization threshold, default 32 MB
         pass
 
     @abstractmethod

@@ -537,7 +537,6 @@ class commsCollBench(paramCommsBench):
 
         # wait rank 0 reports results to avoid other ranks mess up the output
         self.backendFuncs.barrier(self.collectiveArgs, "benchtime")
-        # print("Finished ", global_rank, local_rank)
 
     def runBench(self, comms_world_info, commsParams):
         # Init the desired backend
