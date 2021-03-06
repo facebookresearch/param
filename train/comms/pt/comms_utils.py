@@ -287,6 +287,9 @@ class commsParamsHolderBase:
         self.backend = args.backend
         self.device = args.device
         self.blockingFlag = args.z
+        # quantization
+        self.bitwidth = args.bitwidth
+        self.quant_a2a_embedding_dim = args.quant_a2a_embedding_dim
 
 class commsParamsHolder(commsParamsHolderBase):
     def __init__(self, args, element_size, benchTime):
@@ -314,10 +317,6 @@ class commsParamsHolder(commsParamsHolderBase):
         self.num_embs = args.num_embs
         self.batch_size = args.batch_size
         self.benchTime = benchTime
-
-        # quantization
-        self.bitwidth = args.bitwidth
-
 
 class collectiveArgsHolder:
     def __init__(self):
@@ -505,6 +504,20 @@ class paramCommsBench(ABC):
             help="use blocking mode for collectives",
             choices=[0,1]
         )  # 'sync/blocking' : 1 , 'async/non-blocking' : 0
+        parser.add_argument(
+            "--bitwidth",
+            type=int,
+            default=32,
+            help="Quantization bitwidth",
+            choices=[2, 4, 8, 16, 32],
+        )
+        parser.add_argument(
+            "--quant-a2a-embedding-dim",
+            type=int,
+            default=32,
+            help="Embedding dimension used by quantization alltoall",
+            choices=[32, 64, 128, 256],
+        )
         pass
 
     @abstractmethod

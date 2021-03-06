@@ -19,6 +19,7 @@ import torch
 from comms_utils import paramCommsBench
 
 
+
 ### TODO: add these to class variables?
 supportedCommStyle = [0, 1]  # 0 : non-blocking, 1 : blocking.
 supportedCollectives = [
@@ -116,13 +117,6 @@ class commsCollBench(paramCommsBench):
             "--root", type=int, default=0, help="root process for reduce benchmark"
         )  # root process for reduce (and gather, scatter, bcast, etc., if support in the future)
         # TODO: check the correctness of root, should be between 0 to [world_size -1]
-        parser.add_argument(
-            "--bitwidth",
-            type=int,
-            default=32,
-            help="quantization bitwidth",
-            choices=[4, 8, 16, 32],
-        )
 
         return parser.parse_known_args()
 
@@ -277,7 +271,6 @@ class commsCollBench(paramCommsBench):
             logging.warning(f"communication bitwidth set to {commsParams.bitwidth}")
             try:
                 from internals import initialize_collectiveArgs_internal
-
                 initialize_collectiveArgs_internal(self.collectiveArgs, commsParams)
             except ImportError:
                 if (
@@ -385,6 +378,9 @@ class commsCollBench(paramCommsBench):
             busBW = self.backendFuncs.getBusBW(
                 self.collectiveArgs.collective, algBW, self.collectiveArgs.world_size
             )
+
+            # refine busBW and algBW
+            busBW *= commsParams.bitwidth / 32.0
 
             print(
                 "\tCOMMS-RES\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s"
