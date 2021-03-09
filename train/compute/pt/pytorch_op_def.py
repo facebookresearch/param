@@ -1,18 +1,22 @@
-import torch
 from typing import Dict, Set, Tuple, List, Any, Callable, Iterable, Type
+
+import torch
+
 
 def _NOT_IMPLEMENTED_(*args, **kwargs):
     raise NotImplementedError("Operator not implemented")
 
-pytorch_dtype_map:Dict[str, torch.dtype]  = {
+
+pytorch_dtype_map: Dict[str, torch.dtype] = {
     "float": torch.float,
     "double": torch.double,
     "int": torch.int,
-    "long": torch.long
+    "long": torch.long,
 }
 
+
 class Operator(object):
-    def __init__(self, arg_indices:List[int] = [], kwarg_map:Dict[str,int] = {}):
+    def __init__(self, arg_indices: List[int] = [], kwarg_map: Dict[str, int] = {}):
         self.arg_indices = arg_indices
         self.kwarg_map = kwarg_map
 
@@ -22,45 +26,47 @@ class Operator(object):
     def get_kwarg_map(self):
         return self.kwarg_map
 
+
 # Inplace ops is called in the form of tensor.op(args), we convert it
 # to a regular function call with "getattr(tensor, op)(args)"
 class InPlaceOpByName(Operator):
-    def __init__(self, name:str, arg_indices:List[int] = [], kwarg_map:Dict[str,int] = {}):
+    def __init__(
+        self, name: str, arg_indices: List[int] = [], kwarg_map: Dict[str, int] = {}
+    ):
         super(InPlaceOpByName, self).__init__(arg_indices, kwarg_map)
-        self.name:str = name
+        self.name: str = name
 
     def __call__(self, *args, **kwargs):
         # The first arg is assume to be the inplace value, pass on the rest of
         # the args to the callable.
         getattr(args[0], self.name)(*args[1:], **kwargs)
 
+
 # Callable ops are ops can be called in the form of op(*args, **kwargs)
 class CallableOp(Operator):
-    def __init__(self, func:Callable, arg_indices:List[int] = [], kwarg_map:Dict[str,int] = {}):
+    def __init__(
+        self,
+        func: Callable,
+        arg_indices: List[int] = [],
+        kwarg_map: Dict[str, int] = {},
+    ):
         super(CallableOp, self).__init__(arg_indices, kwarg_map)
-        self.func:Callable = func
+        self.func: Callable = func
 
     def __call__(self, *args, **kwargs):
         self.func(*args, **kwargs)
 
 
 def get_pytorch_ops() -> Dict[str, Operator]:
-    ops_map:Dict[str, Operator] = {
+    ops_map: Dict[str, Operator] = {
         "Optimizer.step#FusedLAMB.step": None,
-        # _embedding_bag_backward(const Tensor &grad, const Tensor &indices,
-        #                       const Tensor &offsets,
-        #                       const Tensor &offset2bag,
-        #                       const Tensor &bag_size_,
-        #                       const Tensor &max_indices_,
-        #                       int64_t num_weights,
-        #                       bool scale_grad_by_freq, int64_t mode,
-        #                       bool sparse,
-        #                       const Tensor& per_sample_weights)
-        "aten::_embedding_bag_backward":  None,
+        "aten::_embedding_bag_backward": None,
         "aten::add": CallableOp(torch.add, [0, 1]),
         "aten::add_": InPlaceOpByName("add_", [0, 1]),
-        "aten::baddbmm": CallableOp(torch.baddbmm, [0,1,2], {"beta":3, "alpha":4}),
-        "aten::binary_cross_entropy_with_logits": CallableOp(torch.nn.functional.binary_cross_entropy_with_logits),
+        "aten::baddbmm": CallableOp(torch.baddbmm, [0, 1, 2], {"beta": 3, "alpha": 4}),
+        "aten::binary_cross_entropy_with_logits": CallableOp(
+            torch.nn.functional.binary_cross_entropy_with_logits
+        ),
         "aten::binary_cross_entropy_with_logits_backward": None,
         "aten::bmm": CallableOp(torch.bmm),
         "aten::cat": CallableOp(torch.cat),
@@ -72,7 +78,7 @@ def get_pytorch_ops() -> Dict[str, Operator]:
         "aten::detach": None,
         "aten::detach_": None,
         "aten::div": None,
-        "aten::embedding_bag": None, # embedding_bag(Tensor weight, Tensor indices, Tensor offsets, bool scale_grad_by_freq=False, int mode=0, bool sparse=False, Tensor? per_sample_weights=None, bool include_last_offset=False) -> (Tensor, Tensor, Tensor, Tensor)
+        "aten::embedding_bag": None,
         "aten::empty": None,
         "aten::empty_like": None,
         "aten::expand": None,

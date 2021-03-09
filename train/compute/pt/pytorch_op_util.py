@@ -1,12 +1,14 @@
-import torch
-from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
-from enum import Enum
+import copy
 import json
 import logging
-import copy
 import random
-from .operator_def import get_pytorch_ops, pytorch_dtype_map
+from enum import Enum
+from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
+
+import torch
 from generator import full_range, IterableList, ListProduct, TableProduct
+
+from .operator_def import get_pytorch_ops, pytorch_dtype_map
 
 
 OpConfigType = Enum("OpConfigType", "SAMPLE RANGE")
@@ -45,13 +47,16 @@ __ATTR_COPY__ = "__copy__"
 __ATTR_RANGE__ = "__range__"
 META_ATTRS = {__ATTR_COPY__, __ATTR_RANGE__}
 
+
 class OperatorConfig:
-    def __init__(self, json_file:str, type:OpConfigType, device:str, filters:Set[str] = None):
+    def __init__(
+        self, json_file: str, type: OpConfigType, device: str, filters: Set[str] = None
+    ):
         self.type = type
         self.filters = filters
         self.device = device
         with open(json_file) as ops_config:
-            ops_data:TextIO
+            ops_data: TextIO
             self.ops = json.load(ops_config)
 
     # Returns all or filtered ops in the config
@@ -60,10 +65,10 @@ class OperatorConfig:
             return [x for x in self.filters if x in self.ops]
         return self.ops.keys()
 
-    def has_op(self, op:str):
+    def has_op(self, op: str):
         return op in self.ops
 
-    def get_next_args(self, op:str):
+    def get_next_args(self, op: str):
         if self.type == OpConfigType.RANGE:
             yield from self.__generate_op_args_in_range(op)
         elif self.type == OpConfigType.SAMPLE:
@@ -71,7 +76,7 @@ class OperatorConfig:
         else:
             raise NotImplementedError("OpConfigType {self.type} not implemented")
 
-    def __valid_op(self, op:str):
+    def __valid_op(self, op: str):
         ops_map = get_pytorch_ops()
         # check if this is in the op filter, skip if not
         if not ops_map[op]:
@@ -79,10 +84,8 @@ class OperatorConfig:
             return False
         return True
 
-
-    def __generate_op_args_in_range(self, op:str) -> Dict[str, Any]:
-
-        def apply_copy(args:List[Any]):
+    def __generate_op_args_in_range(self, op: str) -> Dict[str, Any]:
+        def apply_copy(args: List[Any]):
             for arg in args:
                 if __ATTR_COPY__ in arg:
                     copy_list = arg[__ATTR_COPY__]
@@ -92,14 +95,14 @@ class OperatorConfig:
                             elem_idx, (src_arg_idx, src_elem_idx) = mapping
                             arg[attr][elem_idx] = args[src_arg_idx][attr][src_elem_idx]
 
-        def remove_meta_attr(args:List[Any]):
+        def remove_meta_attr(args: List[Any]):
             result_args = copy.deepcopy(args)
             for arg in result_args:
                 for attr in META_ATTRS:
                     arg.pop(attr, None)
             return result_args
 
-        def find_updates(last_configs:List[Any], configs:List[Any]):
+        def find_updates(last_configs: List[Any], configs: List[Any]):
             updates = set()
             for i, vals in enumerate(zip(last_configs, configs)):
                 if vals[0] != vals[1]:
@@ -116,7 +119,9 @@ class OperatorConfig:
                     if update_args:
                         if arg_pos in update_args:
                             logging.debug(f"  {arg_pos}: {arg_configs[arg_pos]}")
-                            op_args[i] = self.create_arg(arg_configs[arg_pos], self.device)
+                            op_args[i] = self.create_arg(
+                                arg_configs[arg_pos], self.device
+                            )
                     else:
                         logging.debug(f"  {arg_pos}: {arg_configs[arg_pos]}")
                         op_args[i] = self.create_arg(arg_configs[arg_pos], self.device)
@@ -124,10 +129,14 @@ class OperatorConfig:
                     if update_args:
                         if arg_pos in update_args:
                             logging.debug(f"  {kw}:{arg_configs[arg_pos]}")
-                            op_kwargs[kw] = self.create_arg(arg_configs[arg_pos], self.device)
+                            op_kwargs[kw] = self.create_arg(
+                                arg_configs[arg_pos], self.device
+                            )
                     else:
                         logging.debug(f"  {kw}:{arg_configs[arg_pos]}")
-                        op_kwargs[kw] = self.create_arg(arg_configs[arg_pos], self.device)
+                        op_kwargs[kw] = self.create_arg(
+                            arg_configs[arg_pos], self.device
+                        )
             else:
                 for i, arg in enumerate(arg_configs):
                     if update_args:
@@ -182,7 +191,12 @@ class OperatorConfig:
 
                 # do the real work of generating data
                 generate_data()
-                op_to_run["args"] = (f"{var_id}_{config_id}", op_args, op_kwargs, actual_configs)
+                op_to_run["args"] = (
+                    f"{var_id}_{config_id}",
+                    op_args,
+                    op_kwargs,
+                    actual_configs,
+                )
                 # cache arg configs for next iteration to compare.
                 last_arg_configs = copy.deepcopy(actual_configs)
                 yield op_to_run
@@ -190,9 +204,8 @@ class OperatorConfig:
             var_id += 1
         logging.info(f"Finished all {op} args")
 
-
-    def create_range_iter(self, arg:Dict[str,Any]):
-        def create_tensor(attr:Dict[str,Any]):
+    def create_range_iter(self, arg: Dict[str, Any]):
+        def create_tensor(attr: Dict[str, Any]):
             logging.debug(f"{attr}")
             result = copy.copy(attr)
             # if ranges exists, create iterator
@@ -207,11 +220,11 @@ class OperatorConfig:
             # otherwise return unchanged
             return result
 
-        def create_float(attr:Dict[str,Any]):
+        def create_float(attr: Dict[str, Any]):
             # Not supporting range float values, any use cases?
             return copy.copy(attr)
 
-        def create_int(attr:Dict[str,Any]):
+        def create_int(attr: Dict[str, Any]):
             result = copy.copy(attr)
             if __ATTR_RANGE__ in attr:
                 ranges = set(attr[__ATTR_RANGE__])
@@ -220,7 +233,7 @@ class OperatorConfig:
                     return TableProduct(result)
             return result
 
-        def create_bool(attr:Dict[str,Any]):
+        def create_bool(attr: Dict[str, Any]):
             result = copy.copy(attr)
             if __ATTR_RANGE__ in attr:
                 ranges = set(attr[__ATTR_RANGE__])
@@ -229,13 +242,13 @@ class OperatorConfig:
                     return TableProduct(result)
             return result
 
-        def create_none(attr:Dict[str,Any]):
+        def create_none(attr: Dict[str, Any]):
             return copy.copy(attr)
 
-        def create_dtype(values:List[str]):
+        def create_dtype(values: List[str]):
             return IterableList(values)
 
-        def create_shape(values:List[Any]):
+        def create_shape(values: List[Any]):
             shape = []
             for val in values:
                 if type(val) is list:
@@ -244,7 +257,7 @@ class OperatorConfig:
                     shape.append(val)
             return ListProduct(shape)
 
-        def create_device(attr:Dict[str,Any]):
+        def create_device(attr: Dict[str, Any]):
             result = copy.copy(attr)
             if __ATTR_RANGE__ in attr:
                 ranges = set(attr[__ATTR_RANGE__])
@@ -253,7 +266,7 @@ class OperatorConfig:
                     return TableProduct(result)
             return result
 
-        def create_genericlist(attr:List[Any]):
+        def create_genericlist(attr: List[Any]):
             result = copy.copy(attr)
             if __ATTR_RANGE__ in attr:
                 ranges = set(attr[__ATTR_RANGE__])
@@ -276,14 +289,14 @@ class OperatorConfig:
             "dtype": create_dtype,
             "shape": create_shape,
             "device": create_device,
-            "genericlist": create_genericlist
+            "genericlist": create_genericlist,
         }
         return arg_factory_iter[arg["type"]](arg)
 
     # Loads input args configuration and generates the arg data for an op.
     # Returns a dictionary of op -> List[args data] that can be passed to
     # benchmarks.
-    def __generate_op_args(self, op:str) -> Dict[str, Any]:
+    def __generate_op_args(self, op: str) -> Dict[str, Any]:
         ops_map = get_pytorch_ops()
         # check if this is in the op filter, skip if not
         if not self.__valid_op(op):
@@ -317,42 +330,52 @@ class OperatorConfig:
         logging.info(f"Finished all {op} args")
 
     # Given an arg configuration, generate the test data for that arg.
-    def create_arg(self, arg:Dict[str,Any], device:str):
-        def create_tensor(attr:Dict[str,Any]):
+    def create_arg(self, arg: Dict[str, Any], device: str):
+        def create_tensor(attr: Dict[str, Any]):
             shape = attr["shape"]
             if len(shape) > 0:
                 if attr["dtype"] == "float" or attr["dtype"] == "double":
-                    return torch.rand(*shape, requires_grad=False, device=torch.device(device))
+                    return torch.rand(
+                        *shape, requires_grad=False, device=torch.device(device)
+                    )
                 elif attr["dtype"] == "int" or attr["dtype"] == "long":
-                    return torch.randint(-10, 10, tuple(shape), requires_grad=False, device=torch.device(device))
+                    return torch.randint(
+                        -10,
+                        10,
+                        tuple(shape),
+                        requires_grad=False,
+                        device=torch.device(device),
+                    )
             # Single value
             else:
-                return torch.tensor(random.uniform(-10.0, 10.0),
-                                    dtype=pytorch_dtype_map[attr["dtype"]],
-                                    requires_grad=False,
-                                    device=torch.device(device))
+                return torch.tensor(
+                    random.uniform(-10.0, 10.0),
+                    dtype=pytorch_dtype_map[attr["dtype"]],
+                    requires_grad=False,
+                    device=torch.device(device),
+                )
 
-        def create_float(attr:Dict[str,Any]):
+        def create_float(attr: Dict[str, Any]):
             if "value" in attr:
                 return attr["value"]
             return random.uniform(attr["value_range"][0], attr["value_range"][1])
 
-        def create_int(attr:Dict[str,Any]):
+        def create_int(attr: Dict[str, Any]):
             # check "value" key exists, attr["value"] = 0 could be eval to False
             if "value" in attr:
                 return attr["value"]
             return random.randint(attr["value_range"][0], attr["value_range"][1])
 
-        def create_bool(attr:Dict[str,Any]):
+        def create_bool(attr: Dict[str, Any]):
             return attr["value"]
 
-        def create_none(attr:Dict[str,Any]):
+        def create_none(attr: Dict[str, Any]):
             return None
 
-        def create_device(attr:Dict[str,Any]):
+        def create_device(attr: Dict[str, Any]):
             return torch.device(attr["value"])
 
-        def create_genericlist(attr:List[Any]):
+        def create_genericlist(attr: List[Any]):
             result = []
             for item in attr["value"]:
                 result.append(arg_factory[item["type"]](item))
@@ -367,12 +390,13 @@ class OperatorConfig:
             "none": create_none,
             "bool": create_bool,
             "device": create_device,
-            "genericlist": create_genericlist
+            "genericlist": create_genericlist,
         }
         return arg_factory[arg["type"]](arg)
 
+
 class OpDataIter:
-    def __init__(self, op_config:OperatorConfig, op:str):
+    def __init__(self, op_config: OperatorConfig, op: str):
         self.op_config = op_config
         self.op = op
         self.generator = None
