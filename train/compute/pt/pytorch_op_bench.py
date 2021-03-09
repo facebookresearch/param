@@ -91,14 +91,14 @@ def run_op(
     (id, args, kwargs, arg_config) = op["args"]
 
     logging.info(f"{op_name}[{id}]:")
-    logging.info(f"  {arg_config}")
+    logging.info(f"{arg_config}")
     warmup_iter = 5
     logging.debug(f"Running {op_name}[{id}] for {warmup_iter} warm up iterations")
     # warm up
     time_records = benchmark_op(
         f"{op_name}[{id}]", warmup_iter, device, ops_map[op_name], *args, **kwargs
     )
-    logging.info(f"  warmup: {time_records}")
+    logging.info(f"warmup: {time_records}")
 
     # collect CUDA metrics
     if metric_mode:
@@ -121,15 +121,13 @@ def run_op(
     else:
         # actual timing
         logging.debug(f"Running {op_name}[{id}] for {num_iter} measured iterations")
-        torch.cuda.nvtx.range_push("op_bench")
         time_records = benchmark_op(
             f"{op_name}[{id}]", num_iter, device, ops_map[op_name], *args, **kwargs
         )
-        torch.cuda.nvtx.range_pop()
         tot = sum(time_records)
-        logging.info(f"  rec: {time_records}")
-        logging.info(f"  avg: {tot/num_iter:.6f} sec")
-        logging.info(f"  tot: {tot:.6f} sec")
+        logging.info(f"time: {time_records}")
+        logging.info(f" avg: {tot/num_iter:.6f} sec")
+        logging.info(f" tot: {tot:.6f} sec")
         stats = {
             "name": op_name,
             "id": id,
@@ -195,13 +193,13 @@ def main():
     torch.set_num_threads(1)
 
     with open(out_json, "w") as json_file:
-        with record_function("## BENCHMARK ##"):
+        with record_function("## PYTORCH OP BENCHMARK ##"):
             for op in op_configs.get_selected_ops():
                 data_iter = OpDataIter(op_configs, op)
                 for op_data in data_iter:
                     run_op(op_data, args.iter, args.device, json_file, args.metric)
 
-        logging.info(f"Log written to {args.out_json}.")
+        logging.info(f"Log written to {args.out_json}")
 
 
 if __name__ == "__main__":

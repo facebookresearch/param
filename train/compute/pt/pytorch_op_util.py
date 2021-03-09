@@ -8,7 +8,7 @@ from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 import torch
 from generator import full_range, IterableList, ListProduct, TableProduct
 
-from .operator_def import get_pytorch_ops, pytorch_dtype_map
+from pytorch_op_def import get_pytorch_ops, pytorch_dtype_map
 
 
 OpConfigType = Enum("OpConfigType", "SAMPLE RANGE")
