@@ -6,6 +6,7 @@ def full_range(a: int, b: int, s: int):
     return range(a, b + 1, s)
 
 
+# Repeatable iterator for lists.
 class IterableList:
     def __init__(self, items: List[Any]):
         self.items = items
