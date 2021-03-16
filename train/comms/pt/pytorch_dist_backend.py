@@ -206,12 +206,22 @@ class PyTorchDistBackend(backendFunctions):
         if dev_str == "cuda":
             torch.cuda.synchronize(collectiveArgs.device)
 
-    def complete_single_op(self, collectiveArgs):
+    # retFlag not used
+    def complete_single_op(self, collectiveArgs, retFlag=False):
         """ only wait the first op in the queue """
         if len(collectiveArgs.waitObj) > 0:
             waitReq = collectiveArgs.waitObj.pop(0)
             if waitReq is not None:
                 waitReq.wait()
+
+            # to ensure GPU collective is completed
+            dev_str = (
+                self.commsParams["device"]
+                if isinstance(self.commsParams, dict)
+                else self.commsParams.device
+            )
+            if dev_str == "cuda":
+                torch.cuda.synchronize(collectiveArgs.device)
 
 
     def barrier(self, collectiveArgs, name="dummy", retFlag=False):
@@ -327,6 +337,8 @@ class PyTorchDistBackend(backendFunctions):
         super().__init__()
         self.comms_world_info = comms_world_info
         self.commsParams = commsParams
+        # Add single wait op (Note this is not supported in pytorch_tpu_backend.py now)
+        self.collectiveFunc["wait"] = self.complete_single_op
 
         # Import ucc plugin
         if commsParams.backend == "ucc":
