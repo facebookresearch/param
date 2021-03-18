@@ -10,6 +10,7 @@ import sys
 from abc import ABC, abstractmethod
 import torch
 import logging
+from io import StringIO
 import random
 random.seed()
 
@@ -137,6 +138,12 @@ def read_mpi_env_vars():
     mpi_env_params["local_rank"] = local_rank
     return mpi_env_params
 
+def commonUrlRead(remotePath):
+    import urllib.request
+    # TODO: Error handle
+    with urllib.request.urlopen(remotePath) as rf:
+        contents = rf.read()
+    return StringIO(contents.decode("utf-8"))
 
 class backendFunctions(ABC):
     """ Abstract base class, provides common abstraction for all the backends. """

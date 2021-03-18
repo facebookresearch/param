@@ -40,6 +40,7 @@ class commsTraceReplayBench(paramCommsBench):
         super().__init__(supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu"])
         self.comms_trace = {}
         self.trace_file = ""
+        self.use_remote_trace = False
         self.is_dry_run = False
         self.shrink = False
         self.max_msg_cnt = 0  # 0 means no limit
@@ -128,9 +129,8 @@ class commsTraceReplayBench(paramCommsBench):
     def checkArgs(self, args):
         super().checkArgs(args)
 
-        if (
-            path.exists(self.trace_file) is False
-            or path.isfile(self.trace_file) is False
+        if ((not self.use_remote_trace) and
+            (path.exists(self.trace_file) is False or path.isfile(self.trace_file) is False)
         ):
             raise ValueError(
                 f"Trace file {self.trace_file} not exist or not a file! Please specifiy the correct path using --trace-path"
@@ -496,10 +496,14 @@ class commsTraceReplayBench(paramCommsBench):
         self.backendFuncs.clear_memory()
 
     def runBench(self, comms_world_info, commsParams):
-        # read the json file
-        with open(self.trace_file) as f:
-            logger.info(f"rank-{comms_world_info.global_rank} reading {self.trace_file}")
-            self.comms_trace = json.load(f)
+        """ Run the comms-replay benchmark:
+                1) Each rank reads its trace
+                2) First pass of the trace to ensure the format is valid and get basic stats
+                3) Execute communication replay [Skip if on dry-run mode]
+                4) report stats and performance (if not dry-run)
+        """
+        logger.info(f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}")
+        self.readTrace(remotePath=self.trace_file)
 
         self.initTraceStat()
         # only setup and perform collectives if not dry run mode
@@ -515,7 +519,7 @@ class commsTraceReplayBench(paramCommsBench):
         # rank 0 reports statistics
         if comms_world_info.global_rank == 0:
             self.reportBenchTime(commsParams)
-            writeCommDetails(self.comms_blocks, rank=comms_world_info.global_rank)
+            # writeCommDetails(self.comms_blocks, rank=comms_world_info.global_rank)
 
         if not self.is_dry_run:
             # dump trace sorted with block and with latency if not dry run
@@ -607,6 +611,30 @@ class commsTraceReplayBench(paramCommsBench):
             self.trace_file = (
                 f"{args.trace_path}/rank{mpi_env_params['global_rank']}.json"
             )
+        # assume the prefix is always "xxx://" when reading remote trace, e.g., http://xxx
+        if "://" in args.trace_path:
+            self.use_remote_trace = True
+
+    def readTrace(self, remotePath):
+        """ Read trace file from remote server or local disk """
+        if self.use_remote_trace:
+            protocol = remotePath.split("://", 2)[0] # format "<protocol prefix>://<url or path>"
+            raw_comms_trace = []
+            if protocol in ("http", "https", "ftp"):
+                raw_comms_trace = comms_utils.commonUrlRead(remotePath=remotePath)
+            else:
+                try:
+                    from internals import readRemoteTrace as readFbRemoteTrace
+                except ImportError:
+                    logger.error(f"Not supported protocol for the URL provided {remotePath}")
+                else:
+                    raw_comms_trace = readFbRemoteTrace(remotePath=remotePath)
+
+            self.comms_trace = json.load(raw_comms_trace)
+        else:
+            # read the json file
+            with open(self.trace_file) as f:
+                self.comms_trace = json.load(f)
 
 def main():
 
