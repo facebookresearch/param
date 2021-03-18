@@ -33,6 +33,8 @@ class PyTorchTPUBackend(backendFunctions):
     # Collectives
     def all_reduce(self, collectiveArgs, retFlag=False):
         retObj = xm.all_reduce(collectiveArgs.op, [collectiveArgs.ipTensor])
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
         if retFlag:
             return retObj
 
@@ -42,6 +44,8 @@ class PyTorchTPUBackend(backendFunctions):
     def all_to_all(self, collectiveArgs, retFlag=False):
         retObj = xm.all_to_all(collectiveArgs.ipTensor, 0, 0, collectiveArgs.world_size)
         collectiveArgs.opTensor = retObj
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
         if retFlag:
             return retObj
 
@@ -51,6 +55,8 @@ class PyTorchTPUBackend(backendFunctions):
     def all_gather(self, collectiveArgs, retFlag=False):
         retObj = xm.all_gather(collectiveArgs.ipTensor, dim=0)
         collectiveArgs.opTensor = retObj
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
         if retFlag:
             return retObj
 

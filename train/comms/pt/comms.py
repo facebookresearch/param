@@ -159,9 +159,7 @@ class commsCollBench(paramCommsBench):
         # Initial warmup iters.
         for _ in range(self.collectiveArgs.numWarmupIters):
             if comm_fn is not None:
-                self.collectiveArgs.waitObj.append(
-                    comm_fn(self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp)
-                )
+                comm_fn(self.collectiveArgs)
             if compute_fn is not None:
                 for _ in range(self.collectiveArgs.numComputePerColl):
                     compute_fn(self.collectiveArgs)
@@ -179,9 +177,7 @@ class commsCollBench(paramCommsBench):
             self.setTensorVal(self.collectiveArgs.opTensor)
             start = time.monotonic()  # available only in py3
             if comm_fn is not None:
-                self.collectiveArgs.waitObj.append(
-                    comm_fn(self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp)
-                )
+                comm_fn(self.collectiveArgs)
             if compute_fn is not None:
                 for _ in range(self.collectiveArgs.numComputePerColl):
                     # TODO: investigate the cache effect
@@ -525,9 +521,7 @@ class commsCollBench(paramCommsBench):
             finally:
                 assert self.collectiveArgs.reducescatter_allgather_qcomm is None
 
-        self.collectiveArgs.waitObj.append(
-            backendFuncs.all_gather(self.collectiveArgs, retFlag=True)
-        )
+        backendFuncs.all_gather(self.collectiveArgs)
         backendFuncs.complete_accel_ops(self.collectiveArgs)
 
         if global_rank == 0:

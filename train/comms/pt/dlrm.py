@@ -863,18 +863,14 @@ class commsDLRMBench(paramCommsBench):
                 timeElapsedTensor.nelement() * timeElapsedTensor.element_size()
             )
             self.collectiveArgs.numElements = timeElapsedTensor.nelement()
-            self.collectiveArgs.waitObj.append(
-                self.backendFuncs.all_gather(self.collectiveArgs, retFlag=True)
-            )
+            self.backendFuncs.all_gather(self.collectiveArgs)
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
             memory_tensor = torch.tensor(combined_memory_list, device=curDevice)
             memory_tensor_list = [torch.ones_like(memory_tensor) for _ in range(world_size)]
             self.collectiveArgs.ipTensor = memory_tensor
             self.collectiveArgs.tensorList = memory_tensor_list
-            self.collectiveArgs.waitObj.append(
-                self.backendFuncs.all_gather(self.collectiveArgs, retFlag=True)
-            )
+            self.backendFuncs.all_gather(self.collectiveArgs)
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
             sum_latency = 0.0

@@ -103,6 +103,9 @@ class PyTorchDistBackend(backendFunctions):
             else:
                 retObj = _dequantize(quantized)
 
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
         if retFlag:
             return retObj
 
@@ -128,6 +131,9 @@ class PyTorchDistBackend(backendFunctions):
             else:
                 retObj = _dequantize(quantized)
 
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
         if retFlag:
             return retObj
 
@@ -143,6 +149,9 @@ class PyTorchDistBackend(backendFunctions):
                 group=collectiveArgs.group,
                 async_op=collectiveArgs.asyncOp,
             )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(work)
 
         if retFlag:
             return work
@@ -166,6 +175,10 @@ class PyTorchDistBackend(backendFunctions):
                 group=collectiveArgs.group,
                 async_op=collectiveArgs.asyncOp,
             )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(work)
+
         if retFlag:
             return work
 
@@ -176,6 +189,10 @@ class PyTorchDistBackend(backendFunctions):
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
         if retFlag:
             return retObj
 
@@ -186,6 +203,10 @@ class PyTorchDistBackend(backendFunctions):
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
         if retFlag:
             return retObj
 
@@ -226,6 +247,10 @@ class PyTorchDistBackend(backendFunctions):
 
     def barrier(self, collectiveArgs, name="dummy", retFlag=False):
         retObj = dist.barrier(collectiveArgs.group, async_op=collectiveArgs.asyncOp)
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
         if retFlag:
             return retObj
 

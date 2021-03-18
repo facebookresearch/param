@@ -368,11 +368,7 @@ class commsTraceReplayBench(paramCommsBench):
             self.prepComms(curComm)
 
             if curComm["comms"] in self.backendFuncs.collectiveFunc.keys():
-                self.collectiveArgs.waitObj.append(
-                    self.backendFuncs.collectiveFunc[curComm["comms"]](
-                        self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp
-                    )
-                )
+                self.backendFuncs.collectiveFunc[curComm["comms"]](self.collectiveArgs)
             elif curComm["comms"] == "wait":
                 self.backendFuncs.complete_single_op(self.collectiveArgs)
             else:
@@ -415,9 +411,7 @@ class commsTraceReplayBench(paramCommsBench):
             self.warmUpBench(commsParams)
 
         # sync everything before starting real runs
-        self.collectiveArgs.waitObj.append(
-            self.backendFuncs.barrier(self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp)
-        )
+        self.backendFuncs.barrier(self.collectiveArgs)
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
 
         if self.backendFuncs.get_global_rank() == 0:
@@ -448,10 +442,8 @@ class commsTraceReplayBench(paramCommsBench):
             begin = time.monotonic()
             with record_function(curBlockStack):
                 if collName in self.backendFuncs.collectiveFunc.keys():
-                    self.collectiveArgs.waitObj.append(
-                        self.backendFuncs.collectiveFunc[collName](
-                            self.collectiveArgs, retFlag=True
-                        )
+                    self.backendFuncs.collectiveFunc[collName](
+                        self.collectiveArgs, retFlag=True
                     )
                 elif collName == "wait":
                     self.backendFuncs.complete_single_op(self.collectiveArgs)
@@ -460,9 +452,7 @@ class commsTraceReplayBench(paramCommsBench):
                     pass
 
                 if self.is_blocking:
-                    self.collectiveArgs.waitObj.append(
-                        self.backendFuncs.barrier(self.collectiveArgs, retFlag=self.collectiveArgs.asyncOp)
-                    )
+                    self.backendFuncs.barrier(self.collectiveArgs)
                     self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
             end = time.monotonic()
@@ -501,9 +491,7 @@ class commsTraceReplayBench(paramCommsBench):
                 )
 
         # make sure all ops are completed
-        self.collectiveArgs.waitObj.append(
-            self.backendFuncs.barrier(self.collectiveArgs, retFlag=True)
-        )
+        self.backendFuncs.barrier(self.collectiveArgs)
         self.backendFuncs.complete_accel_ops(self.collectiveArgs)
         self.backendFuncs.clear_memory()
 
