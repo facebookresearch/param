@@ -11,7 +11,7 @@ import argparse
 import logging
 import time
 
-import comms_utils as comms_utils
+import comms_utils
 import numpy as np
 
 # pytorch

@@ -14,7 +14,7 @@ import time
 from os import path
 from typing import Dict, List, Set
 
-import comms_utils as comms_utils
+import comms_utils
 import numpy as np
 from comms_utils import paramCommsBench
 from torch.autograd.profiler import record_function

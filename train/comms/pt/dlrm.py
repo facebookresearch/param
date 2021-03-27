@@ -22,7 +22,7 @@ import subprocess
 
 import dlrm_data as dd
 from pytorch_dist_backend import PyTorchDistBackend
-import comms_utils as comms_utils
+import comms_utils
 from comms_utils import paramCommsBench
 
 # All-to-all classes/functions
