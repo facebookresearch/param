@@ -228,12 +228,11 @@ class commsTraceReplayBench(paramCommsBench):
         maxOutMsgsize = 0
         self.num_msg = len(self.comms_trace)
         self.max_msg_cnt = self.num_msg if self.max_msg_cnt == 0 else self.max_msg_cnt
-        # FIXME: ideally, need to know actually elemement size of datatype indicated in the trace
-        elem_size = 4
         # first pass to know the statistics and get required info.
         for curComm in self.comms_trace[:self.max_msg_cnt]:
             # record the current comm
             collName = curComm["comms"]
+            curBlocks = curComm["marker_stack"] if "marker_stack" in curComm else []
             if collName not in self.collTraceStat.keys():
                 self.collTraceStat[collName] = []
                 self.collLat[collName] = []
@@ -244,15 +243,14 @@ class commsTraceReplayBench(paramCommsBench):
                     self.collOutMsgSizes[collName] = []
                     self.collOutUniMsgSizes[collName] = set()
             if "in_msg_size" in curComm:
-                self.collInMsgSizes[collName].append(curComm["in_msg_size"]*elem_size)
-                self.collInUniMsgSizes[collName].add(curComm["in_msg_size"]*elem_size)
-                self.collOutMsgSizes[collName].append(curComm["out_msg_size"]*elem_size)
-                self.collOutUniMsgSizes[collName].add(curComm["out_msg_size"]*elem_size)
-                maxInMsgsize = max(curComm["in_msg_size"]*elem_size, maxInMsgsize)
-                maxOutMsgsize = max(curComm["out_msg_size"]*elem_size, maxOutMsgsize)
+                self.collInMsgSizes[collName].append(curComm["in_msg_size"])
+                self.collInUniMsgSizes[collName].add(curComm["in_msg_size"])
+                self.collOutMsgSizes[collName].append(curComm["out_msg_size"])
+                self.collOutUniMsgSizes[collName].add(curComm["out_msg_size"])
+                maxInMsgsize = max(curComm["in_msg_size"], maxInMsgsize)
+                maxOutMsgsize = max(curComm["out_msg_size"], maxOutMsgsize)
             # get info sorted by code block
-            # TODO: should we care about the comms without any markers?
-            for curBlock in curComm["marker_stack"]:
+            for curBlock in curBlocks:
                 if curBlock not in self.comms_blocks:
                     self.comms_blocks[curBlock] = []
                 # only add entries if on dry run, otherwise, we'll deal with later during replay w/ more info
@@ -261,8 +259,8 @@ class commsTraceReplayBench(paramCommsBench):
                         self.comms_blocks[curBlock].append(
                             {
                                 "comms": collName,
-                                "in_msg_size_bytes": curComm["in_msg_size"]*elem_size,
-                                "out_msg_size_bytes": curComm["out_msg_size"]*elem_size,
+                                "in_msg_size": curComm["in_msg_size"],
+                                "out_msg_size": curComm["out_msg_size"],
                             }
                         )
                     else:
@@ -341,19 +339,6 @@ class commsTraceReplayBench(paramCommsBench):
             # only one tensor required for allreduce, reduce and broadcast
             self.collectiveArgs.opTensor = self.collectiveArgs.ipTensor
 
-    # TODO: recursive call to get the proper marker stack for prettier trace in Kineto
-    def commStack(self, blockStack, blockname, curComm):
-        if self.blockStack[-1] != curComm["marker_stack"][-1]:
-            # a new stack is encouter
-            pass
-        with record_function(blockname):
-            # do comms
-            if len(blockStack) > 0:
-                nextBlock = blockStack.pop()
-                nextComm = next(self.comms_trace)
-                self.commStack(blockStack, nextBlock, nextComm)
-            pass
-
     def warmUpBench(self, commsParams):
         for cnt, curComm in enumerate(self.comms_trace[:self.max_msg_cnt]):
             if curComm["comms"] not in self.allowList:
@@ -403,7 +388,7 @@ class commsTraceReplayBench(paramCommsBench):
             "comms": "wait",
         }
         NOTE:
-            - this format is subject to be changed/defined later
+            - this format is subject to be changed anytime
             - the unit of all size fields is # of elements (not bytes)
         """
         # warm-up
@@ -472,7 +457,7 @@ class commsTraceReplayBench(paramCommsBench):
             self.traceWithPerf.append(curComm)
 
             # categorized by the marker
-            for curBlock in curComm["marker_stack"]:
+            for curBlock in curBlocks:
                 elem_size = self.collectiveArgs.ipTensor.element_size()
                 self.comms_blocks[curBlock].append(
                     {
@@ -522,7 +507,6 @@ class commsTraceReplayBench(paramCommsBench):
             # writeCommDetails(self.comms_blocks, rank=comms_world_info.global_rank)
 
         if not self.is_dry_run:
-            # dump trace sorted with block and with latency if not dry run
             writeCommDetails(self.traceWithPerf, folder=self.out_path, rank=comms_world_info.global_rank)
             # TODO: collect perf. from all ranks to rank 0 and detect any imbalanced perf?
             self.backendFuncs.barrier(self.collectiveArgs)
