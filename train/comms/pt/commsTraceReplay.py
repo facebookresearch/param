@@ -437,8 +437,7 @@ class commsTraceReplayBench(paramCommsBench):
                     pass
 
                 if self.is_blocking:
-                    self.backendFuncs.barrier(self.collectiveArgs)
-                    self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+                    self.backendFuncs.sync_barrier(self.collectiveArgs)
 
             end = time.monotonic()
             latency = (end - begin) * 1e6  # make it microsecond

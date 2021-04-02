@@ -211,6 +211,13 @@ class backendFunctions(ABC):
         pass
 
     @abstractmethod
+    def barrier(self, collectiveArgs, name="dummy"):
+        pass
+
+    def sync_barrier(self, collectiveArgs, desc="world"):
+        self.barrier(collectiveArgs, name=desc)
+
+    @abstractmethod
     def get_reduce_op(self, opName):
         pass
 

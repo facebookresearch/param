@@ -254,6 +254,10 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    def sync_barrier(self, collectiveArgs, desc="dummy"):
+        self.barrier(collectiveArgs, name=desc)
+        self.complete_accel_ops(collectiveArgs)
+
     def get_reduce_op(self, opName):
         if opName == "sum":
             return dist.ReduceOp.SUM

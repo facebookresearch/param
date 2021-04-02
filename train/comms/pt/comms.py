@@ -21,7 +21,6 @@ from comms_utils import paramCommsBench
 
 
 ### TODO: add these to class variables?
-supportedCommStyle = [0, 1]  # 0 : non-blocking, 1 : blocking.
 supportedCollectives = [
     "reduce",
     "all_reduce",
@@ -129,13 +128,6 @@ class commsCollBench(paramCommsBench):
             )
             comms_utils.gracefulExit()
 
-        if args.z not in supportedCommStyle:
-            print(
-                "\t ERROR: Specified blocking: %d is not one of the supported commstyle: %s"
-                % (args.z, str(supportedCommStyle))
-            )
-            comms_utils.gracefulExit()
-
         args.b = comms_utils.parsesize(args.b)
         args.e = comms_utils.parsesize(args.e)
         args.dtype = self.dtypeMap[args.data_type]
@@ -153,6 +145,10 @@ class commsCollBench(paramCommsBench):
         if args.device == "cpu" and args.backend == "nccl":
             raise ValueError("NCCL is not supported for device type CPU")
 
+        if args.c == 1 and args.z == 0:
+            logging.warning("Data validation is not supported for non-blocking mode...disable validation check and proceed...")
+            args.c = 0
+
     def runColl(self, comm_fn=None, compute_fn=None):
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
         numElements = self.collectiveArgs.numElements
@@ -165,16 +161,15 @@ class commsCollBench(paramCommsBench):
                     compute_fn(self.collectiveArgs)
             if not self.collectiveArgs.asyncOp:  # should be sychronous, do wait.
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-        self.backendFuncs.complete_accel_ops(
-            self.collectiveArgs
-        )  # should be done regardless of blocking or non-blocking.
 
-        self.backendFuncs.barrier(self.collectiveArgs, "runcoll")
+        self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
         # Measuring time.
         elapsedTimeNS = 0.0
         for _ in range(self.collectiveArgs.numIters):
-            self.setTensorVal(self.collectiveArgs.opTensor)
+            if not self.collectiveArgs.asyncOp:  # should be sychronous, do barrier and wait for collective
+                self.setTensorVal(self.collectiveArgs.opTensor) # reset tensor values
+                self.backendFuncs.sync_barrier(self.collectiveArgs)
             start = time.monotonic()  # available only in py3
             if comm_fn is not None:
                 comm_fn(self.collectiveArgs)
@@ -184,7 +179,7 @@ class commsCollBench(paramCommsBench):
                     # Flush the cache
                     # _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
                     compute_fn(self.collectiveArgs)
-            if not self.collectiveArgs.asyncOp:  # should be sychronous, do wait.
+            if not self.collectiveArgs.asyncOp:  # should be sychronous, wait for the collective
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             # Measuring time.
             elapsedTimeNS += (
@@ -215,7 +210,7 @@ class commsCollBench(paramCommsBench):
         )
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
 
-        self.backendFuncs.barrier(self.collectiveArgs, "runcoll2")
+        self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_end")
         return (avgIterNS, algBW, busBW, memSize, x)
 
     def initCollectiveArgs(self, commsParams):
@@ -361,7 +356,7 @@ class commsCollBench(paramCommsBench):
 
                 latencyAcrossRanks = np.array(latencyAcrossRanks)
 
-            # print("AAA lat size ", curSize, " time ", latencyAcrossRanks)
+            logging.debug(latencyAcrossRanks)
 
             p50 = np.percentile(latencyAcrossRanks, 50)
             p75 = np.percentile(latencyAcrossRanks, 75)
@@ -495,7 +490,7 @@ class commsCollBench(paramCommsBench):
             del ipTensor
             del opTensor
             backendFuncs.clear_memory()
-            self.backendFuncs.barrier(self.collectiveArgs, "curSize")
+            self.backendFuncs.sync_barrier(self.collectiveArgs, desc=f"curSize_{curSize}")
 
         # Push the list to device, then do an all-gather.
         timeElapsedTensor = torch.tensor(timeElapsedList, device=curDevice)
@@ -530,7 +525,7 @@ class commsCollBench(paramCommsBench):
             )
 
         # wait rank 0 reports results to avoid other ranks mess up the output
-        self.backendFuncs.barrier(self.collectiveArgs, "benchtime")
+        self.backendFuncs.sync_barrier(self.collectiveArgs, "benchtime")
 
     def runBench(self, comms_world_info, commsParams):
         # Init the desired backend
@@ -554,7 +549,6 @@ class commsCollBench(paramCommsBench):
                 logging.critical("PyTorch UCC not implemented? {}"
                         .format(repr(ve)))
             raise
-        return
 
 
 def main():
