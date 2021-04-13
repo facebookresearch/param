@@ -49,12 +49,14 @@ class commsTraceReplayBench(paramCommsBench):
         self.do_warm_up = True
         self.allowList = ""
         self.out_path = "/tmp/replayedTrace"
+        self.colls_per_batch = -1
 
         self.collInMsgSizes: Dict[str, List] = {}
         self.collInUniMsgSizes: Dict[str, Set] = {}
         self.collOutMsgSizes: Dict[str, List] = {}
         self.collOutUniMsgSizes: Dict[str, Set] = {}
 
+        self.batchLat = []
         self.collLat: Dict[str, List] = {}
         self.collTraceStat: Dict[str, List] = {}
 
@@ -123,6 +125,12 @@ class commsTraceReplayBench(paramCommsBench):
             type=str,
             default=self.out_path,
             help="Output path to write the replayed trace for post performance analysis",
+        )
+        parser.add_argument(
+            "--colls-per-batch",
+            type=int,
+            default=self.colls_per_batch,
+            help="Toggle to set number of consecutive collectives in a batch. This also enables per batch latency stats."
         )
         return parser.parse_args()
 
@@ -222,6 +230,23 @@ class commsTraceReplayBench(paramCommsBench):
                     zip(lats, self.collInMsgSizes[coll], self.collOutMsgSizes[coll])
                 ) if coll in self.collInMsgSizes else lats
                 logger.debug(f"Latency and size of First ten: {msgSizeAndLatency[:10]}")
+
+            if self.colls_per_batch > 0:
+                print("\n{} Batch Latency Performance {}".format("=" * 20, "=" * 20))
+                BatchLat = np.array(self.batchLat)
+                print(
+                        f"Batch Latency (ms)\n {'Total':>10} {'Max.':>10} {'Min.':>10} {'Average':>10} {'p50':>10} {'p95':>10}"
+                    )
+                print(
+                    " {:10.2f} {:10.2f} {:10.2f} {:10.2f} {:10.2f} {:10.2f}".format(
+                        BatchLat.sum(),
+                        BatchLat.max(),
+                        BatchLat.min(),
+                        np.average(BatchLat),
+                        np.percentile(BatchLat, 50),
+                        np.percentile(BatchLat, 95),
+                    )
+                )
 
     def initTraceStat(self):
         maxInMsgsize = 0
@@ -406,8 +431,13 @@ class commsTraceReplayBench(paramCommsBench):
             for coll, sizes in self.collInMsgSizes.items():
                 logger.info(f"\t{coll}: {len(sizes)}")
 
+        batch_num = 1
+        coll_in_batch_num = 0
         # second pass to perform collectives
         for cnt, curComm in enumerate(self.comms_trace[:self.max_msg_cnt]):
+            if self.colls_per_batch > 0:
+                if coll_in_batch_num == 0:
+                    batch_begin = time.monotonic()
             if curComm["comms"] not in self.allowList:
                 continue
             collName = curComm["comms"]
@@ -435,6 +465,17 @@ class commsTraceReplayBench(paramCommsBench):
                 else:
                     # not supported collective, skip
                     pass
+
+                # calculating batch latency (batch defined by --colls-per-batch)
+                if collName == "wait":
+                    if self.colls_per_batch > 0:
+                        coll_in_batch_num += 1
+                        if coll_in_batch_num == self.colls_per_batch:
+                            batch_end = time.monotonic()
+                            batch_latency = (batch_end - batch_begin) * 1e3 # make it millisecond
+                            coll_in_batch_num = 0
+                            batch_num += 1
+                            self.batchLat.append(batch_latency)
 
                 if self.is_blocking:
                     self.backendFuncs.sync_barrier(self.collectiveArgs)
@@ -573,6 +614,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.do_warm_up = not args.no_warm_up
         self.allowList = args.allow_ops
         self.out_path = args.output_path
+        self.colls_per_batch = args.colls_per_batch
 
         if commsParams.bitwidth < 32:
             logger.info(f"communication bitwidth set to {commsParams.bitwidth}")
