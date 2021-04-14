@@ -276,9 +276,14 @@ class PyTorchDistBackend(backendFunctions):
 
     # Memory related
     def get_mem_size(self, collectiveArgs):
-        return (
-            collectiveArgs.ipTensor.nelement() * collectiveArgs.ipTensor.element_size()
-        )
+        _sizeBytes = 0
+        # opTensor could be a list of tensor for all_gather/gather, get the aggregated size
+        if isinstance(collectiveArgs.opTensor, list):
+            _sizeBytes = sum([t.nelement() * t.element_size() for t in collectiveArgs.opTensor])
+        else:
+            _sizeBytes = collectiveArgs.opTensor.nelement() * collectiveArgs.opTensor.element_size()
+
+        return _sizeBytes
 
     def alloc_random(self, sizeArr, curRankDevice="cuda", dtype=torch.float32, scaleFactor=1.0):
         if dtype in (torch.uint8, torch.int16, torch.int32, torch.long):

@@ -202,13 +202,15 @@ class commsCollBench(paramCommsBench):
         elapsedTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
+
+        memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
+
         avgIterNS, algBW = comms_utils.getAlgBW(
-            elapsedTimeNS, self.collectiveArgs.dataSize, self.collectiveArgs.numIters
+            elapsedTimeNS, memSize, self.collectiveArgs.numIters
         )
         busBW = self.backendFuncs.getBusBW(
             self.collectiveArgs.collective, algBW, self.collectiveArgs.world_size
         )
-        memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
 
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_end")
         return (avgIterNS, algBW, busBW, memSize, x)
@@ -362,16 +364,8 @@ class commsCollBench(paramCommsBench):
             p75 = np.percentile(latencyAcrossRanks, 75)
             p95 = np.percentile(latencyAcrossRanks, 95)
 
-            self.collectiveArgs.dataSize = curSize
-            avgIterNS, algBW = comms_utils.getAlgBW(
-                p50 * 1e3, self.collectiveArgs.dataSize, self.collectiveArgs.numIters
-            )
-            busBW = self.backendFuncs.getBusBW(
-                self.collectiveArgs.collective, algBW, self.collectiveArgs.world_size
-            )
-
-            # refine busBW and algBW
-            busBW *= commsParams.bitwidth / 32.0
+            # adjust busBW
+            busBW = results[curSize]["busBW"] * (commsParams.bitwidth / 32.0)
 
             print(
                 "\tCOMMS-RES\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s"
@@ -381,7 +375,7 @@ class commsCollBench(paramCommsBench):
                     str("%.1f" % (p50)),
                     str("%.1f" % (p75)),
                     str("%.1f" % (p95)),
-                    str("%.3f" % (algBW)),
+                    str("%.3f" % (results[curSize]["algBW"])),
                     str("%.3f" % (busBW)),
                 )
             )
