@@ -116,17 +116,24 @@ class commsCollBench(paramCommsBench):
             "--root", type=int, default=0, help="root process for reduce benchmark"
         )  # root process for reduce (and gather, scatter, bcast, etc., if support in the future)
         # TODO: check the correctness of root, should be between 0 to [world_size -1]
+        parser.add_argument(
+            "--pair",
+            type=int,
+            default=0,
+            help="enable pair mode",
+        )
+        parser.add_argument(
+            "--collective-pair",
+            type=str,
+            default="all_reduce",
+            help="Collective pair operation to be evaluated",
+            choices=supportedCollectives,
+        )  # collective op to pair with the other collective, --collective should be non-empty
 
         return parser.parse_known_args()
 
     def checkArgs(self, args):
         super().checkArgs(args)
-        if args.collective not in supportedCollectives:
-            print(
-                "\t ERROR: Specified collective: %s is not one of the supported collectives: %s. Make sure the input is using the correct case."
-                % (args.collective, str(supportedCollectives))
-            )
-            comms_utils.gracefulExit()
 
         args.b = comms_utils.parsesize(args.b)
         args.e = comms_utils.parsesize(args.e)
@@ -149,13 +156,17 @@ class commsCollBench(paramCommsBench):
             logging.warning("Data validation is not supported for non-blocking mode...disable validation check and proceed...")
             args.c = 0
 
-    def runColl(self, comm_fn=None, compute_fn=None):
+    def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None):
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
         numElements = self.collectiveArgs.numElements
+        if comm_fn_pair is not None:
+            numElements_pair = self.collectiveArgs.numElements_pair
         # Initial warmup iters.
         for _ in range(self.collectiveArgs.numWarmupIters):
             if comm_fn is not None:
                 comm_fn(self.collectiveArgs)
+            if comm_fn_pair is not None:
+                comm_fn_pair(self.collectiveArgs, pair=True)
             if compute_fn is not None:
                 for _ in range(self.collectiveArgs.numComputePerColl):
                     compute_fn(self.collectiveArgs)
@@ -169,10 +180,14 @@ class commsCollBench(paramCommsBench):
         for _ in range(self.collectiveArgs.numIters):
             if not self.collectiveArgs.asyncOp:  # should be sychronous, do barrier and wait for collective
                 self.setTensorVal(self.collectiveArgs.opTensor) # reset tensor values
+                if comm_fn_pair is not None:
+                    self.setTensorVal(self.collectiveArgs.opTensor_pair)
                 self.backendFuncs.sync_barrier(self.collectiveArgs)
             start = time.monotonic()  # available only in py3
             if comm_fn is not None:
                 comm_fn(self.collectiveArgs)
+            if comm_fn_pair is not None:
+                comm_fn_pair(self.collectiveArgs, pair=True)
             if compute_fn is not None:
                 for _ in range(self.collectiveArgs.numComputePerColl):
                     # TODO: investigate the cache effect
@@ -198,6 +213,18 @@ class commsCollBench(paramCommsBench):
             x = self.collectiveArgs.opTensor[
                 numElements - 1
             ].item()  # to ensure collective won't be optimized away.
+        x_pair = None
+        if comm_fn_pair is not None:
+            if isinstance(self.collectiveArgs.opTensor_pair, list):
+                # allgather is a list of tensors
+                x_pair = self.collectiveArgs.opTensor_pair[-1][
+                    -1
+                ].item()  # to ensure collective won't be optimized away.
+            else:
+                x_pair = self.collectiveArgs.opTensor_pair[
+                    numElements_pair - 1
+                ].item()  # to ensure collective won't be optimized away.
+
 
         elapsedTimeNS += (
             end - start
@@ -208,12 +235,23 @@ class commsCollBench(paramCommsBench):
         avgIterNS, algBW = comms_utils.getAlgBW(
             elapsedTimeNS, memSize, self.collectiveArgs.numIters
         )
+        if comm_fn_pair is not None:
+            _, algBW_pair = comms_utils.getAlgBW(
+                elapsedTimeNS, self.collectiveArgs.dataSize_pair, self.collectiveArgs.numIters
+            )
+            algBW += algBW_pair
         busBW = self.backendFuncs.getBusBW(
             self.collectiveArgs.collective, algBW, self.collectiveArgs.world_size
         )
+        if comm_fn_pair is not None:
+            busBW_pair = self.backendFuncs.getBusBW(
+                self.collectiveArgs.collective_pair, algBW_pair, self.collectiveArgs.world_size
+            )
+            busBW += busBW_pair
+        memSize = self.backendFuncs.get_mem_size(self.collectiveArgs, pair=(comm_fn_pair is not None))
 
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_end")
-        return (avgIterNS, algBW, busBW, memSize, x)
+        return (avgIterNS, algBW, busBW, memSize, x, x_pair)
 
     def initCollectiveArgs(self, commsParams):
         # lint was complaining that benchTime was too complex!
@@ -255,6 +293,8 @@ class commsCollBench(paramCommsBench):
         op = self.backendFuncs.get_reduce_op("sum")
         self.collectiveArgs.op = op
         self.collectiveArgs.srcOrDst = commsParams.srcOrDst
+        self.collectiveArgs.pair = commsParams.pair
+        self.collectiveArgs.collective_pair = commsParams.collective_pair
 
         if commsParams.bitwidth < 32:
             if commsParams.dtype != torch.float32:
@@ -340,10 +380,17 @@ class commsCollBench(paramCommsBench):
     def reportBenchTime(self, commsParams, allSizes, tensorList, results):
         self.collectiveArgs.collective = commsParams.collective
         self.collectiveArgs.numIters = 1  # commsParams.numIters
+        self.collectiveArgs.pair = commsParams.pair
+        self.collectiveArgs.collective_pair = commsParams.collective_pair
 
-        print(
-            "\n\tCOMMS-RES\tsize (B)\t num-elements\t Latency(us):p50\tp75\t\tp95\t algBW(GB/s)\t busBW(GB/s)"
-        )
+        if self.collectiveArgs.pair == 0:
+            print(
+                "\n\tCOMMS-RES\tsize (B)\t num-elements\t Latency(us):p50\tp75\t\tp95\t algBW(GB/s)\t busBW(GB/s)"
+            )
+        else:
+            print(
+                "\n\tCOMMS-RES\ttotal-pair-size (B)\t num-elements\t num-elements-pair\t Latency(us):p50\tp75\t\tp95\t algBW(GB/s)\t busBW(GB/s)"
+            )
         for idx, curSize in enumerate(allSizes):
             if commsParams.backend == "xla":
                 latencyAcrossRanks = torch.transpose(
@@ -367,18 +414,33 @@ class commsCollBench(paramCommsBench):
             # adjust busBW
             busBW = results[curSize]["busBW"] * (commsParams.bitwidth / 32.0)
 
-            print(
-                "\tCOMMS-RES\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s"
-                % (
-                    results[curSize]["memSize"],
-                    str("%d" % (results[curSize]["num_elements"])),
-                    str("%.1f" % (p50)),
-                    str("%.1f" % (p75)),
-                    str("%.1f" % (p95)),
-                    str("%.3f" % (results[curSize]["algBW"])),
-                    str("%.3f" % (busBW)),
+            if self.collectiveArgs.pair == 0:
+                print(
+                    "\tCOMMS-RES\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s"
+                    % (
+                        results[curSize]["memSize"],
+                        str("%d" % (results[curSize]["num_elements"])),
+                        str("%.1f" % (p50)),
+                        str("%.1f" % (p75)),
+                        str("%.1f" % (p95)),
+                        str("%.3f" % (results[curSize]["algBW"])),
+                        str("%.3f" % (busBW)),
+                    )
                 )
-            )
+            else:
+                print(
+                    "\tCOMMS-RES\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s"
+                    % (
+                        results[curSize]["memSize"],
+                        str("%d" % (results[curSize]["num_elements"])),
+                        str("%d" % (results[curSize]["num_elements_pair"])),
+                        str("%.1f" % (p50)),
+                        str("%.1f" % (p75)),
+                        str("%.1f" % (p95)),
+                        str("%.3f" % (results[curSize]["algBW"])),
+                        str("%.3f" % (busBW)),
+                    )
+                )
 
     def benchTime(self, index, commsParams, backendFuncs):
         # Get NW stack specific parameters
@@ -395,7 +457,7 @@ class commsCollBench(paramCommsBench):
 
         results = {}
         timeElapsedList = []
-        for curSize in allSizes:
+        for (_, curSize) in enumerate(allSizes):
             # Allocating memory.
             numElements = int(curSize // commsParams.element_size)
             scaleFactor = numElements * numElements
@@ -456,9 +518,64 @@ class commsCollBench(paramCommsBench):
             self.collectiveArgs.numElements = numElements
             self.collectiveArgs.waitObj = []
 
+            collectiveFunc_pair = None
+            if commsParams.pair != 0:
+                curSize_pair = curSize
+                # Allocating memory.
+                numElements_pair = int(curSize_pair // commsParams.element_size)
+                scaleFactor_pair = numElements_pair * numElements_pair
+                if commsParams.collective_pair == "all_to_all":
+                    # numElements = int(numElements // world_size)  # assuming that world_size won't be zero!
+                    scaleFactor_pair = 1
+
+                if commsParams.dcheck == 1:
+                    # use all ones for easy data validation check
+                    ipTensor_pair = backendFuncs.alloc_ones(
+                        [numElements_pair], curDevice, commsParams.dtype, self.initVal
+                    )
+                else:
+                    ipTensor_pair = backendFuncs.alloc_random(
+                        [numElements_pair], curDevice, commsParams.dtype, scaleFactor_pair
+                    )
+
+                opTensor_pair = ipTensor_pair
+                collectiveFunc_pair = None
+
+                if commsParams.mode != "compute":  # comms specific initializations
+                    if commsParams.collective_pair.startswith("all_to_all"):
+                        # all_to_all(v) requires two tensors
+                        opTensor_pair = backendFuncs.alloc_random(
+                            [numElements_pair], curDevice, commsParams.dtype, scaleFactor_pair
+                        )
+                        # all_to_allv requires tensors to specify split
+                        if commsParams.collective_pair == "all_to_allv":
+                            self.collectiveArgs.ipTensor_split_pair = [
+                                int(numElements_pair // world_size) for i in range(world_size)
+                            ]
+                            self.collectiveArgs.opTensor_split_pair = [
+                                int(numElements_pair // world_size) for i in range(world_size)
+                            ]
+                    elif commsParams.collective_pair == "all_gather":
+                        # allgather requires a tensor list, e.g., List[torch.Tensor]
+                        opTensor_pair = []
+                        for _ in range(world_size):
+                            opTensor_pair.append(
+                                backendFuncs.alloc_random(
+                                    [numElements_pair], curDevice, commsParams.dtype, scaleFactor_pair
+                                )
+                            )
+                    # set corresponding function pointers
+                    collectiveFunc_pair = backendFuncs.collectiveFunc[commsParams.collective_pair]
+
+                # Setup the arguments.
+                self.collectiveArgs.ipTensor_pair = ipTensor_pair
+                self.collectiveArgs.opTensor_pair = opTensor_pair
+                self.collectiveArgs.dataSize_pair = curSize_pair
+                self.collectiveArgs.numElements_pair = numElements_pair
+
             # self.collectiveArgs has all the information on the experiment.
-            timeElapsedNS, algBW, busBW, memSize, x = self.runColl(
-                comm_fn=collectiveFunc, compute_fn=computeFunc
+            timeElapsedNS, algBW, busBW, memSize, x, x_pair = self.runColl(
+                comm_fn=collectiveFunc, compute_fn=computeFunc, comm_fn_pair=collectiveFunc_pair
             )
 
             # perfom data validation check on the final opTensor
@@ -480,9 +597,22 @@ class commsCollBench(paramCommsBench):
             else:
                 results[curSize]["num_elements"] = int(numElements)
             results[curSize]["x"] = x
+            if commsParams.pair:
+                results[curSize]["curSizePair"] = curSize_pair
+                if (commsParams.collective_pair == "all_to_all") or (
+                    commsParams.collective_pair == "all_to_allv"
+                ):
+                    results[curSize]["num_elements_pair"] = int(numElements // world_size)
+                else:
+                    results[curSize]["num_elements_pair"] = int(numElements)
+                results[curSize]["x_pair"] = x_pair
+
 
             del ipTensor
             del opTensor
+            if commsParams.pair:
+                del ipTensor_pair
+                del opTensor_pair
             backendFuncs.clear_memory()
             self.backendFuncs.sync_barrier(self.collectiveArgs, desc=f"curSize_{curSize}")
 

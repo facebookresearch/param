@@ -74,9 +74,10 @@ class PyTorchDistBackend(backendFunctions):
                 print(all_hello_msgs)
 
     # Collectives
-    def all_reduce(self, collectiveArgs, retFlag=False):
+    def all_reduce(self, collectiveArgs, retFlag=False, pair=False):
+        # pair=True mode does not support quantization
         if (collectiveArgs.allreduce_qcomm != 32 and collectiveArgs.allreduce_qcomm > 4
-            and collectiveArgs.ipTensor.dtype == torch.float32
+            and collectiveArgs.ipTensor.dtype == torch.float32 and not pair
         ):
             # note: note that quantized is a new tensor
             # that is not collectiveArgs.ipTensor.
@@ -90,14 +91,14 @@ class PyTorchDistBackend(backendFunctions):
                 collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
             )
         else:
-            quantized = collectiveArgs.ipTensor
+            quantized = collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
         retObj = dist.all_reduce(
             quantized,
             op=collectiveArgs.op,
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
-        if collectiveArgs.allreduce_qcomm != 32:
+        if collectiveArgs.allreduce_qcomm != 32 and not pair:
             if collectiveArgs.asyncOp:
                 retObj = retObj.get_future().then(_dequantize)
             else:
@@ -109,15 +110,15 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
-    def reduce(self, collectiveArgs, retFlag=False):
-        if collectiveArgs.reduce_qcomm != 32:
+    def reduce(self, collectiveArgs, retFlag=False, pair=False):
+        # pair=True mode does not support quantization
+        if collectiveArgs.reduce_qcomm != 32 and not pair:
             assert collectiveArgs.ipTensor.dtype == torch.float32
             quantized = _downcast(
                 collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
             )
         else:
-            quantized = collectiveArgs.ipTensor
-
+            quantized = collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
         retObj = dist.reduce(
             quantized,
             dst=collectiveArgs.srcOrDst,
@@ -125,7 +126,7 @@ class PyTorchDistBackend(backendFunctions):
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
-        if collectiveArgs.reduce_qcomm != 32:
+        if collectiveArgs.reduce_qcomm != 32 and not pair:
             if collectiveArgs.asyncOp:
                 retObj = retObj.get_future().then(_dequantize)
             else:
@@ -137,13 +138,14 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
-    def all_to_all(self, collectiveArgs: collectiveArgsHolder, retFlag=False):
-        if collectiveArgs.all2all_qcomm:
+    def all_to_all(self, collectiveArgs: collectiveArgsHolder, retFlag=False, pair=False):
+        # pair=True mode does not support quantization
+        if collectiveArgs.all2all_qcomm and not pair:
             work = all_to_all_internal(collectiveArgs)
         else:
             work = dist.all_to_all_single(
-                collectiveArgs.opTensor,
-                collectiveArgs.ipTensor,
+                collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
+                collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
                 None,
                 None,
                 group=collectiveArgs.group,
@@ -156,7 +158,8 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return work
 
-    def all_to_allv(self, collectiveArgs, retFlag=False):
+    def all_to_allv(self, collectiveArgs, retFlag=False, pair=False):
+        # pair=True mode does not support quantization
         if (
             collectiveArgs.all2all_qcomm
             and collectiveArgs.ipTensor.dtype == torch.float32
@@ -164,14 +167,15 @@ class PyTorchDistBackend(backendFunctions):
                 collectiveArgs.opTensor.nelement() >= collectiveArgs.quan_threshold
                 or collectiveArgs.ipTensor.nelement() >= collectiveArgs.quan_threshold
             )
+            and not pair
         ):
             work = all_to_allv_internal(collectiveArgs)
         else:
             work = dist.all_to_all_single(
-                collectiveArgs.opTensor,
-                collectiveArgs.ipTensor,
-                collectiveArgs.opTensor_split,
-                collectiveArgs.ipTensor_split,
+                collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
+                collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
+                collectiveArgs.opTensor_split if not pair else collectiveArgs.opTensor_split_pair,
+                collectiveArgs.ipTensor_split if not pair else collectiveArgs.ipTensor_split_pair,
                 group=collectiveArgs.group,
                 async_op=collectiveArgs.asyncOp,
             )
@@ -182,10 +186,10 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return work
 
-    def all_gather(self, collectiveArgs, retFlag=False):
+    def all_gather(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist.all_gather(
-            tensor_list=collectiveArgs.opTensor,
-            tensor=collectiveArgs.ipTensor,
+            tensor_list=collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
+            tensor=collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
@@ -196,9 +200,9 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
-    def broadcast(self, collectiveArgs, retFlag=False):
+    def broadcast(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist.broadcast(
-            tensor=collectiveArgs.opTensor,
+            tensor=collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
             src=collectiveArgs.srcOrDst,
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
@@ -275,13 +279,18 @@ class PyTorchDistBackend(backendFunctions):
         collectiveArgs.MMout = torch.mm(collectiveArgs.MMin1, collectiveArgs.MMin2)
 
     # Memory related
-    def get_mem_size(self, collectiveArgs):
+    def get_mem_size(self, collectiveArgs, pair=False):
         _sizeBytes = 0
         # opTensor could be a list of tensor for all_gather/gather, get the aggregated size
         if isinstance(collectiveArgs.opTensor, list):
             _sizeBytes = sum([t.nelement() * t.element_size() for t in collectiveArgs.opTensor])
         else:
             _sizeBytes = collectiveArgs.opTensor.nelement() * collectiveArgs.opTensor.element_size()
+        if pair:
+            if isinstance(collectiveArgs.opTensor_pair, list):
+                _sizeBytes += sum([t.nelement() * t.element_size() for t in collectiveArgs.opTensor_pair])
+            else:
+                _sizeBytes += collectiveArgs.opTensor_pair.nelement() * collectiveArgs.opTensor_pair.element_size()
 
         return _sizeBytes
 

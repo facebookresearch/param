@@ -333,6 +333,9 @@ class commsParamsHolder(commsParamsHolderBase):
         self.batch_size = args.batch_size
         self.benchTime = benchTime
 
+        self.pair = args.pair
+        self.collective_pair = args.collective_pair
+
 class collectiveArgsHolder:
     def __init__(self):
         # A holding object for all the parameters related to a collective operation/experiment.
@@ -370,6 +373,14 @@ class collectiveArgsHolder:
         self.dataSize = 0
         self.numElements = 0
         self.waitObj = []
+
+        self.ipTensor_split_pair = []
+        self.opTensor_split_pair = []
+
+        self.ipTensor_pair = []
+        self.opTensor_pair = []
+        self.dataSize_pair = 0
+        self.numElements_pair = 0
 
         self.all2all_qcomm = None
         self.reducescatter_allgather_qcomm = None
