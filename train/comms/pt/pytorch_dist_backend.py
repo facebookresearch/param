@@ -288,9 +288,9 @@ class PyTorchDistBackend(backendFunctions):
             _sizeBytes = collectiveArgs.opTensor.nelement() * collectiveArgs.opTensor.element_size()
         if pair:
             if isinstance(collectiveArgs.opTensor_pair, list):
-                _sizeBytes += sum([t.nelement() * t.element_size() for t in collectiveArgs.opTensor_pair])
+                _sizeBytes = sum([t.nelement() * t.element_size() for t in collectiveArgs.opTensor_pair])
             else:
-                _sizeBytes += collectiveArgs.opTensor_pair.nelement() * collectiveArgs.opTensor_pair.element_size()
+                _sizeBytes = collectiveArgs.opTensor_pair.nelement() * collectiveArgs.opTensor_pair.element_size()
 
         return _sizeBytes
 
@@ -353,9 +353,12 @@ class PyTorchDistBackend(backendFunctions):
     def get_hw_device(self):
         self.get_device()
 
-    def get_group(self, world_size):
+    def get_default_group(self, world_size):
         # return the world group to always perform collectives on default PG
         return dist.GroupMember.WORLD
+
+    def get_groups(self):
+        return self.groups
 
     def set_device(self):
         """ set current device: 'cpu' or 'cuda' """
@@ -409,7 +412,15 @@ class PyTorchDistBackend(backendFunctions):
         os.environ["WORLD_SIZE"] = str(world_size)
         os.environ["RANK"] = str(global_rank)
 
+        # default group
         dist.init_process_group(backend, rank=global_rank, world_size=world_size)
+        self.groups = []
+        self.groups.append(self.get_default_group(self.get_world_size()))
+        if backend == "nccl":
+            # non-default groups
+            for _ in range(1, self.commsParams.num_pgs):
+                pg = dist.new_group(backend=backend)
+                self.groups.append(pg)
 
     def benchmark_comms(self):
         self.initialize_backend(

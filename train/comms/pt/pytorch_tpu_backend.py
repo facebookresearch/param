@@ -145,7 +145,10 @@ class PyTorchTPUBackend(backendFunctions):
     ):
         return xm._xla_real_device(xm.xla_device())
 
-    def get_group(self, world_size):
+    def get_default_group(self, world_size):
+        pass
+
+    def get_groups(self):
         pass
 
     # Init functions

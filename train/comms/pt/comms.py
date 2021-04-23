@@ -10,6 +10,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import argparse
 import logging
 import time
+from itertools import cycle
 
 import comms_utils
 import numpy as np
@@ -121,6 +122,7 @@ class commsCollBench(paramCommsBench):
             type=int,
             default=0,
             help="enable pair mode",
+            choices=[0,1],
         )
         parser.add_argument(
             "--collective-pair",
@@ -129,6 +131,13 @@ class commsCollBench(paramCommsBench):
             help="Collective pair operation to be evaluated",
             choices=supportedCollectives,
         )  # collective op to pair with the other collective, --collective should be non-empty
+        parser.add_argument(
+            "--overlap-pair-nccl",
+            type=int,
+            default=0,
+            help="overlap collective pair with two NCCL pgs",
+            choices=[0,1],
+        ) # overlap collective pair with two NCCL pgs
 
         return parser.parse_known_args()
 
@@ -164,8 +173,12 @@ class commsCollBench(paramCommsBench):
         # Initial warmup iters.
         for _ in range(self.collectiveArgs.numWarmupIters):
             if comm_fn is not None:
+                if self.collectiveArgs.num_pgs > 1:
+                    self.collectiveArgs.group = self.collectiveArgs.groups[0]
                 comm_fn(self.collectiveArgs)
             if comm_fn_pair is not None:
+                if self.collectiveArgs.num_pgs > 1:
+                    self.collectiveArgs.group = self.collectiveArgs.groups[1]
                 comm_fn_pair(self.collectiveArgs, pair=True)
             if compute_fn is not None:
                 for _ in range(self.collectiveArgs.numComputePerColl):
@@ -183,10 +196,17 @@ class commsCollBench(paramCommsBench):
                 if comm_fn_pair is not None:
                     self.setTensorVal(self.collectiveArgs.opTensor_pair)
                 self.backendFuncs.sync_barrier(self.collectiveArgs)
+            oldAsyncOp = self.collectiveArgs.asyncOp
+            round_robin_group = cycle(self.collectiveArgs.groups)
+            if comm_fn_pair is not None:
+                self.collectiveArgs.asyncOp = True
+
             start = time.monotonic()  # available only in py3
             if comm_fn is not None:
+                self.collectiveArgs.group = next(round_robin_group)
                 comm_fn(self.collectiveArgs)
             if comm_fn_pair is not None:
+                self.collectiveArgs.group = next(round_robin_group)
                 comm_fn_pair(self.collectiveArgs, pair=True)
             if compute_fn is not None:
                 for _ in range(self.collectiveArgs.numComputePerColl):
@@ -194,6 +214,7 @@ class commsCollBench(paramCommsBench):
                     # Flush the cache
                     # _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
                     compute_fn(self.collectiveArgs)
+            self.collectiveArgs.asyncOp = oldAsyncOp
             if not self.collectiveArgs.asyncOp:  # should be sychronous, wait for the collective
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             # Measuring time.
@@ -235,22 +256,23 @@ class commsCollBench(paramCommsBench):
         avgIterNS, algBW = comms_utils.getAlgBW(
             elapsedTimeNS, memSize, self.collectiveArgs.numIters
         )
-        if comm_fn_pair is not None:
-            _, algBW_pair = comms_utils.getAlgBW(
-                elapsedTimeNS, self.collectiveArgs.dataSize_pair, self.collectiveArgs.numIters
-            )
-            algBW += algBW_pair
         busBW = self.backendFuncs.getBusBW(
             self.collectiveArgs.collective, algBW, self.collectiveArgs.world_size
         )
         if comm_fn_pair is not None:
+            memSize_pair = self.backendFuncs.get_mem_size(self.collectiveArgs, pair=True)
+            memSize += memSize_pair
+
+            _, algBW_pair = comms_utils.getAlgBW(
+                elapsedTimeNS, memSize_pair, self.collectiveArgs.numIters
+            )
+            algBW += algBW_pair
             busBW_pair = self.backendFuncs.getBusBW(
                 self.collectiveArgs.collective_pair, algBW_pair, self.collectiveArgs.world_size
             )
             busBW += busBW_pair
-        memSize = self.backendFuncs.get_mem_size(self.collectiveArgs, pair=(comm_fn_pair is not None))
 
-        self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_end")
+        self.backendFuncs.sync_barrier(self.collectiveArgs, "runColl_end")
         return (avgIterNS, algBW, busBW, memSize, x, x_pair)
 
     def initCollectiveArgs(self, commsParams):
@@ -265,6 +287,8 @@ class commsCollBench(paramCommsBench):
         ) = comms_utils.get_rank_details(
             self.backendFuncs
         )  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes.
+        groups = self.backendFuncs.get_groups()
+        num_pgs = len(groups)
 
         comms_utils.fixBeginSize(
             commsParams, world_size
@@ -283,6 +307,8 @@ class commsCollBench(paramCommsBench):
 
         # self.collectiveArgs = comms_utils.collectiveArgsHolder()
         self.collectiveArgs.group = group
+        self.collectiveArgs.groups = groups
+        self.collectiveArgs.num_pgs = num_pgs
         self.collectiveArgs.device = curDevice
         self.collectiveArgs.world_size = world_size
         self.collectiveArgs.numIters = commsParams.numIters
@@ -712,6 +738,9 @@ def main():
     commsParams = comms_utils.commsParamsHolder(
         args, element_size, collBenchObj.benchTime
     )
+
+    if args.backend == "nccl" and args.pair == 1 and args.overlap_pair_nccl == 1:
+        commsParams.num_pgs = 2
     collBenchObj.runBench(comms_world_info, commsParams)
 
 

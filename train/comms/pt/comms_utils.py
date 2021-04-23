@@ -99,7 +99,7 @@ def get_rank_details(backendFuncs):
     local_rank = backendFuncs.get_local_rank()
     global_rank = backendFuncs.get_global_rank()
     world_size = backendFuncs.get_world_size()
-    group = backendFuncs.get_group(world_size)
+    group = backendFuncs.get_default_group(world_size)
     curDevice = backendFuncs.get_device()
     curHwDevice = backendFuncs.get_hw_device()
 
@@ -269,7 +269,11 @@ class backendFunctions(ABC):
         pass
 
     @abstractmethod
-    def get_group(self, world_size):
+    def get_default_group(self, world_size):
+        pass
+
+    @abstractmethod
+    def get_groups(self):
         pass
 
     # Init functions
@@ -306,6 +310,8 @@ class commsParamsHolderBase:
         self.quant_a2a_embedding_dim = args.quant_a2a_embedding_dim
         self.quant_threshold = args.quant_threshold
 
+        self.num_pgs = 1
+
 class commsParamsHolder(commsParamsHolderBase):
     def __init__(self, args, element_size, benchTime):
         # A holding object for the input parameters from collective benchmark
@@ -340,6 +346,8 @@ class collectiveArgsHolder:
     def __init__(self):
         # A holding object for all the parameters related to a collective operation/experiment.
         self.group = None
+        self.groups = []
+        self.num_pgs = 0
         self.device = {}
         self.world_size = 0
 
