@@ -132,12 +132,12 @@ class commsCollBench(paramCommsBench):
             choices=supportedCollectives,
         )  # collective op to pair with the other collective, --collective should be non-empty
         parser.add_argument(
-            "--overlap-pair-nccl",
+            "--overlap-pair-pgs",
             type=int,
             default=0,
-            help="overlap collective pair with two NCCL pgs",
+            help="overlap collective pair with two pgs",
             choices=[0,1],
-        ) # overlap collective pair with two NCCL pgs
+        ) # overlap collective pair with two pgs
 
         return parser.parse_known_args()
 
@@ -739,7 +739,7 @@ def main():
         args, element_size, collBenchObj.benchTime
     )
 
-    if args.backend == "nccl" and args.pair == 1 and args.overlap_pair_nccl == 1:
+    if args.pair == 1 and args.overlap_pair_pgs == 1:
         commsParams.num_pgs = 2
     collBenchObj.runBench(comms_world_info, commsParams)
 

@@ -416,11 +416,11 @@ class PyTorchDistBackend(backendFunctions):
         dist.init_process_group(backend, rank=global_rank, world_size=world_size)
         self.groups = []
         self.groups.append(self.get_default_group(self.get_world_size()))
-        if backend == "nccl":
-            # non-default groups
-            for _ in range(1, self.commsParams.num_pgs):
-                pg = dist.new_group(backend=backend)
-                self.groups.append(pg)
+
+        # non-default groups
+        for _ in range(1, self.commsParams.num_pgs):
+            pg = dist.new_group(backend=backend)
+            self.groups.append(pg)
 
     def benchmark_comms(self):
         self.initialize_backend(
