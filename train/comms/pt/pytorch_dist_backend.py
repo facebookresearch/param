@@ -200,6 +200,21 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+
+    def reduce_scatter(self, collectiveArgs, retFlag=False, pair=False):
+        retObj = dist.reduce_scatter(
+            output=collectiveArgs.opTensor,
+            input_list=collectiveArgs.ipTensor,
+            group=collectiveArgs.group,
+            async_op=collectiveArgs.asyncOp,
+        )  # synchronicity is maintained in runColl
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
     def broadcast(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist.broadcast(
             tensor=collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
@@ -284,6 +299,9 @@ class PyTorchDistBackend(backendFunctions):
         # opTensor could be a list of tensor for all_gather/gather, get the aggregated size
         if isinstance(collectiveArgs.opTensor, list):
             _sizeBytes = sum([t.nelement() * t.element_size() for t in collectiveArgs.opTensor])
+        #reduce scatter
+        elif isinstance(collectiveArgs.ipTensor, list):
+            _sizeBytes = sum([t.nelement() * t.element_size() for t in collectiveArgs.ipTensor])
         else:
             _sizeBytes = collectiveArgs.opTensor.nelement() * collectiveArgs.opTensor.element_size()
         if pair:

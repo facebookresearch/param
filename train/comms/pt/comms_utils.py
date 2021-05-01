@@ -156,6 +156,8 @@ class backendFunctions(ABC):
             "broadcast": self.broadcast,
             "all_gather": self.all_gather,
             "reduce": self.reduce,
+            "reduce_scatter": self.reduce_scatter,
+            "reduce_scatter_base": self.reduce_scatter,
             "barrier": self.barrier,
         }
 
@@ -166,7 +168,7 @@ class backendFunctions(ABC):
             if world_size != 0:
                 mulFactor = 2 * (world_size - 1) / (world_size)
             busBW = algBW * mulFactor
-        elif collective in ("all_to_all", "all_to_allv", "all_gather"):
+        elif collective in ("all_to_all", "all_to_allv", "all_gather", "reduce_scatter"):
             if world_size != 0:
                 mulFactor = (world_size - 1) / (world_size)
             busBW = algBW * mulFactor

@@ -29,6 +29,7 @@ supportedCollectives = [
     "all_to_allv",
     "all_gather",
     "broadcast",
+    "reduce_scatter"
 ]  # , "scatter", "gather"]
 
 # define the collective benchmark
@@ -529,6 +530,14 @@ class commsCollBench(paramCommsBench):
                     opTensor = []
                     for _ in range(world_size):
                         opTensor.append(
+                            backendFuncs.alloc_random(
+                                [numElements], curDevice, commsParams.dtype, scaleFactor
+                            )
+                        )
+                elif commsParams.collective == "reduce_scatter":
+                    ipTensor = []
+                    for _ in range(world_size):
+                        ipTensor.append(
                             backendFuncs.alloc_random(
                                 [numElements], curDevice, commsParams.dtype, scaleFactor
                             )
