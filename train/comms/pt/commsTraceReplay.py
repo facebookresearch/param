@@ -478,10 +478,15 @@ class commsTraceReplayBench(paramCommsBench):
                             self.batchLat.append(batch_latency)
 
                 if self.is_blocking:
+                    self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+                local_end = time.monotonic()
+
+                if self.is_blocking:
                     self.backendFuncs.sync_barrier(self.collectiveArgs)
 
             end = time.monotonic()
-            latency = (end - begin) * 1e6  # make it microsecond
+            latency = (local_end - begin) * 1e6  # make it microsecond
+            global_latency = (end - begin) * 1e6  # make it microsecond
 
             self.collLat[collName].append(latency)
             self.collTraceStat[collName].append(
@@ -512,7 +517,7 @@ class commsTraceReplayBench(paramCommsBench):
 
             if self.backendFuncs.get_global_rank() == 0:
                 logger.info(
-                    f"[{cnt} / {self.max_msg_cnt}] Replayed {collName} in block [{curBlockStack}]... {latency:.2f} us"
+                    f"[{cnt} / {self.max_msg_cnt}] Replayed {collName} in block [{curBlockStack}]... {global_latency:.2f} us"
                 )
 
         # make sure all ops are completed
