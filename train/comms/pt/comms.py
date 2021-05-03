@@ -29,7 +29,8 @@ supportedCollectives = [
     "all_to_allv",
     "all_gather",
     "broadcast",
-    "reduce_scatter"
+    "reduce_scatter",
+    "all_gather_base"
 ]  # , "scatter", "gather"]
 
 # define the collective benchmark
@@ -542,6 +543,9 @@ class commsCollBench(paramCommsBench):
                                 [numElements], curDevice, commsParams.dtype, scaleFactor
                             )
                         )
+                elif commsParams.collective == "all_gather_base":
+                    # this is a single all gather
+                    opTensor = backendFuncs.alloc_random(numElements * world_size, curDevice, commsParams.dtype, scaleFactor)
                 # set corresponding function pointers
                 collectiveFunc = backendFuncs.collectiveFunc[commsParams.collective]
 
