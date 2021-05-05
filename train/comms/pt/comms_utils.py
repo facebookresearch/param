@@ -345,6 +345,11 @@ class commsParamsHolder(commsParamsHolderBase):
         self.pair = args.pair
         self.collective_pair = args.collective_pair
 
+        self.pt2pt = args.pt2pt
+        self.src_rank = args.src_rank
+        self.dst_rank = args.dst_rank
+        self.window = args.window
+
 class collectiveArgsHolder:
     def __init__(self):
         # A holding object for all the parameters related to a collective operation/experiment.
@@ -359,6 +364,9 @@ class collectiveArgsHolder:
         self.global_rank = -1
         self.backendFuncs = {}
         self.collective = ""
+        self.pt2pt = ""
+        self.src_rank = -1
+        self.dst_rank = -1
 
         self.MMout = {}
         self.MMin1 = {}
