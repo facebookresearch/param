@@ -243,6 +243,48 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    def send(self, collectiveArgs, dst_rank, retFlag=False, tag=0):
+        dist.send(
+            tensor=collectiveArgs.ipTensor,
+            dst=dst_rank,
+            group=collectiveArgs.group,
+            tag=tag
+        )
+
+    def recv(self, collectiveArgs, src_rank, retFlag=False, tag=0):
+        dist.recv(
+            tensor=collectiveArgs.opTensor,
+            src=src_rank,
+            group=collectiveArgs.group,
+            tag=tag
+        )
+
+    def isend(self, collectiveArgs, dst_rank, retFlag=False, tag=0):
+        retObj = dist.isend(
+            tensor=collectiveArgs.ipTensor,
+            dst=dst_rank,
+            group=collectiveArgs.group,
+            tag=tag
+        )
+
+        collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
+    def irecv(self, collectiveArgs, src_rank, retFlag=False, tag=0):
+        retObj = dist.irecv(
+            tensor=collectiveArgs.opTensor,
+            src=src_rank,
+            group=collectiveArgs.group,
+            tag=tag
+        )
+
+        collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
     def complete_accel_ops(self, collectiveArgs, initOp=False):
         if initOp is True:
             temp = torch.ones([1], device=collectiveArgs.device)
