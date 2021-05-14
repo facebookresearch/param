@@ -68,7 +68,10 @@ def train_gpu(
         model = apex.fp16_utils.network_to_half(model)
 
     # model.train()
-    start_time = time.time()
+    torch.cuda.synchronize()
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+    total_time = 0.0
 
     for i in range(args.steps + args.warmups):
         data = torch.randn(batch_size, input_size, device=device)
@@ -79,15 +82,20 @@ def train_gpu(
         if data_type == "float16":
             data = data.half()
 
+        if i >= args.warmups:
+            start_event.record()
+
         optimizer.zero_grad()
         output = model(data).float()
         loss = loss_f(output, target)
         loss.backward()
         optimizer.step()
-        if i < args.warmups:
-            start_time = time.time()
+        if i >= args.warmups:
+            end_event.record()
+            torch.cuda.synchronize()
+            total_time += start_event.elapsed_time(end_event) * 1.0e-3
 
-    return time.time() - start_time, loss
+    return total_time, loss
 
 
 def train_tpu(
