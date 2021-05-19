@@ -9,10 +9,15 @@ import os
 import sys
 from abc import ABC, abstractmethod
 import torch
+from torch.autograd.profiler import record_function
 import logging
+import time
+from dataclasses import dataclass
 from io import StringIO
 import random
 random.seed()
+
+logger = logging.getLogger(__name__)
 
 def gracefulExit():
     # TODO: Is this the best way to exit?
@@ -144,6 +149,58 @@ def commonUrlRead(remotePath):
     with urllib.request.urlopen(remotePath) as rf:
         contents = rf.read()
     return StringIO(contents.decode("utf-8"))
+
+def initQuantCommCtx(collectiveArgs, commsParams):
+    logger.info(f"communication bitwidth set to {commsParams.bitwidth}")
+    try:
+        from internals import initialize_collectiveArgs_internal
+        initialize_collectiveArgs_internal(collectiveArgs, commsParams)
+    except ImportError:
+        # cannot do quantization, reset bitwidth
+        logger.warning("quantization not supported, disabled and continue...")
+        commsParams.bitwidth = 32
+        pass
+
+def clearQuantCommCtx(collectiveArgs):
+    try:
+        logger.debug("Removing installed quantization handlers.")
+        from internals import remove_quantization_handlers
+        remove_quantization_handlers(collectiveArgs)
+    except ImportError:
+        pass
+
+@dataclass
+class paramTimer:
+    elapsedTimeNS: float = 0.0 # keeping time in NS
+
+    def reset(self, newTime=0.0):
+        self.elapsedTimeNS = newTime
+    def incrTimeNS(self, timeNS):
+        self.elapsedTimeNS += timeNS
+    def getTimeUS(self) -> float:
+        return self.elapsedTimeNS / 1e3
+    def getTimeNS(self) -> float:
+        return self.elapsedTimeNS
+
+class paramProfile(record_function):
+    """ Inherit from PyTorch profiler to enable autoguard profiling while measuring the time interval in PARAM """
+    def __init__(self, timer=None, description=""):
+        self.description = description
+        self.timer = timer
+        super().__init__(name=description)
+    def __enter__(self):
+        super().__enter__()
+        self.start = time.monotonic()
+        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.end = time.monotonic()
+        self.intervalNS = (self.end - self.start) * 1e9  # keeping time in NS
+        # if given a valid paramTimer object, directly update the measured time interval
+        if isinstance(self.timer, paramTimer):
+            self.timer.incrTimeNS(self.interval)
+        logger.debug(f"{self.description} took {self.interval} ns")
+        super().__exit__(exc_type, exc_value, traceback)
+
 
 class backendFunctions(ABC):
     """ Abstract base class, provides common abstraction for all the backends. """
@@ -327,6 +384,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.stepFactor = args.f
         self.srcOrDst = args.root
         self.dcheck = args.c
+        self.quant_threshold = max(self.endSize, self.quant_threshold) # use quantization for all sizes in collective benchmark
 
         self.numWarmupIters = args.w
         self.numIters = args.n
@@ -408,6 +466,8 @@ class collectiveArgsHolder:
         )
         self.reduce_qcomm = 32
         self.quant_threshold = 0
+        self.quant_time = paramTimer()
+        self.dequant_time = paramTimer()
 
 class paramCommsBench(ABC):
     def __init__(self, supportedNwstacks=None):
@@ -424,7 +484,7 @@ class paramCommsBench(ABC):
         self.backendFuncs = ""
         self.collectiveArgs = collectiveArgsHolder()
         self.comm_size = 1
-        self.my_rank = -1
+        self.global_rank = -1
         # update initVal to test difffernt value
         self.initVal = 1.0
 

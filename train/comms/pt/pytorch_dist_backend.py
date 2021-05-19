@@ -10,8 +10,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from comms_utils import backendFunctions, collectiveArgsHolder
-
+from comms_utils import backendFunctions, collectiveArgsHolder, paramTimer
 
 try:
     from internals import all_to_allv_internal, all_to_all_internal
@@ -87,9 +86,10 @@ class PyTorchDistBackend(backendFunctions):
             # every time we call all_reduce (because if we don't, it will be float16 instead of float32).
             # That also means we can't use the output of  quantized all_reduce's for anything other than
             # benchmarking purpose.
-            quantized = _downcast(
-                collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
-            )
+            with paramTimer(timer=collectiveArgs.quant_time, description="# PARAM: Allreduce quantization #" ):
+                quantized = _downcast(
+                    collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
+                )
         else:
             quantized = collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
         retObj = dist.all_reduce(
@@ -98,11 +98,12 @@ class PyTorchDistBackend(backendFunctions):
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
-        if collectiveArgs.allreduce_qcomm != 32 and not pair:
+        if (id(quantized) != id(collectiveArgs.ipTensor)) and not pair:
             if collectiveArgs.asyncOp:
                 retObj = retObj.get_future().then(_dequantize)
             else:
-                retObj = _dequantize(quantized)
+                with paramTimer(timer=collectiveArgs.dequant_time, description="# PARAM: Allreduce de-quantization #" ):
+                    retObj = _dequantize(quantized)
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(retObj)
@@ -114,9 +115,10 @@ class PyTorchDistBackend(backendFunctions):
         # pair=True mode does not support quantization
         if collectiveArgs.reduce_qcomm != 32 and not pair:
             assert collectiveArgs.ipTensor.dtype == torch.float32
-            quantized = _downcast(
-                collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
-            )
+            with paramTimer(timer=collectiveArgs.quant_time, description="# PARAM: Reduce quantization #" ):
+                quantized = _downcast(
+                    collectiveArgs.ipTensor, collectiveArgs.allreduce_qcomm
+                )
         else:
             quantized = collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
         retObj = dist.reduce(
@@ -130,7 +132,8 @@ class PyTorchDistBackend(backendFunctions):
             if collectiveArgs.asyncOp:
                 retObj = retObj.get_future().then(_dequantize)
             else:
-                retObj = _dequantize(quantized)
+                with paramTimer(timer=collectiveArgs.dequant_time, description="# PARAM: Reduce de-quantization #" ):
+                    retObj = _dequantize(quantized)
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(retObj)
@@ -164,8 +167,8 @@ class PyTorchDistBackend(backendFunctions):
             collectiveArgs.all2all_qcomm
             and collectiveArgs.ipTensor.dtype == torch.float32
             and (
-                collectiveArgs.opTensor.nelement() >= collectiveArgs.quan_threshold
-                or collectiveArgs.ipTensor.nelement() >= collectiveArgs.quan_threshold
+                collectiveArgs.opTensor.nelement() >= collectiveArgs.quant_threshold
+                or collectiveArgs.ipTensor.nelement() >= collectiveArgs.quant_threshold
             )
             and not pair
         ):
@@ -200,7 +203,6 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
-
     def reduce_scatter(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist.reduce_scatter(
             output=collectiveArgs.opTensor,
@@ -222,6 +224,21 @@ class PyTorchDistBackend(backendFunctions):
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
+    def gather(self, collectiveArgs, retFlag=False):
+        retObj = dist.gather(
+            tensor=collectiveArgs.ipTensor,
+            gather_list=collectiveArgs.opTensor,
+            dst=collectiveArgs.srcOrDst,
+            group=collectiveArgs.group,
+            async_op=collectiveArgs.asyncOp,
+        )
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(retObj)
@@ -285,6 +302,15 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    def device_sync(self, collectiveArgs):
+        dev_str = (
+            self.commsParams["device"]
+            if isinstance(self.commsParams, dict)
+            else self.commsParams.device
+        )
+        if dev_str == "cuda":
+            torch.cuda.synchronize(collectiveArgs.device)
+
     def complete_accel_ops(self, collectiveArgs, initOp=False):
         if initOp is True:
             temp = torch.ones([1], device=collectiveArgs.device)
@@ -294,13 +320,7 @@ class PyTorchDistBackend(backendFunctions):
                 waitReq.wait()
         collectiveArgs.waitObj.clear()
 
-        dev_str = (
-            self.commsParams["device"]
-            if isinstance(self.commsParams, dict)
-            else self.commsParams.device
-        )
-        if dev_str == "cuda":
-            torch.cuda.synchronize(collectiveArgs.device)
+        self.device_sync(collectiveArgs)
 
     # retFlag not used
     def complete_single_op(self, collectiveArgs, retFlag=False):
@@ -311,13 +331,7 @@ class PyTorchDistBackend(backendFunctions):
                 waitReq.wait()
 
             # to ensure GPU collective is completed
-            dev_str = (
-                self.commsParams["device"]
-                if isinstance(self.commsParams, dict)
-                else self.commsParams.device
-            )
-            if dev_str == "cuda":
-                torch.cuda.synchronize(collectiveArgs.device)
+            self.device_sync(collectiveArgs)
 
 
     def barrier(self, collectiveArgs, name="dummy", retFlag=False):

@@ -203,6 +203,28 @@ class commsCollBench(paramCommsBench):
             logging.warning("Data validation is not supported for non-blocking mode...disable validation check and proceed...")
             args.c = 0
 
+        # run a few sanity checks
+        if args.bitwidth < 32:
+            if (
+                args.collective not in ("all_to_all", "all_to_allv", "reduce", "all_reduce")
+            ):
+                raise NotImplementedError(
+                    f"quantized communication for {args.collective} is currently unsupported."
+                )
+            if args.collective in ("all_to_all", "all_to_allv"):
+                if (
+                    args.beginSize // 4
+                ) % args.quant_a2a_embedding_dim != 0:
+                    raise ValueError(
+                        "begin size (elements) must be a multiple of --quant-a2a-embedding-dim for all_to_all operation"
+                    )
+                if args.blockingFlag != 1:
+                    raise NotImplementedError("quantized All_to_all must be synchronous.")
+            if args.dtype != torch.float32:
+                raise NotImplementedError(
+                    f"quantization for {args.dtype} is not supported. Use float32 instead."
+                )
+
     def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None):
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
         numElements = self.collectiveArgs.numElements
@@ -228,6 +250,8 @@ class commsCollBench(paramCommsBench):
 
         # Measuring time.
         elapsedTimeNS = 0.0
+        self.collectiveArgs.quant_time.reset()
+        self.collectiveArgs.dequant_time.reset()
         for _ in range(self.collectiveArgs.numIters):
             if not self.collectiveArgs.asyncOp:  # should be sychronous, do barrier and wait for collective
                 self.setTensorVal(self.collectiveArgs.opTensor) # reset tensor values
@@ -288,6 +312,11 @@ class commsCollBench(paramCommsBench):
         elapsedTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
+        # calculate average (de-)quantization overhead (in nanoseconds)
+        avgQuantNS = {
+            "Quant": (self.collectiveArgs.quant_time.getTimeNS() / self.collectiveArgs.numIters),
+            "DeQuant": (self.collectiveArgs.dequant_time.getTimeNS() / self.collectiveArgs.numIters),
+        }
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
 
@@ -310,8 +339,8 @@ class commsCollBench(paramCommsBench):
             )
             busBW += busBW_pair
 
-        self.backendFuncs.sync_barrier(self.collectiveArgs, "runColl_end")
-        return (avgIterNS, algBW, busBW, memSize, x, x_pair)
+        self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_end")
+        return (avgIterNS, algBW, busBW, memSize, avgQuantNS, x_pair)
 
     def runPt2Pt(self):
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
@@ -438,6 +467,9 @@ class commsCollBench(paramCommsBench):
         groups = self.backendFuncs.get_groups()
         num_pgs = len(groups)
 
+        self.comm_size = world_size
+        self.global_rank = global_rank
+
         comms_utils.fixBeginSize(
             commsParams, world_size
         )  # Ensuring that all-reduce and all-to-all has atleast one member per rank.
@@ -475,24 +507,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.window = commsParams.window
 
         if commsParams.bitwidth < 32:
-            if commsParams.dtype != torch.float32:
-                raise NotImplementedError(
-                    f"quantization for {commsParams.dtype} is not supported. Use float32 instead."
-                )
-            logging.warning(f"communication bitwidth set to {commsParams.bitwidth}")
-            try:
-                from internals import initialize_collectiveArgs_internal
-                initialize_collectiveArgs_internal(self.collectiveArgs, commsParams)
-            except ImportError:
-                if (
-                    commsParams.collective != "reduce"
-                    and commsParams.collective != "all_reduce"
-                ):
-                    raise NotImplementedError(
-                        "quantized communication for %s is currently unsupported."
-                        % commsParams.collective
-                    )
-                pass
+            comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
 
         computeFunc = None
         if commsParams.mode != "comms":  # Compute mode related initialization.
@@ -554,6 +569,91 @@ class commsCollBench(paramCommsBench):
             allSizes,
             computeFunc,
         )
+
+    def gatherBenchTime(self, collectiveArgs, commsParams, timeElapsedList):
+        # Push the list to device, then do an all-gather.
+        timeElapsedTensor = torch.tensor(timeElapsedList, device=self.backendFuncs.get_device())
+        collectiveArgs.opTensor = None
+        if commsParams.backend != "xla":
+            timeList = [torch.ones_like(timeElapsedTensor) for _ in range(self.comm_size)]
+            collectiveArgs.opTensor = timeList
+
+        collectiveArgs.ipTensor = timeElapsedTensor
+        collectiveArgs.asyncOp = False
+        collectiveArgs.dataSize = (
+            timeElapsedTensor.nelement() * timeElapsedTensor.element_size()
+        )
+        collectiveArgs.numElements = timeElapsedTensor.nelement()
+
+        # use allgather as all process group should support it
+        self.backendFuncs.all_gather(collectiveArgs)
+        self.backendFuncs.complete_accel_ops(collectiveArgs)
+
+        return timeList
+
+    def reportBenchTimeWithQuant(self, commsParams, allSizes, tensorList, quantTimeTensorList, dequantTimeTensorList, results):
+        print(
+            "\tCOMMS-QUANT-RES\t{:>15}\t{:>15}\t{:>25}\t{:>15}\t{:>15}\t{:>15}".format(
+                "size (B)","num-elements","P95 Latency(us): Quant","Comms","De-Quant","Overall"
+            )
+        )
+
+        for idx, curSize in enumerate(allSizes):
+            if commsParams.backend == "xla":
+                latencyAcrossRanks = torch.transpose(
+                    tensorList.view(-1, len(allSizes)), 0, 1
+                )[idx]
+                latencyAcrossRanks = latencyAcrossRanks.cpu().detach().numpy()
+                # quant tensor
+                quantLatencyAcrossRanks = torch.transpose(
+                    quantTimeTensorList.view(-1, len(allSizes)), 0, 1
+                )[idx]
+                quantLatencyAcrossRanks = quantLatencyAcrossRanks.cpu().detach().numpy()
+                # dequant tensor
+                dequantLatencyAcrossRanks = torch.transpose(
+                    dequantTimeTensorList.view(-1, len(allSizes)), 0, 1
+                )[idx]
+                dequantLatencyAcrossRanks = dequantLatencyAcrossRanks.cpu().detach().numpy()
+            else:
+                latencyAcrossRanks = []
+                for curRankTensor in tensorList:
+                    rank_lat = curRankTensor[idx].item()
+                    latencyAcrossRanks.append(rank_lat)
+
+                latencyAcrossRanks = np.array(latencyAcrossRanks)
+                # quant tensor
+                quantLatencyAcrossRanks = []
+                for curRankTensor in quantTimeTensorList:
+                    rank_lat = curRankTensor[idx].item()
+                    quantLatencyAcrossRanks.append(rank_lat)
+                quantLatencyAcrossRanks = np.array(quantLatencyAcrossRanks)
+                # dequant tensor
+                dequantLatencyAcrossRanks = []
+                for curRankTensor in dequantTimeTensorList:
+                    rank_lat = curRankTensor[idx].item()
+                    dequantLatencyAcrossRanks.append(rank_lat)
+                dequantLatencyAcrossRanks = np.array(dequantLatencyAcrossRanks)
+
+            p95 = np.percentile(latencyAcrossRanks, 95)
+
+            quant_p95 = np.percentile(quantLatencyAcrossRanks, 95)
+            dequant_p95 = np.percentile(dequantLatencyAcrossRanks, 95)
+
+            self.collectiveArgs.dataSize = curSize
+
+            print(
+                "\tCOMMS-QUANT-RES\t{:>15}\t{:>15}\t{:>25}\t{:>15}\t{:>15}\t{:>15}"
+                .format(
+                    results[curSize]["memSize"],
+                    str("%d" % (results[curSize]["num_elements"])),
+                    str("%.1f" % (quant_p95)),
+                    str("%.1f" % (p95 - quant_p95 - dequant_p95)),
+                    str("%.1f" % (dequant_p95)),
+                    str("%.1f" % (p95)),
+                    # str("%.3f" % (algBW)),
+                    # str("%.3f" % (busBW)),
+                )
+            )
 
     def reportBenchTime(self, commsParams, allSizes, tensorList, results):
         self.collectiveArgs.collective = commsParams.collective
@@ -668,7 +768,9 @@ class commsCollBench(paramCommsBench):
 
         results = {}
         timeElapsedList = []
-        for (_, curSize) in enumerate(allSizes):
+        quantTimeElapsedList = []
+        dequantTimeElapsedList = []
+        for curSize in allSizes:
             # Allocating memory.
             numElements = int(curSize // commsParams.element_size)
             scaleFactor = numElements * numElements
@@ -799,7 +901,7 @@ class commsCollBench(paramCommsBench):
 
             # self.collectiveArgs has all the information on the experiment.
             if commsParams.collective != 'pt2pt':
-                timeElapsedNS, algBW, busBW, memSize, x, x_pair = self.runColl(
+                timeElapsedNS, algBW, busBW, memSize, avgQuantNS, x_pair = self.runColl(
                     comm_fn=collectiveFunc, compute_fn=computeFunc, comm_fn_pair=collectiveFunc_pair
                 )
 
@@ -821,16 +923,21 @@ class commsCollBench(paramCommsBench):
                     results[curSize]["num_elements"] = int(numElements // world_size)
                 else:
                     results[curSize]["num_elements"] = int(numElements)
-                results[curSize]["x"] = x
+
+                results[curSize]["quantTimeUS"] = avgQuantNS["Quant"] / 1e3
+                results[curSize]["dequantTimeUS"] = avgQuantNS["DeQuant"] / 1e3
+                quantTimeElapsedList.append(results[curSize]["quantTimeUS"])
+                dequantTimeElapsedList.append(results[curSize]["dequantTimeUS"])
+
                 if commsParams.pair:
                     results[curSize]["curSizePair"] = curSize_pair
                     if (commsParams.collective_pair == "all_to_all") or (
                         commsParams.collective_pair == "all_to_allv"
                     ):
-                        results[curSize]["num_elements_pair"] = int(numElements // world_size)
+                        results[curSize]["num_elements"] = int(numElements // world_size)
                     else:
-                        results[curSize]["num_elements_pair"] = int(numElements)
-                    results[curSize]["x_pair"] = x_pair
+                        results[curSize]["num_elements"] = int(numElements)
+                        results[curSize]["x_pair"] = x_pair
             else:
                 pingPerIterNS, pingPongPerIterNS, avgUniBW, avgBiBW, memSize = self.runPt2Pt()
                 results[curSize] = {}
@@ -848,38 +955,22 @@ class commsCollBench(paramCommsBench):
             backendFuncs.clear_memory()
             self.backendFuncs.sync_barrier(self.collectiveArgs, desc=f"curSize_{curSize}")
 
-        # Push the list to device, then do an all-gather.
-        timeElapsedTensor = torch.tensor(timeElapsedList, device=curDevice)
-        if commsParams.backend != "xla":
-            tensorList = [torch.ones_like(timeElapsedTensor) for _ in range(world_size)]
-            self.collectiveArgs.opTensor = tensorList
+        comms_utils.clearQuantCommCtx(self.collectiveArgs)
 
-        self.collectiveArgs.ipTensor = timeElapsedTensor
-        self.collectiveArgs.asyncOp = False
-        self.collectiveArgs.dataSize = (
-            timeElapsedTensor.nelement() * timeElapsedTensor.element_size()
-        )
-        self.collectiveArgs.numElements = timeElapsedTensor.nelement()
-
-        if self.collectiveArgs.reducescatter_allgather_qcomm is not None:
-            try:
-                logging.warning("Removing installed quantization handlers.")
-                from internals import remove_quantization_handlers
-
-                remove_quantization_handlers(self.collectiveArgs)
-            except ImportError:
-                pass
-            finally:
-                assert self.collectiveArgs.reducescatter_allgather_qcomm is None
-
-        backendFuncs.all_gather(self.collectiveArgs)
-        backendFuncs.complete_accel_ops(self.collectiveArgs)
+        tensorList = self.gatherBenchTime(self.collectiveArgs, commsParams, timeElapsedList)
 
         if global_rank == 0:
             if self.collectiveArgs.collective != "pt2pt":
                 self.reportBenchTime(
-                    commsParams, allSizes, self.collectiveArgs.opTensor, results
+                    commsParams, allSizes, tensorList, results
                 )
+                quantTimeTensorList = []
+                if commsParams.bitwidth < 32:
+                    logging.debug(quantTimeElapsedList)
+                    quantTimeTensorList = self.gatherBenchTime(self.collectiveArgs, commsParams, quantTimeElapsedList)
+                    dequantTimeTensorList = self.gatherBenchTime(self.collectiveArgs, commsParams, dequantTimeElapsedList)
+                    if global_rank == 0:
+                        self.reportBenchTimeWithQuant(commsParams, allSizes, tensorList, quantTimeTensorList, dequantTimeTensorList, results)
             else:
                 self.reportBenchTimePt2Pt(
                     commsParams, allSizes, results

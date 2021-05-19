@@ -15,25 +15,40 @@ from os import path
 from typing import Dict, List, Set
 
 import comms_utils
+from comms_utils import paramCommsBench, paramTimer, paramProfile
 import numpy as np
-from comms_utils import paramCommsBench
 from torch.autograd.profiler import record_function
 
 logger = logging.getLogger(__name__)
 
 
 def writeCommDetails(commsTracePerf, rank, folder="./"):
-    try:
-        import subprocess
-        subprocess.check_output(["mkdir", "-p", str(folder)], universal_newlines=True)
-    except Exception as err:
-        print("\t Error: %s while creating directory: %s " % (err, folder))
-        pass
+    if len(folder) == 0:
+        # skip output if the path is explicitly set to ""
+        return
     comms_file = folder + f"/replayedCommsPerf.rank{rank}.json"
     logger.info(f"[Rank {rank:3}] Writing comms details to {comms_file}")
-    with open(comms_file, "w") as write_file:
-        json.dump(commsTracePerf, write_file, indent=2)
 
+    saveToLocal = True
+    if "://" in comms_file:
+        saveToLocal = False
+        try:
+            from internals import writeRemoteTrace as writeFbRemoteTrace
+        except ImportError:
+            saveToLocal = True
+            pass
+        else:
+            writeFbRemoteTrace(commsTracePerf, remotePath=comms_file)
+
+    if saveToLocal:
+        try:
+            import subprocess
+            subprocess.check_output(["mkdir", "-p", str(folder)], universal_newlines=True)
+        except Exception as err:
+            logger.error("\t Error: %s while creating directory: %s " % (err, folder))
+            pass
+        with open(comms_file, "w") as write_file:
+            json.dump(commsTracePerf, write_file, indent=2)
 
 class commsTraceReplayBench(paramCommsBench):
     def __init__(self):
@@ -48,7 +63,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.is_blocking = True
         self.do_warm_up = True
         self.allowList = ""
-        self.out_path = "/tmp/replayedTrace"
+        self.out_path = "/tmp/paramReplayedTrace"
         self.colls_per_batch = -1
 
         self.collInMsgSizes: Dict[str, List] = {}
@@ -81,7 +96,7 @@ class commsTraceReplayBench(paramCommsBench):
         parser.add_argument(
             "--trace-path",
             type=str,
-            default="traces",
+            default="./",
             help="File path to read the trace. All rank read their own trace file unless `--use-one-trace` is used.",
         )
         parser.add_argument(
@@ -106,7 +121,7 @@ class commsTraceReplayBench(paramCommsBench):
             "--max-msg-cnt",
             type=int,
             default=self.max_msg_cnt,
-            help="Only replay first N messages (0 means no limit)",
+            help="Only replay first N operations (0 means no limit)",
         )
         parser.add_argument(
             "--no-warm-up",
@@ -124,7 +139,9 @@ class commsTraceReplayBench(paramCommsBench):
             "--output-path",
             type=str,
             default=self.out_path,
-            help="Output path to write the replayed trace for post performance analysis",
+            nargs='?',
+            const="",
+            help="Output path to write the replayed trace for post performance analysis. Set empty string, i.e., \"\", to skip output",
         )
         parser.add_argument(
             "--colls-per-batch",
@@ -426,7 +443,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         if self.backendFuncs.get_global_rank() == 0:
             print(
-                f"\n+ {self.max_msg_cnt} messages in the trace...replaying (if present) {(self.allowList)}"
+                f"\n+ {self.max_msg_cnt} messages in the trace...replaying (if present) {list(self.allowList)}"
             )
             for coll, sizes in self.collInMsgSizes.items():
                 logger.info(f"\t{coll}: {len(sizes)}")
@@ -434,6 +451,7 @@ class commsTraceReplayBench(paramCommsBench):
         batch_num = 1
         coll_in_batch_num = 0
         # second pass to perform collectives
+        collTimer = paramTimer()
         for cnt, curComm in enumerate(self.comms_trace[:self.max_msg_cnt]):
             if self.colls_per_batch > 0:
                 if coll_in_batch_num == 0:
@@ -452,10 +470,14 @@ class commsTraceReplayBench(paramCommsBench):
 
             # read fields and prepare the tensors
             self.prepComms(curComm)
+            self.collectiveArgs.quant_time.reset()
+            self.collectiveArgs.dequant_time.reset()
+            collTimer.reset()
 
-            # perform the collective and wait for it
-            begin = time.monotonic()
-            with record_function(curBlockStack):
+            if self.is_blocking:
+                self.backendFuncs.sync_barrier(self.collectiveArgs)
+            # replay the collective
+            with paramProfile(timer=collTimer, description="# PARAM replay: "+curBlockStack):
                 if collName in self.backendFuncs.collectiveFunc.keys():
                     self.backendFuncs.collectiveFunc[collName](
                         self.collectiveArgs, retFlag=True
@@ -479,14 +501,13 @@ class commsTraceReplayBench(paramCommsBench):
 
                 if self.is_blocking:
                     self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-                local_end = time.monotonic()
 
-                if self.is_blocking:
+            if self.is_blocking:
+                with paramProfile(description="# PARAM replay barrier # "+curBlockStack) as bt:
                     self.backendFuncs.sync_barrier(self.collectiveArgs)
 
-            end = time.monotonic()
-            latency = (local_end - begin) * 1e6  # make it microsecond
-            global_latency = (end - begin) * 1e6  # make it microsecond
+            latency = collTimer.getTimeUS()
+            global_latency = latency + (bt.intervalNS / 1e3)
 
             self.collLat[collName].append(latency)
             self.collTraceStat[collName].append(
@@ -497,6 +518,8 @@ class commsTraceReplayBench(paramCommsBench):
 
             curComm["seqnum"] = cnt
             curComm["latency_us"] = latency
+            curComm["quant_us"] = self.collectiveArgs.quant_time.getTimeUS()
+            curComm["dequant_us"] = self.collectiveArgs.dequant_time.getTimeUS()
             self.totalCommsLatency += latency
             # Keep a copy of trace with performance (latency) and seqnum
             self.traceWithPerf.append(curComm)
@@ -512,6 +535,8 @@ class commsTraceReplayBench(paramCommsBench):
                         "in_msg_size_bytes": curComm["in_msg_size"] * elem_size if "in_msg_size" in curComm else 0,
                         "out_msg_size_bytes": curComm["out_msg_size"] * elem_size if "out_msg_size" in curComm else 0,
                         "latency_us": latency,
+                        "quant_us": self.collectiveArgs.quant_time.getTimeUS(),
+                        "dequan_us": self.collectiveArgs.dequant_time.getTimeUS(),
                     }
                 )
 
@@ -521,8 +546,7 @@ class commsTraceReplayBench(paramCommsBench):
                 )
 
         # make sure all ops are completed
-        self.backendFuncs.barrier(self.collectiveArgs)
-        self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+        self.backendFuncs.sync_barrier(self.collectiveArgs)
         self.backendFuncs.clear_memory()
 
     def runBench(self, comms_world_info, commsParams):
@@ -622,16 +646,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.colls_per_batch = args.colls_per_batch
 
         if commsParams.bitwidth < 32:
-            logger.info(f"communication bitwidth set to {commsParams.bitwidth}")
-            try:
-                from internals import initialize_collectiveArgs_internal
-
-                initialize_collectiveArgs_internal(self.collectiveArgs, commsParams)
-            except ImportError:
-                # cannot do quantization, reset bitwidth
-                logger.info("quantization not supported, disabled and continue...")
-                commsParams.bitwidth = 32
-                pass
+            comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
 
     def setTraceFile(self, args, mpi_env_params):
         # TODO: file name may get changed later
