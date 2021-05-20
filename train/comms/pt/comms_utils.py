@@ -197,8 +197,8 @@ class paramProfile(record_function):
         self.intervalNS = (self.end - self.start) * 1e9  # keeping time in NS
         # if given a valid paramTimer object, directly update the measured time interval
         if isinstance(self.timer, paramTimer):
-            self.timer.incrTimeNS(self.interval)
-        logger.debug(f"{self.description} took {self.interval} ns")
+            self.timer.incrTimeNS(self.intervalNS)
+        logger.debug(f"{self.description} took {self.intervalNS} ns")
         super().__exit__(exc_type, exc_value, traceback)
 
 
