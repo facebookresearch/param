@@ -349,6 +349,15 @@ class commsTraceReplayBench(paramCommsBench):
                 if len(self.collectiveArgs.opTensor_split) > 0
                 else curOutNumElem
             )
+
+            if curComm["comms"] == "all_to_allv":
+                ip_split_len = len(curComm["in_split"])
+                op_split_len = len(curComm["out_split"])
+                if ((ip_split_len > 0) and (op_split_len == 0)):
+                    curOutNumElem = (curOutNumElem // ip_split_len) * self.collectiveArgs.world_size
+                if ((ip_split_len == 0) and (op_split_len > 0)):
+                    curInNumElem = (curInNumElem // op_split_len) * self.collectiveArgs.world_size
+
             logger.debug(
                 f"shrink message sizes to curInNumElem {curInNumElem}, curOutNumElem {curOutNumElem}"
             )
