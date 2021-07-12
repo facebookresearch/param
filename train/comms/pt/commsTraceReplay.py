@@ -498,15 +498,14 @@ class commsTraceReplayBench(paramCommsBench):
                     pass
 
                 # calculating batch latency (batch defined by --colls-per-batch)
-                if collName == "wait":
-                    if self.colls_per_batch > 0:
-                        coll_in_batch_num += 1
-                        if coll_in_batch_num == self.colls_per_batch:
-                            batch_end = time.monotonic()
-                            batch_latency = (batch_end - batch_begin) * 1e3 # make it millisecond
-                            coll_in_batch_num = 0
-                            batch_num += 1
-                            self.batchLat.append(batch_latency)
+                if collName == "wait" and self.colls_per_batch > 0:
+                    coll_in_batch_num += 1
+                    if coll_in_batch_num == self.colls_per_batch:
+                        batch_end = time.monotonic()
+                        batch_latency = (batch_end - batch_begin) * 1e3 # make it millisecond
+                        coll_in_batch_num = 0
+                        batch_num += 1
+                        self.batchLat.append(batch_latency)
 
                 if self.is_blocking:
                     self.backendFuncs.complete_accel_ops(self.collectiveArgs)
@@ -527,6 +526,7 @@ class commsTraceReplayBench(paramCommsBench):
 
             curComm["seqnum"] = cnt
             curComm["latency_us"] = latency
+            curComm["global_latency_us"] = global_latency
             curComm["quant_us"] = self.collectiveArgs.quant_time.getTimeUS()
             curComm["dequant_us"] = self.collectiveArgs.dequant_time.getTimeUS()
             self.totalCommsLatency += latency
@@ -543,6 +543,7 @@ class commsTraceReplayBench(paramCommsBench):
                         "blocked": "Y" if (self.is_blocking) else "N",
                         "in_msg_size_bytes": curComm["in_msg_size"] * elem_size if "in_msg_size" in curComm else 0,
                         "out_msg_size_bytes": curComm["out_msg_size"] * elem_size if "out_msg_size" in curComm else 0,
+                        "global_latency_us": global_latency,
                         "latency_us": latency,
                         "quant_us": self.collectiveArgs.quant_time.getTimeUS(),
                         "dequan_us": self.collectiveArgs.dequant_time.getTimeUS(),
