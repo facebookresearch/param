@@ -567,6 +567,9 @@ class commsTraceReplayBench(paramCommsBench):
                 4) report stats and performance (if not dry-run)
         """
         logger.info(f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}")
+        self.comm_size = comms_world_info.world_size
+        self.global_rank = comms_world_info.global_rank
+
         self.readTrace(remotePath=self.trace_file)
 
         self.initTraceStat()
@@ -687,9 +690,17 @@ class commsTraceReplayBench(paramCommsBench):
 
             self.comms_trace = json.load(raw_comms_trace)
         else:
-            # read the json file
+            # read the json file from local disk
             with open(self.trace_file) as f:
                 self.comms_trace = json.load(f)
+
+        # additional check the trace format and convert it if needed
+        try:
+            from internals import fbTraceParser
+        except ImportError:
+            logger.warning("Cannot parse FB trace...skip...")
+        else:
+            self.comms_trace = fbTraceParser(self.comms_trace, target_rank=self.global_rank)
 
 def main():
 
