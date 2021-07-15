@@ -19,11 +19,14 @@ import argparse
 import os
 import json
 import subprocess
+import logging
 
 import dlrm_data as dd
 from pytorch_dist_backend import PyTorchDistBackend
 import comms_utils
 from comms_utils import paramCommsBench
+
+logger = logging.getLogger(__name__)
 
 # All-to-all classes/functions
 class All2AllInfo(object):
@@ -1047,9 +1050,9 @@ class commsDLRMBench(paramCommsBench):
             # WARNING: expt_config is different from commsParams but using it as a placeholder here!
             # FIXME: can we make it common
             self.backendFuncs = PyTorchDistBackend(comms_world_info, self.expt_config)
-            self.backendFuncs.initialize_backend(comms_world_info.master_ip, comms_world_info.master_port, backend="nccl")
+            self.backendFuncs.initialize_backend(comms_world_info.master_ip, comms_world_info.master_port, backend=self.expt_config['backend'])
         else:
-            print("\t Input backend: %s not supported! " % (self.expt_config['nw_stack']))
+            logger.error("\t Input nw_stack {} or backend {} not supported! ".format(self.expt_config['nw_stack'], self.expt_config['backend']))
             sys.exit()
 
         local_rank, global_rank, world_size, group, curDevice, curHwDevice = comms_utils.get_rank_details(self.backendFuncs)
@@ -1110,6 +1113,7 @@ class commsDLRMBench(paramCommsBench):
         self.expt_config['collective'] = 'all_reduce'  # dummy params for now
         self.expt_config['warmup_batches'] = args.warmup_batches
         self.expt_config['device'] = "cuda"
+        self.expt_config['backend'] = args.backend
 
         if(mpi_env_params['global_rank'] == 0):
             print("\t expt_config: %s " % (self.expt_config))

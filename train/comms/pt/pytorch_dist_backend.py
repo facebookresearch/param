@@ -474,8 +474,12 @@ class PyTorchDistBackend(backendFunctions):
         # Add single wait op (Note this is not supported in pytorch_tpu_backend.py now)
         self.collectiveFunc["wait"] = self.complete_single_op
 
+        backend = (
+            self.commsParams["backend"]
+            if isinstance(self.commsParams, dict)
+            else self.commsParams.backend)
         # Import ucc plugin
-        if commsParams.backend == "ucc":
+        if backend == "ucc":
             # try OSS/setup.py
             try:
                 import torch_ucc  # noqa
@@ -485,7 +489,7 @@ class PyTorchDistBackend(backendFunctions):
                 except ImportError:
                     raise RuntimeError("Unable to import initialize_ucc_plugin")
                 else:
-                    initialize_ucc_plugin(commsParams.backend)
+                    initialize_ucc_plugin(backend)
 
     def initialize_backend(self, master_ip, master_port, backend="gloo"):
         # Set CUDA device before initializing backend
