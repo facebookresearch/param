@@ -499,7 +499,10 @@ class PyTorchDistBackend(backendFunctions):
         global_rank = self.get_global_rank()
         world_size = self.get_world_size()
         # Torch initializaiton
-        os.environ["MASTER_ADDR"] = str(master_ip)  # '127.0.0.1'
+        if "MASTER_ADDR" in os.environ and str(master_ip) == "127.0.0.1":
+            print("Using MASTER_ADDR=" + os.environ["MASTER_ADDR"])
+        else:
+            os.environ["MASTER_ADDR"] = str(master_ip)  # '127.0.0.1'
         os.environ["MASTER_PORT"] = str(master_port)
         os.environ["WORLD_SIZE"] = str(world_size)
         os.environ["RANK"] = str(global_rank)
