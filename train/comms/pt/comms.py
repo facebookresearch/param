@@ -527,7 +527,10 @@ class commsCollBench(paramCommsBench):
                 "\t global_rank: %d allSizes: %s local_rank: %d element_size: %d "
                 % (global_rank, allSizes, local_rank, commsParams.element_size)
             )
-            print("\t global_rank: %d commsParams: %s " % (global_rank, commsParams))
+            print(
+                "\t global_rank: %d commsParams: %s "
+                % (global_rank, commsParams.__dict__)
+            )
 
         # self.collectiveArgs = comms_utils.collectiveArgsHolder()
         self.collectiveArgs.group = group
