@@ -275,6 +275,28 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    # Many-to-one pattern
+    def incast(self, collectiveArgs):
+        if collectiveArgs.global_rank == collectiveArgs.srcOrDst:
+            # root receives tensor from each of user-specified source ranks
+            for idx, src_rank in enumerate(collectiveArgs.src_ranks):
+                retObj = dist.irecv(
+                    tensor=collectiveArgs.opTensor[idx],
+                    src=src_rank,
+                    group=collectiveArgs.group,
+                    tag=0,
+                )
+                collectiveArgs.waitObj.append(retObj)
+            # complete outstanding irecvs if blocking
+            if not collectiveArgs.asyncOp:
+                self.complete_accel_ops(collectiveArgs, devSync=False)
+        elif collectiveArgs.global_rank in collectiveArgs.src_ranks:
+            # send local tensor to root
+            if collectiveArgs.asyncOp:
+                self.isend(collectiveArgs, collectiveArgs.srcOrDst)
+            else:
+                self.send(collectiveArgs, collectiveArgs.srcOrDst)
+
     def broadcast(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist.broadcast(
             tensor=collectiveArgs.opTensor
@@ -397,7 +419,7 @@ class PyTorchDistBackend(backendFunctions):
     # Memory related
     def get_mem_size(self, collectiveArgs, pair=False):
         _sizeBytes = 0
-        # opTensor could be a list of tensor for all_gather/gather, get the aggregated size
+        # opTensor could be a list of tensor for all_gather/gather/incast, get the aggregated size
         if isinstance(collectiveArgs.opTensor, list):
             _sizeBytes = sum(
                 [t.nelement() * t.element_size() for t in collectiveArgs.opTensor]

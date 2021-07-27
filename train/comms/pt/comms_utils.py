@@ -11,6 +11,7 @@ import random
 import sys
 import time
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from dataclasses import dataclass
 from io import StringIO
 
@@ -57,6 +58,35 @@ def parsesize(ipValue):
 
     size = int(value) * units
     return int(size)
+
+
+def parseRankList(ipStr, ipName, comms_world_info):
+    # Default all ranks
+    rankList = [*range(comms_world_info.world_size)]
+
+    if ipStr:
+        if ipStr.isnumeric():
+            # single rank
+            rankList = [int(ipStr)]
+        elif ipStr.find(",") != -1:
+            # list of unique ranks separated by comma
+            rankList = list(map(int, [r.strip() for r in ipStr.split(",")]))
+            rankList = list(OrderedDict.fromkeys(rankList))
+        elif ipStr.find(":") != -1:
+            # a range of ranks defined by [start:end]
+            pos = list(map(int, [r.strip() for r in ipStr.split(":")]))
+            rankList = [*range(pos[0], pos[1] + 1)]
+        else:
+            rankList = []
+
+        # Check if input is valid
+        if len(rankList) == 0 or any(
+            r < 0 or r >= comms_world_info.world_size for r in rankList
+        ):
+            if comms_world_info.global_rank == 0:
+                print("\t ERROR: Could not parse %s %s" % (ipName, ipStr))
+            gracefulExit()
+    return rankList
 
 
 def getAlgBW(elapsedTimeNS, dataSize, numIters):
@@ -234,6 +264,7 @@ class backendFunctions(ABC):
             "reduce_scatter": self.reduce_scatter,
             "reduce_scatter_base": self.reduce_scatter,
             "barrier": self.barrier,
+            "incast": self.incast,
         }
 
     def getBusBW(self, collective, algBW, world_size):
@@ -253,7 +284,7 @@ class backendFunctions(ABC):
             if world_size != 0:
                 mulFactor = (world_size - 1) / (world_size)
             busBW = algBW * mulFactor
-        elif collective in ("reduce", "broadcast"):
+        elif collective in ("reduce", "broadcast", "incast"):
             busBW = algBW
         else:
             print(
@@ -400,7 +431,7 @@ class commsParamsHolderBase:
 
 
 class commsParamsHolder(commsParamsHolderBase):
-    def __init__(self, args, element_size, benchTime):
+    def __init__(self, args, comms_world_info, element_size, benchTime):
         # A holding object for the input parameters from collective benchmark
         super().__init__(args)
 
@@ -436,6 +467,8 @@ class commsParamsHolder(commsParamsHolderBase):
         self.src_rank = args.src_rank
         self.dst_rank = args.dst_rank
         self.window = args.window
+
+        self.src_ranks = parseRankList(args.src_ranks, "src_ranks", comms_world_info)
 
 
 class collectiveArgsHolder:
@@ -529,8 +562,15 @@ class paramCommsBench(ABC):
             # NOTE: this is for sum op. and the inital value is "self.initVal"
             expRes = self.collectiveArgs.world_size * self.initVal
 
+        # Check results for incast only on root
+        if (
+            commsParams.collective == "incast"
+            and self.backendFuncs.get_global_rank() != commsParams.srcOrDst
+        ):
+            return
+
         if isinstance(tensor, list):
-            # for allgather, it's a list of tensors
+            # for allgather and incast, it's a list of tensors:
             for (rank, t) in enumerate(tensor):
                 for (index, val) in enumerate(t):
                     if val != expRes:

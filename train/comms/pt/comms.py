@@ -29,6 +29,7 @@ supportedCollectives = [
     "broadcast",
     "reduce_scatter",
     "all_gather_base",
+    "incast",
 ]  # , "scatter", "gather"]
 pt2ptPatterns = [
     "one2one",
@@ -123,6 +124,14 @@ class commsCollBench(paramCommsBench):
             "--root", type=int, default=0, help="root process for reduce benchmark"
         )  # root process for reduce (and gather, scatter, bcast, etc., if support in the future)
         # TODO: check the correctness of root, should be between 0 to [world_size -1]
+        parser.add_argument(
+            "--src-ranks",
+            type=str,
+            nargs="?",
+            help="src ranks for many-to-one incast pattern. "
+            "List of ranks separated by comma or a range specified by start:end. "
+            "Include all ranks by default",
+        )  # optional: group of src ranks in many-to-one incast
         parser.add_argument(
             "--pair",
             type=int,
@@ -546,6 +555,7 @@ class commsCollBench(paramCommsBench):
         op = self.backendFuncs.get_reduce_op("sum")
         self.collectiveArgs.op = op
         self.collectiveArgs.srcOrDst = commsParams.srcOrDst
+        self.collectiveArgs.src_ranks = commsParams.src_ranks
         self.collectiveArgs.pair = commsParams.pair
         self.collectiveArgs.collective_pair = commsParams.collective_pair
         self.collectiveArgs.pt2pt = commsParams.pt2pt
@@ -555,6 +565,13 @@ class commsCollBench(paramCommsBench):
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
+
+        # incast does not include root self-transfer
+        if (
+            self.collectiveArgs.collective == "incast"
+            and self.collectiveArgs.srcOrDst in self.collectiveArgs.src_ranks
+        ):
+            self.collectiveArgs.src_ranks.remove(self.collectiveArgs.srcOrDst)
 
         computeFunc = None
         if commsParams.mode != "comms":  # Compute mode related initialization.
@@ -885,6 +902,15 @@ class commsCollBench(paramCommsBench):
                                 [numElements], curDevice, commsParams.dtype, scaleFactor
                             )
                         )
+                elif commsParams.collective == "incast":
+                    # incast requires a tensor list with length of src_ranks, e.g., List[torch.Tensor]
+                    opTensor = []
+                    for _ in self.collectiveArgs.src_ranks:
+                        opTensor.append(
+                            backendFuncs.alloc_random(
+                                [numElements], curDevice, commsParams.dtype, scaleFactor
+                            )
+                        )
                 elif commsParams.collective == "reduce_scatter":
                     ipTensor = []
                     for _ in range(world_size):
@@ -1141,7 +1167,7 @@ def main():
     )
 
     commsParams = comms_utils.commsParamsHolder(
-        args, element_size, collBenchObj.benchTime
+        args, comms_world_info, element_size, collBenchObj.benchTime
     )
 
     if args.pair == 1 and args.overlap_pair_pgs == 1:
