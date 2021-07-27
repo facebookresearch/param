@@ -28,7 +28,7 @@ supportedCollectives = [
     "all_gather",
     "broadcast",
     "reduce_scatter",
-    "all_gather_base"
+    "all_gather_base",
 ]  # , "scatter", "gather"]
 pt2ptPatterns = [
     "one2one",
@@ -64,9 +64,11 @@ class commsCollBench(paramCommsBench):
             "--f", type=int, default=2, help="multiplication factor between sizes"
         )  # COMMS mode, multiplication factor.
         parser.add_argument(
-            "--c", type=int, default=0,
+            "--c",
+            type=int,
+            default=0,
             help="enable data validation check",
-            choices=[0,1]
+            choices=[0, 1],
         )  # validation check
         parser.add_argument(
             "--collective",
@@ -126,7 +128,7 @@ class commsCollBench(paramCommsBench):
             type=int,
             default=0,
             help="enable pair mode",
-            choices=[0,1],
+            choices=[0, 1],
         )
         parser.add_argument(
             "--collective-pair",
@@ -140,33 +142,33 @@ class commsCollBench(paramCommsBench):
             type=int,
             default=0,
             help="overlap collective pair with two pgs",
-            choices=[0,1],
-        ) # overlap collective pair with two pgs
+            choices=[0, 1],
+        )  # overlap collective pair with two pgs
         parser.add_argument(
             "--pt2pt",
             type=str,
             default=None,
             help="point to point pattern",
             choices=pt2ptPatterns,
-        ) # point to point mode
+        )  # point to point mode
         parser.add_argument(
             "--src-rank",
             type=int,
             default=0,
             help="src rank for pt2pt pattern",
-        ) # optional: point to point mode source rank
+        )  # optional: point to point mode source rank
         parser.add_argument(
             "--dst-rank",
             type=int,
             default=1,
             help="dst rank for pt2pt pattern",
-        ) # optional: point to point mode destination rank
+        )  # optional: point to point mode destination rank
         parser.add_argument(
             "--window",
             type=int,
             default=100,
             help="window size for pt2pt throughput test",
-        ) # optional:  point to point throughput test window size
+        )  # optional:  point to point throughput test window size
 
         return parser.parse_known_args()
 
@@ -200,26 +202,31 @@ class commsCollBench(paramCommsBench):
             raise ValueError("NCCL is not supported for device type CPU")
 
         if args.c == 1 and args.z == 0:
-            logging.warning("Data validation is not supported for non-blocking mode...disable validation check and proceed...")
+            logging.warning(
+                "Data validation is not supported for non-blocking mode...disable validation check and proceed..."
+            )
             args.c = 0
 
         # run a few sanity checks
         if args.bitwidth < 32:
-            if (
-                args.collective not in ("all_to_all", "all_to_allv", "reduce", "all_reduce")
+            if args.collective not in (
+                "all_to_all",
+                "all_to_allv",
+                "reduce",
+                "all_reduce",
             ):
                 raise NotImplementedError(
                     f"quantized communication for {args.collective} is currently unsupported."
                 )
             if args.collective in ("all_to_all", "all_to_allv"):
-                if (
-                    args.beginSize // 4
-                ) % args.quant_a2a_embedding_dim != 0:
+                if (args.beginSize // 4) % args.quant_a2a_embedding_dim != 0:
                     raise ValueError(
                         "begin size (elements) must be a multiple of --quant-a2a-embedding-dim for all_to_all operation"
                     )
                 if args.blockingFlag != 1:
-                    raise NotImplementedError("quantized All_to_all must be synchronous.")
+                    raise NotImplementedError(
+                        "quantized All_to_all must be synchronous."
+                    )
             if args.dtype != torch.float32:
                 raise NotImplementedError(
                     f"quantization for {args.dtype} is not supported. Use float32 instead."
@@ -253,8 +260,10 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.quant_time.reset()
         self.collectiveArgs.dequant_time.reset()
         for _ in range(self.collectiveArgs.numIters):
-            if not self.collectiveArgs.asyncOp:  # should be sychronous, do barrier and wait for collective
-                self.setTensorVal(self.collectiveArgs.opTensor) # reset tensor values
+            if (
+                not self.collectiveArgs.asyncOp
+            ):  # should be sychronous, do barrier and wait for collective
+                self.setTensorVal(self.collectiveArgs.opTensor)  # reset tensor values
                 if comm_fn_pair is not None:
                     self.setTensorVal(self.collectiveArgs.opTensor_pair)
                 self.backendFuncs.sync_barrier(self.collectiveArgs)
@@ -277,7 +286,9 @@ class commsCollBench(paramCommsBench):
                     # _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
                     compute_fn(self.collectiveArgs)
             self.collectiveArgs.asyncOp = oldAsyncOp
-            if not self.collectiveArgs.asyncOp:  # should be sychronous, wait for the collective
+            if (
+                not self.collectiveArgs.asyncOp
+            ):  # should be sychronous, wait for the collective
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             # Measuring time.
             elapsedTimeNS += (
@@ -308,14 +319,19 @@ class commsCollBench(paramCommsBench):
                     numElements_pair - 1
                 ].item()  # to ensure collective won't be optimized away.
 
-
         elapsedTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
         # calculate average (de-)quantization overhead (in nanoseconds)
         avgQuantNS = {
-            "Quant": (self.collectiveArgs.quant_time.getTimeNS() / self.collectiveArgs.numIters),
-            "DeQuant": (self.collectiveArgs.dequant_time.getTimeNS() / self.collectiveArgs.numIters),
+            "Quant": (
+                self.collectiveArgs.quant_time.getTimeNS()
+                / self.collectiveArgs.numIters
+            ),
+            "DeQuant": (
+                self.collectiveArgs.dequant_time.getTimeNS()
+                / self.collectiveArgs.numIters
+            ),
         }
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
@@ -327,7 +343,9 @@ class commsCollBench(paramCommsBench):
             self.collectiveArgs.collective, algBW, self.collectiveArgs.world_size
         )
         if comm_fn_pair is not None:
-            memSize_pair = self.backendFuncs.get_mem_size(self.collectiveArgs, pair=True)
+            memSize_pair = self.backendFuncs.get_mem_size(
+                self.collectiveArgs, pair=True
+            )
             memSize += memSize_pair
 
             _, algBW_pair = comms_utils.getAlgBW(
@@ -335,7 +353,9 @@ class commsCollBench(paramCommsBench):
             )
             algBW += algBW_pair
             busBW_pair = self.backendFuncs.getBusBW(
-                self.collectiveArgs.collective_pair, algBW_pair, self.collectiveArgs.world_size
+                self.collectiveArgs.collective_pair,
+                algBW_pair,
+                self.collectiveArgs.world_size,
             )
             busBW += busBW_pair
 
@@ -369,9 +389,13 @@ class commsCollBench(paramCommsBench):
             self.backendFuncs.sync_barrier(self.collectiveArgs)
             start = time.monotonic()
             if self.collectiveArgs.global_rank == self.collectiveArgs.src_rank:
-                self.backendFuncs.send(self.collectiveArgs, self.collectiveArgs.dst_rank)
+                self.backendFuncs.send(
+                    self.collectiveArgs, self.collectiveArgs.dst_rank
+                )
             elif self.collectiveArgs.global_rank == self.collectiveArgs.dst_rank:
-                self.backendFuncs.recv(self.collectiveArgs, self.collectiveArgs.src_rank)
+                self.backendFuncs.recv(
+                    self.collectiveArgs, self.collectiveArgs.src_rank
+                )
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             pingLatencyNS.append(
                 (time.monotonic() - start) * 1e9
@@ -388,11 +412,19 @@ class commsCollBench(paramCommsBench):
             self.backendFuncs.sync_barrier(self.collectiveArgs)
             start = time.monotonic()
             if self.collectiveArgs.global_rank == self.collectiveArgs.src_rank:
-                self.backendFuncs.send(self.collectiveArgs, self.collectiveArgs.dst_rank)
-                self.backendFuncs.recv(self.collectiveArgs, self.collectiveArgs.dst_rank)
+                self.backendFuncs.send(
+                    self.collectiveArgs, self.collectiveArgs.dst_rank
+                )
+                self.backendFuncs.recv(
+                    self.collectiveArgs, self.collectiveArgs.dst_rank
+                )
             elif self.collectiveArgs.global_rank == self.collectiveArgs.dst_rank:
-                self.backendFuncs.recv(self.collectiveArgs, self.collectiveArgs.src_rank)
-                self.backendFuncs.send(self.collectiveArgs, self.collectiveArgs.src_rank)
+                self.backendFuncs.recv(
+                    self.collectiveArgs, self.collectiveArgs.src_rank
+                )
+                self.backendFuncs.send(
+                    self.collectiveArgs, self.collectiveArgs.src_rank
+                )
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             pingPongLatencyNS.append(
                 (time.monotonic() - start) * 1e9
@@ -410,18 +442,20 @@ class commsCollBench(paramCommsBench):
             start = time.monotonic()
             for w in range(self.collectiveArgs.window):
                 if self.collectiveArgs.global_rank == self.collectiveArgs.src_rank:
-                    self.backendFuncs.isend(self.collectiveArgs, self.collectiveArgs.dst_rank, tag=w)
+                    self.backendFuncs.isend(
+                        self.collectiveArgs, self.collectiveArgs.dst_rank, tag=w
+                    )
                 elif self.collectiveArgs.global_rank == self.collectiveArgs.dst_rank:
-                    self.backendFuncs.irecv(self.collectiveArgs, self.collectiveArgs.src_rank, tag=w)
+                    self.backendFuncs.irecv(
+                        self.collectiveArgs, self.collectiveArgs.src_rank, tag=w
+                    )
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             uniLatencyNS.append(
                 (time.monotonic() - start) * 1e9
-            ) # keeping time in NS, helps in divising data by nanosecond
+            )  # keeping time in NS, helps in divising data by nanosecond
         uniLatencyNS = [lat / self.collectiveArgs.window for lat in uniLatencyNS]
         uniLatencyNS = np.mean(np.array(uniLatencyNS))
-        _, avgUniBW = comms_utils.getAlgBW(
-            uniLatencyNS, memSize, 1
-        )
+        _, avgUniBW = comms_utils.getAlgBW(uniLatencyNS, memSize, 1)
         logging.debug("STATUS: end UniBW test.")
         return avgUniBW
 
@@ -435,20 +469,30 @@ class commsCollBench(paramCommsBench):
             start = time.monotonic()
             for w in range(self.collectiveArgs.window):
                 if self.collectiveArgs.global_rank == self.collectiveArgs.src_rank:
-                    self.backendFuncs.isend(self.collectiveArgs, self.collectiveArgs.dst_rank, tag=w)
-                    self.backendFuncs.irecv(self.collectiveArgs, self.collectiveArgs.dst_rank, tag=w+self.collectiveArgs.window)
+                    self.backendFuncs.isend(
+                        self.collectiveArgs, self.collectiveArgs.dst_rank, tag=w
+                    )
+                    self.backendFuncs.irecv(
+                        self.collectiveArgs,
+                        self.collectiveArgs.dst_rank,
+                        tag=w + self.collectiveArgs.window,
+                    )
                 elif self.collectiveArgs.global_rank == self.collectiveArgs.dst_rank:
-                    self.backendFuncs.irecv(self.collectiveArgs, self.collectiveArgs.src_rank, tag=w)
-                    self.backendFuncs.isend(self.collectiveArgs, self.collectiveArgs.src_rank, tag=w+self.collectiveArgs.window)
+                    self.backendFuncs.irecv(
+                        self.collectiveArgs, self.collectiveArgs.src_rank, tag=w
+                    )
+                    self.backendFuncs.isend(
+                        self.collectiveArgs,
+                        self.collectiveArgs.src_rank,
+                        tag=w + self.collectiveArgs.window,
+                    )
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             biLatencyNS.append(
                 (time.monotonic() - start) * 1e9
-            ) # keeping time in NS, helps in divising data by nanosecond
+            )  # keeping time in NS, helps in divising data by nanosecond
         biLatencyNS = [lat / self.collectiveArgs.window for lat in biLatencyNS]
         biLatencyNS = np.mean(np.array(biLatencyNS))
-        _, avgBiBW = comms_utils.getAlgBW(
-            biLatencyNS, 2*memSize, 1
-        )
+        _, avgBiBW = comms_utils.getAlgBW(biLatencyNS, 2 * memSize, 1)
         logging.debug("STATUS: end UniBW test.")
         return avgBiBW
 
@@ -572,10 +616,14 @@ class commsCollBench(paramCommsBench):
 
     def gatherBenchTime(self, collectiveArgs, commsParams, timeElapsedList):
         # Push the list to device, then do an all-gather.
-        timeElapsedTensor = torch.tensor(timeElapsedList, device=self.backendFuncs.get_device())
+        timeElapsedTensor = torch.tensor(
+            timeElapsedList, device=self.backendFuncs.get_device()
+        )
         collectiveArgs.opTensor = None
         if commsParams.backend != "xla":
-            timeList = [torch.ones_like(timeElapsedTensor) for _ in range(self.comm_size)]
+            timeList = [
+                torch.ones_like(timeElapsedTensor) for _ in range(self.comm_size)
+            ]
             collectiveArgs.opTensor = timeList
 
         collectiveArgs.ipTensor = timeElapsedTensor
@@ -591,10 +639,23 @@ class commsCollBench(paramCommsBench):
 
         return timeList
 
-    def reportBenchTimeWithQuant(self, commsParams, allSizes, tensorList, quantTimeTensorList, dequantTimeTensorList, results):
+    def reportBenchTimeWithQuant(
+        self,
+        commsParams,
+        allSizes,
+        tensorList,
+        quantTimeTensorList,
+        dequantTimeTensorList,
+        results,
+    ):
         print(
             "\tCOMMS-QUANT-RES\t{:>15}\t{:>15}\t{:>25}\t{:>15}\t{:>15}\t{:>15}".format(
-                "size (B)","num-elements","P95 Latency(us): Quant","Comms","De-Quant","Overall"
+                "size (B)",
+                "num-elements",
+                "P95 Latency(us): Quant",
+                "Comms",
+                "De-Quant",
+                "Overall",
             )
         )
 
@@ -613,7 +674,9 @@ class commsCollBench(paramCommsBench):
                 dequantLatencyAcrossRanks = torch.transpose(
                     dequantTimeTensorList.view(-1, len(allSizes)), 0, 1
                 )[idx]
-                dequantLatencyAcrossRanks = dequantLatencyAcrossRanks.cpu().detach().numpy()
+                dequantLatencyAcrossRanks = (
+                    dequantLatencyAcrossRanks.cpu().detach().numpy()
+                )
             else:
                 latencyAcrossRanks = []
                 for curRankTensor in tensorList:
@@ -642,8 +705,7 @@ class commsCollBench(paramCommsBench):
             self.collectiveArgs.dataSize = curSize
 
             print(
-                "\tCOMMS-QUANT-RES\t{:>15}\t{:>15}\t{:>25}\t{:>15}\t{:>15}\t{:>15}"
-                .format(
+                "\tCOMMS-QUANT-RES\t{:>15}\t{:>15}\t{:>25}\t{:>15}\t{:>15}\t{:>15}".format(
                     results[curSize]["memSize"],
                     str("%d" % (results[curSize]["num_elements"])),
                     str("%.1f" % (quant_p95)),
@@ -830,9 +892,14 @@ class commsCollBench(paramCommsBench):
                         )
                 elif commsParams.collective == "all_gather_base":
                     # this is a single all gather
-                    opTensor = backendFuncs.alloc_random(numElements * world_size, curDevice, commsParams.dtype, scaleFactor)
+                    opTensor = backendFuncs.alloc_random(
+                        numElements * world_size,
+                        curDevice,
+                        commsParams.dtype,
+                        scaleFactor,
+                    )
                 # set corresponding function pointers
-                if commsParams.collective != 'pt2pt':
+                if commsParams.collective != "pt2pt":
                     collectiveFunc = backendFuncs.collectiveFunc[commsParams.collective]
 
             # Setup the arguments.
@@ -860,7 +927,10 @@ class commsCollBench(paramCommsBench):
                     )
                 else:
                     ipTensor_pair = backendFuncs.alloc_random(
-                        [numElements_pair], curDevice, commsParams.dtype, scaleFactor_pair
+                        [numElements_pair],
+                        curDevice,
+                        commsParams.dtype,
+                        scaleFactor_pair,
                     )
 
                 opTensor_pair = ipTensor_pair
@@ -870,15 +940,20 @@ class commsCollBench(paramCommsBench):
                     if commsParams.collective_pair.startswith("all_to_all"):
                         # all_to_all(v) requires two tensors
                         opTensor_pair = backendFuncs.alloc_random(
-                            [numElements_pair], curDevice, commsParams.dtype, scaleFactor_pair
+                            [numElements_pair],
+                            curDevice,
+                            commsParams.dtype,
+                            scaleFactor_pair,
                         )
                         # all_to_allv requires tensors to specify split
                         if commsParams.collective_pair == "all_to_allv":
                             self.collectiveArgs.ipTensor_split_pair = [
-                                int(numElements_pair // world_size) for i in range(world_size)
+                                int(numElements_pair // world_size)
+                                for i in range(world_size)
                             ]
                             self.collectiveArgs.opTensor_split_pair = [
-                                int(numElements_pair // world_size) for i in range(world_size)
+                                int(numElements_pair // world_size)
+                                for i in range(world_size)
                             ]
                     elif commsParams.collective_pair == "all_gather":
                         # allgather requires a tensor list, e.g., List[torch.Tensor]
@@ -886,12 +961,17 @@ class commsCollBench(paramCommsBench):
                         for _ in range(world_size):
                             opTensor_pair.append(
                                 backendFuncs.alloc_random(
-                                    [numElements_pair], curDevice, commsParams.dtype, scaleFactor_pair
+                                    [numElements_pair],
+                                    curDevice,
+                                    commsParams.dtype,
+                                    scaleFactor_pair,
                                 )
                             )
                     # set corresponding function pointers
-                    if commsParams.collective_pair != 'pt2pt':
-                        collectiveFunc_pair = backendFuncs.collectiveFunc[commsParams.collective_pair]
+                    if commsParams.collective_pair != "pt2pt":
+                        collectiveFunc_pair = backendFuncs.collectiveFunc[
+                            commsParams.collective_pair
+                        ]
 
                 # Setup the arguments.
                 self.collectiveArgs.ipTensor_pair = ipTensor_pair
@@ -900,9 +980,11 @@ class commsCollBench(paramCommsBench):
                 self.collectiveArgs.numElements_pair = numElements_pair
 
             # self.collectiveArgs has all the information on the experiment.
-            if commsParams.collective != 'pt2pt':
+            if commsParams.collective != "pt2pt":
                 timeElapsedNS, algBW, busBW, memSize, avgQuantNS, x_pair = self.runColl(
-                    comm_fn=collectiveFunc, compute_fn=computeFunc, comm_fn_pair=collectiveFunc_pair
+                    comm_fn=collectiveFunc,
+                    compute_fn=computeFunc,
+                    comm_fn_pair=collectiveFunc_pair,
                 )
 
                 # perfom data validation check on the final opTensor
@@ -934,12 +1016,20 @@ class commsCollBench(paramCommsBench):
                     if (commsParams.collective_pair == "all_to_all") or (
                         commsParams.collective_pair == "all_to_allv"
                     ):
-                        results[curSize]["num_elements"] = int(numElements // world_size)
+                        results[curSize]["num_elements"] = int(
+                            numElements // world_size
+                        )
                     else:
                         results[curSize]["num_elements"] = int(numElements)
                         results[curSize]["x_pair"] = x_pair
             else:
-                pingPerIterNS, pingPongPerIterNS, avgUniBW, avgBiBW, memSize = self.runPt2Pt()
+                (
+                    pingPerIterNS,
+                    pingPongPerIterNS,
+                    avgUniBW,
+                    avgBiBW,
+                    memSize,
+                ) = self.runPt2Pt()
                 results[curSize] = {}
                 results[curSize]["pingPerIterNS"] = pingPerIterNS
                 results[curSize]["pingPongPerIterNS"] = pingPongPerIterNS
@@ -953,28 +1043,39 @@ class commsCollBench(paramCommsBench):
                 del ipTensor_pair
                 del opTensor_pair
             backendFuncs.clear_memory()
-            self.backendFuncs.sync_barrier(self.collectiveArgs, desc=f"curSize_{curSize}")
+            self.backendFuncs.sync_barrier(
+                self.collectiveArgs, desc=f"curSize_{curSize}"
+            )
 
         comms_utils.clearQuantCommCtx(self.collectiveArgs)
 
-        tensorList = self.gatherBenchTime(self.collectiveArgs, commsParams, timeElapsedList)
+        tensorList = self.gatherBenchTime(
+            self.collectiveArgs, commsParams, timeElapsedList
+        )
 
         if global_rank == 0:
             if self.collectiveArgs.collective != "pt2pt":
-                self.reportBenchTime(
-                    commsParams, allSizes, tensorList, results
-                )
+                self.reportBenchTime(commsParams, allSizes, tensorList, results)
                 quantTimeTensorList = []
                 if commsParams.bitwidth < 32:
                     logging.debug(quantTimeElapsedList)
-                    quantTimeTensorList = self.gatherBenchTime(self.collectiveArgs, commsParams, quantTimeElapsedList)
-                    dequantTimeTensorList = self.gatherBenchTime(self.collectiveArgs, commsParams, dequantTimeElapsedList)
+                    quantTimeTensorList = self.gatherBenchTime(
+                        self.collectiveArgs, commsParams, quantTimeElapsedList
+                    )
+                    dequantTimeTensorList = self.gatherBenchTime(
+                        self.collectiveArgs, commsParams, dequantTimeElapsedList
+                    )
                     if global_rank == 0:
-                        self.reportBenchTimeWithQuant(commsParams, allSizes, tensorList, quantTimeTensorList, dequantTimeTensorList, results)
+                        self.reportBenchTimeWithQuant(
+                            commsParams,
+                            allSizes,
+                            tensorList,
+                            quantTimeTensorList,
+                            dequantTimeTensorList,
+                            results,
+                        )
             else:
-                self.reportBenchTimePt2Pt(
-                    commsParams, allSizes, results
-                )
+                self.reportBenchTimePt2Pt(commsParams, allSizes, results)
 
         # wait rank 0 reports results to avoid other ranks mess up the output
         self.backendFuncs.sync_barrier(self.collectiveArgs, "benchtime")
@@ -998,8 +1099,7 @@ class commsCollBench(paramCommsBench):
             backendObj.benchmark_comms()
         except ValueError as ve:
             if commsParams.backend == "ucc":
-                logging.critical("PyTorch UCC not implemented? {}"
-                        .format(repr(ve)))
+                logging.critical("PyTorch UCC not implemented? {}".format(repr(ve)))
             raise
 
 

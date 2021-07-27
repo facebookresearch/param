@@ -5,19 +5,22 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import os
-import sys
-from abc import ABC, abstractmethod
-import torch
-from torch.autograd.profiler import record_function
 import logging
+import os
+import random
+import sys
 import time
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from io import StringIO
-import random
+
+import torch
+from torch.autograd.profiler import record_function
+
 random.seed()
 
 logger = logging.getLogger(__name__)
+
 
 def gracefulExit():
     # TODO: Is this the best way to exit?
@@ -26,7 +29,7 @@ def gracefulExit():
 
 
 def parsesize(ipValue):
-    """ nccl-tests compatible input-size parsing. """
+    """nccl-tests compatible input-size parsing."""
     units = 0
     size = 0.0
 
@@ -143,17 +146,21 @@ def read_mpi_env_vars():
     mpi_env_params["local_rank"] = local_rank
     return mpi_env_params
 
+
 def commonUrlRead(remotePath):
     import urllib.request
+
     # TODO: Error handle
     with urllib.request.urlopen(remotePath) as rf:
         contents = rf.read()
     return StringIO(contents.decode("utf-8"))
 
+
 def initQuantCommCtx(collectiveArgs, commsParams):
     logger.info(f"communication bitwidth set to {commsParams.bitwidth}")
     try:
         from internals import initialize_collectiveArgs_internal
+
         initialize_collectiveArgs_internal(collectiveArgs, commsParams)
     except ImportError:
         # cannot do quantization, reset bitwidth
@@ -161,37 +168,47 @@ def initQuantCommCtx(collectiveArgs, commsParams):
         commsParams.bitwidth = 32
         pass
 
+
 def clearQuantCommCtx(collectiveArgs):
     try:
         logger.debug("Removing installed quantization handlers.")
         from internals import remove_quantization_handlers
+
         remove_quantization_handlers(collectiveArgs)
     except ImportError:
         pass
 
+
 @dataclass
 class paramTimer:
-    elapsedTimeNS: float = 0.0 # keeping time in NS
+    elapsedTimeNS: float = 0.0  # keeping time in NS
 
     def reset(self, newTime=0.0):
         self.elapsedTimeNS = newTime
+
     def incrTimeNS(self, timeNS):
         self.elapsedTimeNS += timeNS
+
     def getTimeUS(self) -> float:
         return self.elapsedTimeNS / 1e3
+
     def getTimeNS(self) -> float:
         return self.elapsedTimeNS
 
+
 class paramProfile(record_function):
-    """ Inherit from PyTorch profiler to enable autoguard profiling while measuring the time interval in PARAM """
+    """Inherit from PyTorch profiler to enable autoguard profiling while measuring the time interval in PARAM"""
+
     def __init__(self, timer=None, description=""):
         self.description = description
         self.timer = timer
         super().__init__(name=description)
+
     def __enter__(self):
         super().__enter__()
         self.start = time.monotonic()
         return self
+
     def __exit__(self, exc_type, exc_value, traceback):
         self.end = time.monotonic()
         self.intervalNS = (self.end - self.start) * 1e9  # keeping time in NS
@@ -203,7 +220,7 @@ class paramProfile(record_function):
 
 
 class backendFunctions(ABC):
-    """ Abstract base class, provides common abstraction for all the backends. """
+    """Abstract base class, provides common abstraction for all the backends."""
 
     def __init__(self):
         self.collectiveFunc = {
@@ -226,7 +243,13 @@ class backendFunctions(ABC):
             if world_size != 0:
                 mulFactor = 2 * (world_size - 1) / (world_size)
             busBW = algBW * mulFactor
-        elif collective in ("all_to_all", "all_to_allv", "all_gather", "reduce_scatter", "all_gather_base"):
+        elif collective in (
+            "all_to_all",
+            "all_to_allv",
+            "all_gather",
+            "reduce_scatter",
+            "all_gather_base",
+        ):
             if world_size != 0:
                 mulFactor = (world_size - 1) / (world_size)
             busBW = algBW * mulFactor
@@ -239,7 +262,9 @@ class backendFunctions(ABC):
             )
         return busBW
 
-    def alloc_ones(self, sizeArr, curRankDevice="cuda", dtype=torch.float32, scaleFactor=1.0):
+    def alloc_ones(
+        self, sizeArr, curRankDevice="cuda", dtype=torch.float32, scaleFactor=1.0
+    ):
         ipTensor = torch.ones(sizeArr, device=curRankDevice, dtype=dtype)
         if scaleFactor != 1.0:
             ipTensor = ipTensor * scaleFactor
@@ -357,6 +382,7 @@ class comms_world_info_holder:
         self.master_port = master_port
         self.num_tpu_cores = num_tpu_cores
 
+
 class commsParamsHolderBase:
     def __init__(self, args):
         # A holding object for common input parameters
@@ -372,6 +398,7 @@ class commsParamsHolderBase:
 
         self.num_pgs = 1
 
+
 class commsParamsHolder(commsParamsHolderBase):
     def __init__(self, args, element_size, benchTime):
         # A holding object for the input parameters from collective benchmark
@@ -384,7 +411,9 @@ class commsParamsHolder(commsParamsHolderBase):
         self.stepFactor = args.f
         self.srcOrDst = args.root
         self.dcheck = args.c
-        self.quant_threshold = max(self.endSize, self.quant_threshold) # use quantization for all sizes in collective benchmark
+        self.quant_threshold = max(
+            self.endSize, self.quant_threshold
+        )  # use quantization for all sizes in collective benchmark
 
         self.numWarmupIters = args.w
         self.numIters = args.n
@@ -407,6 +436,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.src_rank = args.src_rank
         self.dst_rank = args.dst_rank
         self.window = args.window
+
 
 class collectiveArgsHolder:
     def __init__(self):
@@ -461,13 +491,12 @@ class collectiveArgsHolder:
 
         self.all2all_qcomm = None
         self.reducescatter_allgather_qcomm = None
-        self.allreduce_qcomm = (
-            32  # TODO: set it as the bitwidth for now until the quantization kernels be supported
-        )
+        self.allreduce_qcomm = 32  # TODO: set it as the bitwidth for now until the quantization kernels be supported
         self.reduce_qcomm = 32
         self.quant_threshold = 0
         self.quant_time = paramTimer()
         self.dequant_time = paramTimer()
+
 
 class paramCommsBench(ABC):
     def __init__(self, supportedNwstacks=None):
@@ -523,7 +552,11 @@ class paramCommsBench(ABC):
             tensor[:] = self.initVal
         elif self.collectiveArgs.collective == "broadcast":
             # root process uses initVal and others use random values
-            tensor[:] = self.initVal if (self.backendFuncs.get_global_rank() == self.collectiveArgs.srcOrDst) else newVal
+            tensor[:] = (
+                self.initVal
+                if (self.backendFuncs.get_global_rank() == self.collectiveArgs.srcOrDst)
+                else newVal
+            )
         elif isinstance(tensor, list):
             # could be a list of tensor, for all_gather/gather
             for t in tensor:
@@ -533,22 +566,22 @@ class paramCommsBench(ABC):
 
     @abstractmethod
     def runBench(self, *args, **kwargs):
-        """ Must override to start the desired benchmarking """
+        """Must override to start the desired benchmarking"""
         pass
 
     @abstractmethod
     def benchTime(self, *args, **kwargs):
-        """ Must override to run the desired benchmarking """
+        """Must override to run the desired benchmarking"""
         pass
 
     @abstractmethod
     def reportBenchTime(self, *args, **kwargs):
-        """ Must override to report/print the desired output """
+        """Must override to report/print the desired output"""
         pass
 
     @abstractmethod
     def readArgs(self, parser):
-        """ Basic/Common arguments for all PARAM-Comm benchmarks """
+        """Basic/Common arguments for all PARAM-Comm benchmarks"""
         parser.add_argument(
             "--master-ip",
             type=str,
@@ -608,7 +641,7 @@ class paramCommsBench(ABC):
             type=int,
             default=1,
             help="use blocking mode for collectives",
-            choices=[0,1]
+            choices=[0, 1],
         )  # 'sync/blocking' : 1 , 'async/non-blocking' : 0
         parser.add_argument(
             "--bitwidth",
@@ -616,25 +649,25 @@ class paramCommsBench(ABC):
             default=32,
             help="Quantization bitwidth",
             choices=[2, 4, 8, 16, 32],
-        ) # comms quantization
+        )  # comms quantization
         parser.add_argument(
             "--quant-a2a-embedding-dim",
             type=int,
             default=32,
             help="Embedding dimension used by quantization alltoall if enabled",
             choices=[32, 64, 128, 256],
-        ) # Row dimension for quantization
+        )  # Row dimension for quantization
         parser.add_argument(
             "--quant-threshold",
             type=int,
             default=33554432,
             help="threshold of message sizes to perform quantization if enabled",
-        ) # quantization threshold, default 32 MB
+        )  # quantization threshold, default 32 MB
         pass
 
     @abstractmethod
     def checkArgs(self, args):
-        """ Validate some basic/common arguments for all PARAM-Comm benchmarks """
+        """Validate some basic/common arguments for all PARAM-Comm benchmarks"""
         if args.nw_stack not in self.supportedNwstacks:
             print(
                 "\t ERROR: Specified backend: %s is not one of the supported backends: %s. Make sure the input is using the correct case."
@@ -657,4 +690,7 @@ class paramCommsBench(ABC):
         numeric_level = getattr(logging, args.log.upper(), None)
         if not isinstance(numeric_level, int):
             raise ValueError("Invalid log level: %s" % args.log)
-        logging.basicConfig(level=numeric_level, format="[%(asctime)s][%(name)s][%(levelname)s] - %(message)s")
+        logging.basicConfig(
+            level=numeric_level,
+            format="[%(asctime)s][%(name)s][%(levelname)s] - %(message)s",
+        )
