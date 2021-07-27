@@ -342,7 +342,7 @@ class PyTorchDistBackend(backendFunctions):
         if dev_str == "cuda":
             torch.cuda.synchronize(collectiveArgs.device)
 
-    def complete_accel_ops(self, collectiveArgs, initOp=False):
+    def complete_accel_ops(self, collectiveArgs, initOp=False, devSync=True):
         if initOp is True:
             temp = torch.ones([1], device=collectiveArgs.device)
             dist.all_reduce(temp)
@@ -351,7 +351,8 @@ class PyTorchDistBackend(backendFunctions):
                 waitReq.wait()
         collectiveArgs.waitObj.clear()
 
-        self.device_sync(collectiveArgs)
+        if devSync:
+            self.device_sync(collectiveArgs)
 
     # retFlag not used
     def complete_single_op(self, collectiveArgs, retFlag=False):
