@@ -1045,11 +1045,11 @@ class commsCollBench(paramCommsBench):
                     if (commsParams.collective_pair == "all_to_all") or (
                         commsParams.collective_pair == "all_to_allv"
                     ):
-                        results[curSize]["num_elements"] = int(
+                        results[curSize]["num_elements_pair"] = int(
                             numElements // world_size
                         )
                     else:
-                        results[curSize]["num_elements"] = int(numElements)
+                        results[curSize]["num_elements_pair"] = int(numElements)
                         results[curSize]["x_pair"] = x_pair
             else:
                 (
