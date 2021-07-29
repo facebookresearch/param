@@ -313,6 +313,22 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    # One-to-many pattern
+    def multicast(self, collectiveArgs):
+        if collectiveArgs.global_rank == collectiveArgs.srcOrDst:
+            # root sends tensor to each of user-specified destination ranks
+            for dst_rank in collectiveArgs.dst_ranks:
+                self.isend(collectiveArgs, dst_rank)
+            # complete outstanding isends if blocking
+            if not collectiveArgs.asyncOp:
+                self.complete_accel_ops(collectiveArgs, devSync=False)
+        elif collectiveArgs.global_rank in collectiveArgs.dst_ranks:
+            # recvs tensor from root
+            if collectiveArgs.asyncOp:
+                self.irecv(collectiveArgs, collectiveArgs.srcOrDst)
+            else:
+                self.recv(collectiveArgs, collectiveArgs.srcOrDst)
+
     def send(self, collectiveArgs, dst_rank, retFlag=False, tag=0):
         dist.send(
             tensor=collectiveArgs.ipTensor,

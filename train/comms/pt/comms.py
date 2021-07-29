@@ -30,6 +30,7 @@ supportedCollectives = [
     "reduce_scatter",
     "all_gather_base",
     "incast",
+    "multicast",
 ]  # , "scatter", "gather"]
 pt2ptPatterns = [
     "one2one",
@@ -132,6 +133,14 @@ class commsCollBench(paramCommsBench):
             "List of ranks separated by comma or a range specified by start:end. "
             "Include all ranks by default",
         )  # optional: group of src ranks in many-to-one incast
+        parser.add_argument(
+            "--dst-ranks",
+            type=str,
+            nargs="?",
+            help="dst ranks for one-to-many multicast pattern. "
+            "List of ranks separated by comma or a range specified by start:end. "
+            "Include all ranks by default",
+        )  # optional: group of dst ranks in one-to-many multicast
         parser.add_argument(
             "--pair",
             type=int,
@@ -556,6 +565,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.op = op
         self.collectiveArgs.srcOrDst = commsParams.srcOrDst
         self.collectiveArgs.src_ranks = commsParams.src_ranks
+        self.collectiveArgs.dst_ranks = commsParams.dst_ranks
         self.collectiveArgs.pair = commsParams.pair
         self.collectiveArgs.collective_pair = commsParams.collective_pair
         self.collectiveArgs.pt2pt = commsParams.pt2pt
@@ -572,6 +582,13 @@ class commsCollBench(paramCommsBench):
             and self.collectiveArgs.srcOrDst in self.collectiveArgs.src_ranks
         ):
             self.collectiveArgs.src_ranks.remove(self.collectiveArgs.srcOrDst)
+
+        # multicast does not include root self-transfer
+        if (
+            self.collectiveArgs.collective == "multicast"
+            and self.collectiveArgs.srcOrDst in self.collectiveArgs.dst_ranks
+        ):
+            self.collectiveArgs.dst_ranks.remove(self.collectiveArgs.srcOrDst)
 
         computeFunc = None
         if commsParams.mode != "comms":  # Compute mode related initialization.

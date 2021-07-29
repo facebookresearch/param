@@ -265,6 +265,7 @@ class backendFunctions(ABC):
             "reduce_scatter_base": self.reduce_scatter,
             "barrier": self.barrier,
             "incast": self.incast,
+            "multicast": self.multicast,
         }
 
     def getBusBW(self, collective, algBW, world_size):
@@ -284,7 +285,7 @@ class backendFunctions(ABC):
             if world_size != 0:
                 mulFactor = (world_size - 1) / (world_size)
             busBW = algBW * mulFactor
-        elif collective in ("reduce", "broadcast", "incast"):
+        elif collective in ("reduce", "broadcast", "incast", "multicast"):
             busBW = algBW
         else:
             print(
@@ -469,6 +470,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.window = args.window
 
         self.src_ranks = parseRankList(args.src_ranks, "src_ranks", comms_world_info)
+        self.dst_ranks = parseRankList(args.dst_ranks, "dst_ranks", comms_world_info)
 
 
 class collectiveArgsHolder:
@@ -562,10 +564,14 @@ class paramCommsBench(ABC):
             # NOTE: this is for sum op. and the inital value is "self.initVal"
             expRes = self.collectiveArgs.world_size * self.initVal
 
-        # Check results for incast only on root
         if (
+            # Check results for incast only on root
             commsParams.collective == "incast"
             and self.backendFuncs.get_global_rank() != commsParams.srcOrDst
+        ) or (
+            # Check results of multicast only for dst_ranks
+            commsParams.collective == "multicast"
+            and self.backendFuncs.get_global_rank() not in commsParams.dst_ranks
         ):
             return
 
@@ -590,7 +596,7 @@ class paramCommsBench(ABC):
         if self.collectiveArgs.collective in ("all_reduce", "reduce"):
             # all processes use initVal to have predictable results
             tensor[:] = self.initVal
-        elif self.collectiveArgs.collective == "broadcast":
+        elif self.collectiveArgs.collective in ("broadcast", "multicast"):
             # root process uses initVal and others use random values
             tensor[:] = (
                 self.initVal
