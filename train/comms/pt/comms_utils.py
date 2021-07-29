@@ -266,6 +266,7 @@ class backendFunctions(ABC):
             "barrier": self.barrier,
             "incast": self.incast,
             "multicast": self.multicast,
+            "bisect": self.bisect,
         }
 
     def getBusBW(self, collective, algBW, collectiveArgs):
@@ -291,6 +292,8 @@ class backendFunctions(ABC):
             busBW = algBW * mulFactor
         elif collective in ("reduce", "broadcast", "incast", "multicast"):
             busBW = algBW
+        elif collectiveArgs.collective == "bisect":
+            busBW = algBW * len(collectiveArgs.src_ranks)
         else:
             print(
                 "\t ERROR: collective: %s is not supported in computing bus BW! "
@@ -573,8 +576,8 @@ class paramCommsBench(ABC):
             commsParams.collective == "incast"
             and self.backendFuncs.get_global_rank() != commsParams.srcOrDst
         ) or (
-            # Check results of multicast only for dst_ranks
-            commsParams.collective == "multicast"
+            # Check results of multicast or bisection only for dst_ranks
+            commsParams.collective in ("multicast", "bisect")
             and self.backendFuncs.get_global_rank() not in commsParams.dst_ranks
         ):
             return

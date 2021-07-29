@@ -329,6 +329,25 @@ class PyTorchDistBackend(backendFunctions):
             else:
                 self.recv(collectiveArgs, collectiveArgs.srcOrDst)
 
+    # multi-pair pt2pt pattern
+    def bisect(self, collectiveArgs):
+        # each member in dst_ranks receives tensor from the src_rank with same index
+        if collectiveArgs.global_rank in collectiveArgs.dst_ranks:
+            idx = collectiveArgs.dst_ranks.index(collectiveArgs.global_rank)
+            if collectiveArgs.asyncOp:
+                self.irecv(collectiveArgs, collectiveArgs.src_ranks[idx])
+            else:
+                self.recv(collectiveArgs, collectiveArgs.src_ranks[idx])
+
+        # each member in src_ranks sends tensor to the dst_rank with same index
+        # Note: a rank can never issue both recv and send, thus no potential deadlock with blocking calls
+        if collectiveArgs.global_rank in collectiveArgs.src_ranks:
+            idx = collectiveArgs.src_ranks.index(collectiveArgs.global_rank)
+            if collectiveArgs.asyncOp:
+                self.isend(collectiveArgs, collectiveArgs.dst_ranks[idx])
+            else:
+                self.send(collectiveArgs, collectiveArgs.dst_ranks[idx])
+
     def send(self, collectiveArgs, dst_rank, retFlag=False, tag=0):
         dist.send(
             tensor=collectiveArgs.ipTensor,
