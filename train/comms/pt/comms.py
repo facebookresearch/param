@@ -358,7 +358,9 @@ class commsCollBench(paramCommsBench):
             elapsedTimeNS, memSize, self.collectiveArgs.numIters
         )
         busBW = self.backendFuncs.getBusBW(
-            self.collectiveArgs.collective, algBW, self.collectiveArgs.world_size
+            self.collectiveArgs.collective,
+            algBW,
+            self.collectiveArgs,
         )
         if comm_fn_pair is not None:
             memSize_pair = self.backendFuncs.get_mem_size(
@@ -373,7 +375,7 @@ class commsCollBench(paramCommsBench):
             busBW_pair = self.backendFuncs.getBusBW(
                 self.collectiveArgs.collective_pair,
                 algBW_pair,
-                self.collectiveArgs.world_size,
+                self.collectiveArgs,
             )
             busBW += busBW_pair
 

@@ -268,12 +268,14 @@ class backendFunctions(ABC):
             "multicast": self.multicast,
         }
 
-    def getBusBW(self, collective, algBW, world_size):
+    def getBusBW(self, collective, algBW, collectiveArgs):
         busBW = algBW
         mulFactor = 1.0
         if collective == "all_reduce":
-            if world_size != 0:
-                mulFactor = 2 * (world_size - 1) / (world_size)
+            if collectiveArgs.world_size != 0:
+                mulFactor = (
+                    2 * (collectiveArgs.world_size - 1) / (collectiveArgs.world_size)
+                )
             busBW = algBW * mulFactor
         elif collective in (
             "all_to_all",
@@ -282,8 +284,10 @@ class backendFunctions(ABC):
             "reduce_scatter",
             "all_gather_base",
         ):
-            if world_size != 0:
-                mulFactor = (world_size - 1) / (world_size)
+            if collectiveArgs.world_size != 0:
+                mulFactor = (collectiveArgs.world_size - 1) / (
+                    collectiveArgs.world_size
+                )
             busBW = algBW * mulFactor
         elif collective in ("reduce", "broadcast", "incast", "multicast"):
             busBW = algBW
