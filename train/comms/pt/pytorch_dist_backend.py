@@ -10,7 +10,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from comms_utils import backendFunctions, collectiveArgsHolder, paramTimer
+from comms_utils import backendFunctions, collectiveArgsHolder, paramProfile
 
 try:
     from internals import all_to_allv_internal, all_to_all_internal
@@ -89,7 +89,7 @@ class PyTorchDistBackend(backendFunctions):
             # every time we call all_reduce (because if we don't, it will be float16 instead of float32).
             # That also means we can't use the output of  quantized all_reduce's for anything other than
             # benchmarking purpose.
-            with paramTimer(
+            with paramProfile(
                 timer=collectiveArgs.quant_time,
                 description="# PARAM: Allreduce quantization #",
             ):
@@ -110,7 +110,7 @@ class PyTorchDistBackend(backendFunctions):
             if collectiveArgs.asyncOp:
                 retObj = retObj.get_future().then(_dequantize)
             else:
-                with paramTimer(
+                with paramProfile(
                     timer=collectiveArgs.dequant_time,
                     description="# PARAM: Allreduce de-quantization #",
                 ):
@@ -126,7 +126,7 @@ class PyTorchDistBackend(backendFunctions):
         # pair=True mode does not support quantization
         if collectiveArgs.reduce_qcomm != 32 and not pair:
             assert collectiveArgs.ipTensor.dtype == torch.float32
-            with paramTimer(
+            with paramProfile(
                 timer=collectiveArgs.quant_time,
                 description="# PARAM: Reduce quantization #",
             ):
@@ -148,7 +148,7 @@ class PyTorchDistBackend(backendFunctions):
             if collectiveArgs.asyncOp:
                 retObj = retObj.get_future().then(_dequantize)
             else:
-                with paramTimer(
+                with paramProfile(
                     timer=collectiveArgs.dequant_time,
                     description="# PARAM: Reduce de-quantization #",
                 ):
