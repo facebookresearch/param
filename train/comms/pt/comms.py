@@ -31,7 +31,6 @@ supportedCollectives = [
     "all_gather_base",
     "incast",
     "multicast",
-    "bisect",
 ]  # , "scatter", "gather"]
 pt2ptPatterns = [
     "one2one",
@@ -130,18 +129,18 @@ class commsCollBench(paramCommsBench):
             "--src-ranks",
             type=str,
             nargs="?",
-            help="src ranks for incast or bisection bandwidth pattern. "
+            help="src ranks for many-to-one incast pattern. "
             "List of ranks separated by comma or a range specified by start:end. "
             "Include all ranks by default",
-        )  # optional: group of src ranks in incast or bisection
+        )  # optional: group of src ranks in many-to-one incast
         parser.add_argument(
             "--dst-ranks",
             type=str,
             nargs="?",
-            help="dst ranks for multicast or bisection bandwidth pattern. "
+            help="dst ranks for one-to-many multicast pattern. "
             "List of ranks separated by comma or a range specified by start:end. "
             "Include all ranks by default",
-        )  # optional: group of dst ranks in multicast or bisection
+        )  # optional: group of dst ranks in one-to-many multicast
         parser.add_argument(
             "--pair",
             type=int,
@@ -593,26 +592,6 @@ class commsCollBench(paramCommsBench):
         ):
             self.collectiveArgs.dst_ranks.remove(self.collectiveArgs.srcOrDst)
 
-        if self.collectiveArgs.collective == "bisect":
-            # bisection requires identical number of ranks in src_ranks and dst_ranks.
-            if len(self.collectiveArgs.src_ranks) != len(self.collectiveArgs.dst_ranks):
-                if global_rank == 0:
-                    logging.error(
-                        "Bisecttion requires identical number of members in src_ranks and dst_ranks! "
-                    )
-                comms_utils.gracefulExit()
-            # bisection does not allow same rank to exist in both groups
-            if bool(
-                set(self.collectiveArgs.src_ranks).intersection(
-                    self.collectiveArgs.dst_ranks
-                )
-            ):
-                if global_rank == 0:
-                    logging.error(
-                        "Bisecttion requires distinct members in src_ranks and dst_ranks! "
-                    )
-                comms_utils.gracefulExit()
-
         computeFunc = None
         if commsParams.mode != "comms":  # Compute mode related initialization.
             if commsParams.kernel == "gemm":
@@ -963,13 +942,6 @@ class commsCollBench(paramCommsBench):
                     # this is a single all gather
                     opTensor = backendFuncs.alloc_random(
                         numElements * world_size,
-                        curDevice,
-                        commsParams.dtype,
-                        scaleFactor,
-                    )
-                elif commsParams.collective == "bisect":
-                    opTensor = backendFuncs.alloc_random(
-                        numElements,
                         curDevice,
                         commsParams.dtype,
                         scaleFactor,
