@@ -784,11 +784,29 @@ class commsCollBench(paramCommsBench):
 
                 latencyAcrossRanks = np.array(latencyAcrossRanks)
 
-            logging.debug(latencyAcrossRanks)
+            logging.debug("Latency across all ranks: %s" % (latencyAcrossRanks))
 
-            p50 = np.percentile(latencyAcrossRanks, 50)
-            p75 = np.percentile(latencyAcrossRanks, 75)
-            p95 = np.percentile(latencyAcrossRanks, 95)
+            # Include only communicating ranks
+            if self.collectiveArgs.collective == "multicast":
+                commRanks = [
+                    self.collectiveArgs.srcOrDst
+                ] + self.collectiveArgs.dst_ranks
+            elif self.collectiveArgs.collective == "incast":
+                commRanks = [
+                    self.collectiveArgs.srcOrDst
+                ] + self.collectiveArgs.src_ranks
+            else:
+                commRanks = range(self.collectiveArgs.world_size)
+
+            latencyAcrossCommRanks = latencyAcrossRanks[commRanks]
+            logging.debug(
+                "Latency across communicating ranks (%s): %s"
+                % (commRanks, latencyAcrossCommRanks)
+            )
+
+            p50 = np.percentile(latencyAcrossCommRanks, 50)
+            p75 = np.percentile(latencyAcrossCommRanks, 75)
+            p95 = np.percentile(latencyAcrossCommRanks, 95)
 
             # adjust busBW
             busBW = results[curSize]["busBW"] * (commsParams.bitwidth / 32.0)
