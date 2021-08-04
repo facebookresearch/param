@@ -825,11 +825,11 @@ class commsCollBench(paramCommsBench):
 
         if self.collectiveArgs.pair == 0:
             print(
-                "\n\tCOMMS-RES\tsize (B)\t num-elements\t Latency(us):p50\tp75\t\tp95\t algBW(GB/s)\t busBW(GB/s)"
+                "\n\tCOMMS-RES\tsize (B)\t num-elements\t Latency(us):p50\tp75\t\tp95\tmin\tmax\t algBW(GB/s)\t busBW(GB/s)"
             )
         else:
             print(
-                "\n\tCOMMS-RES\ttotal-pair-size (B)\t num-elements\t num-elements-pair\t Latency(us):p50\tp75\t\tp95\t algBW(GB/s)\t busBW(GB/s)"
+                "\n\tCOMMS-RES\ttotal-pair-size (B)\t num-elements\t num-elements-pair\t Latency(us):p50\tp75\t\tp95\tmin\tmax\t algBW(GB/s)\t busBW(GB/s)"
             )
         for idx, curSize in enumerate(allSizes):
             if commsParams.backend == "xla":
@@ -868,26 +868,30 @@ class commsCollBench(paramCommsBench):
             p50 = np.percentile(latencyAcrossCommRanks, 50)
             p75 = np.percentile(latencyAcrossCommRanks, 75)
             p95 = np.percentile(latencyAcrossCommRanks, 95)
+            minlat = np.amin(latencyAcrossCommRanks)
+            maxlat = np.amax(latencyAcrossCommRanks)
 
             # adjust busBW
             busBW = results[curSize]["busBW"] * (commsParams.bitwidth / 32.0)
 
             if self.collectiveArgs.pair == 0:
                 print(
-                    "\tCOMMS-RES\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s"
+                    "\tCOMMS-RES\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s"
                     % (
                         results[curSize]["memSize"],
                         str("%d" % (results[curSize]["num_elements"])),
                         str("%.1f" % (p50)),
                         str("%.1f" % (p75)),
                         str("%.1f" % (p95)),
+                        str("%.1f" % (minlat)),
+                        str("%.1f" % (maxlat)),
                         str("%.3f" % (results[curSize]["algBW"])),
                         str("%.3f" % (busBW)),
                     )
                 )
             else:
                 print(
-                    "\tCOMMS-RES\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s"
+                    "\tCOMMS-RES\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s"
                     % (
                         results[curSize]["memSize"],
                         str("%d" % (results[curSize]["num_elements"])),
@@ -895,6 +899,8 @@ class commsCollBench(paramCommsBench):
                         str("%.1f" % (p50)),
                         str("%.1f" % (p75)),
                         str("%.1f" % (p95)),
+                        str("%.1f" % (minlat)),
+                        str("%.1f" % (maxlat)),
                         str("%.3f" % (results[curSize]["algBW"])),
                         str("%.3f" % (busBW)),
                     )
