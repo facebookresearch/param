@@ -902,7 +902,7 @@ class commsCollBench(paramCommsBench):
 
     def reportBenchTimePt2Pt(self, commsParams, allSizes, resultsAcrossRanks, results):
         print(
-            "\n\tCOMMS-RES\tsize (B)\t pingLatency(us):p50\tp75\t\tp95\t pingPongLatency(us):p50\tp75\t\tp95\t avgUniBW(GB/s)\t avgBiBW(GB/s)"
+            "\n\tCOMMS-RES\tsize (B)\t pingLatency(us):p50\tp75\t\tp95\t pingPongLatency(us):p50\tp75\t\tp95\t avgUniBW(GB/s)\t avgBiBW(GB/s) totalUniBW(GB/s)\t totalBiBW(GB/s)"
         )
         for idx, curSize in enumerate(allSizes):
             pingLatencyAcrossRanks = []
@@ -946,6 +946,8 @@ class commsCollBench(paramCommsBench):
 
             avgUniBW = np.mean(uniBWAcrossCommRanks)
             avgBiBW = np.mean(biBWAcrossCommRanks)
+            totalUniBW = np.sum(uniBWAcrossCommRanks) / 2
+            totalBiBW = np.sum(biBWAcrossCommRanks) / 2
 
             ping_p50 = np.percentile(pingLatencyAcrossCommRanks, 50)
             ping_p75 = np.percentile(pingLatencyAcrossCommRanks, 75)
@@ -956,7 +958,7 @@ class commsCollBench(paramCommsBench):
             ping_pong_p95 = np.percentile(pingPongLatencyAcrossCommRanks, 95)
 
             print(
-                "\tCOMMS-RES\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s"
+                "\tCOMMS-RES\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s\t%12s"
                 % (
                     results[curSize]["memSize"],
                     str("%.1f" % (ping_p50)),
@@ -967,6 +969,8 @@ class commsCollBench(paramCommsBench):
                     str("%.1f" % (ping_pong_p95)),
                     str("%.3f" % (avgUniBW)),
                     str("%.3f" % (avgBiBW)),
+                    str("%.3f" % (totalUniBW)),
+                    str("%.3f" % (totalBiBW)),
                 )
             )
 
