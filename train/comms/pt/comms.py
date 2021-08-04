@@ -129,7 +129,7 @@ class commsCollBench(paramCommsBench):
             "--src-ranks",
             type=str,
             nargs="?",
-            help="src ranks for many-to-one incast pattern. "
+            help="src ranks for many-to-one incast pattern or pairwise pt2pt. "
             "List of ranks separated by comma or a range specified by start:end. "
             "Include all ranks by default",
         )  # optional: group of src ranks in many-to-one incast
@@ -137,7 +137,7 @@ class commsCollBench(paramCommsBench):
             "--dst-ranks",
             type=str,
             nargs="?",
-            help="dst ranks for one-to-many multicast pattern. "
+            help="dst ranks for one-to-many multicast pattern or pairwise pt2pt. "
             "List of ranks separated by comma or a range specified by start:end. "
             "Include all ranks by default",
         )  # optional: group of dst ranks in one-to-many multicast
@@ -384,21 +384,20 @@ class commsCollBench(paramCommsBench):
 
     def runPt2Pt(self):
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
-        if self.collectiveArgs.pt2pt == "one2one":
-            # warm-up
-            memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
-            self.getPingLatency(self.collectiveArgs.numWarmupIters)
-            self.getPingPongLatency(self.collectiveArgs.numWarmupIters)
-            self.getUniBW(self.collectiveArgs.numWarmupIters, memSize)
-            self.getBiBW(self.collectiveArgs.numWarmupIters, memSize)
-            self.backendFuncs.sync_barrier(self.collectiveArgs, "runpt2pt_begin")
-            # pt2pt benchmark
-            pingPerIterNS = self.getPingLatency(self.collectiveArgs.numIters)
-            pingPongPerIterNS = self.getPingPongLatency(self.collectiveArgs.numIters)
-            avgUniBW = self.getUniBW(self.collectiveArgs.numIters, memSize)
-            avgBiBW = self.getBiBW(self.collectiveArgs.numIters, memSize)
-            self.backendFuncs.sync_barrier(self.collectiveArgs, "runpt2pt")
-            return (pingPerIterNS, pingPongPerIterNS, avgUniBW, avgBiBW, memSize)
+        # warm-up
+        memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
+        self.getPingLatency(self.collectiveArgs.numWarmupIters)
+        self.getPingPongLatency(self.collectiveArgs.numWarmupIters)
+        self.getUniBW(self.collectiveArgs.numWarmupIters, memSize)
+        self.getBiBW(self.collectiveArgs.numWarmupIters, memSize)
+        self.backendFuncs.sync_barrier(self.collectiveArgs, "runpt2pt_begin")
+        # pt2pt benchmark
+        pingPerIterNS = self.getPingLatency(self.collectiveArgs.numIters)
+        pingPongPerIterNS = self.getPingPongLatency(self.collectiveArgs.numIters)
+        avgUniBW = self.getUniBW(self.collectiveArgs.numIters, memSize)
+        avgBiBW = self.getBiBW(self.collectiveArgs.numIters, memSize)
+        self.backendFuncs.sync_barrier(self.collectiveArgs, "runpt2pt")
+        return (pingPerIterNS, pingPongPerIterNS, avgUniBW, avgBiBW, memSize)
 
     def getPingLatency(self, numIters):
         logging.debug(
@@ -628,9 +627,32 @@ class commsCollBench(paramCommsBench):
         ):
             self.collectiveArgs.dst_ranks.remove(self.collectiveArgs.srcOrDst)
 
-        if self.collectiveArgs.collective == "pt2pt" and self.collectiveArgs.pt2pt == "one2one":
+        if self.collectiveArgs.collective == "pt2pt":
+            if self.collectiveArgs.pt2pt == "one2one":
                 self.collectiveArgs.src_ranks = [self.collectiveArgs.src_rank]
                 self.collectiveArgs.dst_ranks = [self.collectiveArgs.dst_rank]
+            elif self.collectiveArgs.pt2pt == "pairwise":
+                # pairwise pt2pt requires identical number of ranks in src_ranks and dst_ranks.
+                if len(self.collectiveArgs.src_ranks) != len(
+                    self.collectiveArgs.dst_ranks
+                ):
+                    if global_rank == 0:
+                        logging.error(
+                            "Pairwise Pt2Pt requires identical number of members in src_ranks and dst_ranks! "
+                        )
+                    comms_utils.gracefulExit()
+                # pairwise pt2pt does not allow same rank to exist in both groups
+                if bool(
+                    set(self.collectiveArgs.src_ranks).intersection(
+                        self.collectiveArgs.dst_ranks
+                    )
+                ):
+                    if global_rank == 0:
+                        logging.error(
+                            "Pairwise Pt2Pt requires distinct members in src_ranks and dst_ranks! "
+                        )
+                    comms_utils.gracefulExit()
+
         computeFunc = None
         if commsParams.mode != "comms":  # Compute mode related initialization.
             if commsParams.kernel == "gemm":
