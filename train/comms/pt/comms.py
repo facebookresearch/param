@@ -37,6 +37,15 @@ pt2ptPatterns = [
     "pairwise",
 ]
 
+
+class MultilineFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    def _split_lines(self, text, width):
+        if text.startswith("R|"):
+            return text[2:].splitlines()
+        # this is the RawTextHelpFormatter._split_lines
+        return argparse.ArgumentDefaultsHelpFormatter._split_lines(self, text, width)
+
+
 # define the collective benchmark
 class commsCollBench(paramCommsBench):
     def __init__(self):
@@ -129,19 +138,19 @@ class commsCollBench(paramCommsBench):
             "--src-ranks",
             type=str,
             nargs="?",
-            help="src ranks for many-to-one incast pattern or pt2pt."
-            "List of ranks separated by comma or a range specified by start:end."
-            "Pt2pt one2one should set only one rank."
+            help="R|src ranks for many-to-one incast pattern or pt2pt.\n"
+            "List of ranks separated by comma or a range specified by start:end.\n"
+            "Pt2pt one2one should set only one rank.\n"
             "The default value of incast includes all ranks, pt2pt includes rank 0.",
         )  # optional: group of src ranks in many-to-one incast or pt2pt
         parser.add_argument(
             "--dst-ranks",
             type=str,
             nargs="?",
-            help="dst ranks for one-to-many multicast pattern or pt2pt. "
-            "List of ranks separated by comma or a range specified by start:end. "
-            "Pt2pt one2one should set only one rank. "
-            "The default value of multicast includes all ranks, pt2pt includes rank 1. ",
+            help="R|dst ranks for one-to-many multicast pattern or pt2pt.\n"
+            "List of ranks separated by comma or a range specified by start:end.\n"
+            "Pt2pt one2one should set only one rank\n"
+            "The default value of multicast includes all ranks, pt2pt includes rank 1.",
         )  # optional: group of dst ranks in one-to-many multicast or pt2pt
         parser.add_argument(
             "--pair",
@@ -1317,7 +1326,7 @@ def main():
     ### parse arguments ###
     parser = argparse.ArgumentParser(
         description="PARAM-Comm Benchmark",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        formatter_class=MultilineFormatter,
     )
     args, leftovers = collBenchObj.readArgs(parser)
 
