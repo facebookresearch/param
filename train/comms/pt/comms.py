@@ -129,18 +129,20 @@ class commsCollBench(paramCommsBench):
             "--src-ranks",
             type=str,
             nargs="?",
-            help="src ranks for many-to-one incast pattern or pairwise pt2pt. "
-            "List of ranks separated by comma or a range specified by start:end. "
-            "Include all ranks by default",
-        )  # optional: group of src ranks in many-to-one incast
+            help="src ranks for many-to-one incast pattern or pt2pt."
+            "List of ranks separated by comma or a range specified by start:end."
+            "Pt2pt one2one should set only one rank."
+            "The default value of incast includes all ranks, pt2pt includes rank 0.",
+        )  # optional: group of src ranks in many-to-one incast or pt2pt
         parser.add_argument(
             "--dst-ranks",
             type=str,
             nargs="?",
-            help="dst ranks for one-to-many multicast pattern or pairwise pt2pt. "
+            help="dst ranks for one-to-many multicast pattern or pt2pt. "
             "List of ranks separated by comma or a range specified by start:end. "
-            "Include all ranks by default",
-        )  # optional: group of dst ranks in one-to-many multicast
+            "Pt2pt one2one should set only one rank. "
+            "The default value of multicast includes all ranks, pt2pt includes rank 1. ",
+        )  # optional: group of dst ranks in one-to-many multicast or pt2pt
         parser.add_argument(
             "--pair",
             type=int,
@@ -169,18 +171,6 @@ class commsCollBench(paramCommsBench):
             help="point to point pattern",
             choices=pt2ptPatterns,
         )  # point to point mode
-        parser.add_argument(
-            "--src-rank",
-            type=int,
-            default=0,
-            help="src rank for pt2pt pattern",
-        )  # optional: point to point mode source rank
-        parser.add_argument(
-            "--dst-rank",
-            type=int,
-            default=1,
-            help="dst rank for pt2pt pattern",
-        )  # optional: point to point mode destination rank
         parser.add_argument(
             "--window",
             type=int,
@@ -551,6 +541,79 @@ class commsCollBench(paramCommsBench):
         logging.debug("STATUS: end UniBW test.")
         return avgBiBW
 
+    def checkPt2PtRanks(self):
+        # set default values
+        if not self.collectiveArgs.src_ranks:
+            self.collectiveArgs.src_ranks = [0]
+        if not self.collectiveArgs.dst_ranks:
+            self.collectiveArgs.dst_ranks = [1]
+
+        # sanity check
+        if self.collectiveArgs.pt2pt == "one2one":
+            if (
+                len(self.collectiveArgs.src_ranks) > 1
+                or len(self.collectiveArgs.dst_ranks) > 1
+            ):
+                if self.global_rank == 0:
+                    logging.error(
+                        "One2one Pt2Pt requires only a single rank is specified in src_ranks and dst_ranks! "
+                    )
+                comms_utils.gracefulExit()
+        elif self.collectiveArgs.pt2pt == "pairwise":
+            # pairwise pt2pt requires identical number of ranks in src_ranks and dst_ranks.
+            if len(self.collectiveArgs.src_ranks) != len(self.collectiveArgs.dst_ranks):
+                if self.global_rank == 0:
+                    logging.error(
+                        "Pairwise Pt2Pt requires identical number of members in src_ranks and dst_ranks! "
+                    )
+                comms_utils.gracefulExit()
+            # pairwise pt2pt does not allow same rank to exist in both groups
+            if bool(
+                set(self.collectiveArgs.src_ranks).intersection(
+                    self.collectiveArgs.dst_ranks
+                )
+            ):
+                if self.global_rank == 0:
+                    logging.error(
+                        "Pairwise Pt2Pt requires distinct members in src_ranks and dst_ranks! "
+                    )
+                comms_utils.gracefulExit()
+
+        if self.global_rank == 0:
+            print(
+                "\t collectiveArgs.collective=%s  %s, src_ranks=%s, dst_ranks=%s"
+                % (
+                    self.collectiveArgs.collective,
+                    self.collectiveArgs.pt2pt,
+                    self.collectiveArgs.src_ranks,
+                    self.collectiveArgs.dst_ranks,
+                )
+            )
+
+    def checkCollectiveRanks(self):
+        if self.collectiveArgs.collective == "incast":
+            # incast: set default value and exclude root
+            if not self.collectiveArgs.src_ranks:
+                self.collectiveArgs.src_ranks = [*range(self.comm_size)]
+            if self.collectiveArgs.srcOrDst in self.collectiveArgs.src_ranks:
+                self.collectiveArgs.src_ranks.remove(self.collectiveArgs.srcOrDst)
+        elif self.collectiveArgs.collective == "multicast":
+            # multicast: set default value and exclude root
+            if not self.collectiveArgs.dst_ranks:
+                self.collectiveArgs.dst_ranks = [*range(self.comm_size)]
+            if self.collectiveArgs.srcOrDst in self.collectiveArgs.dst_ranks:
+                self.collectiveArgs.dst_ranks.remove(self.collectiveArgs.srcOrDst)
+
+        if self.global_rank == 0:
+            print(
+                "\t collectiveArgs.collective=%s, src_ranks=%s, dst_ranks=%s"
+                % (
+                    self.collectiveArgs.collective,
+                    self.collectiveArgs.src_ranks,
+                    self.collectiveArgs.dst_ranks,
+                )
+            )
+
     def initCollectiveArgs(self, commsParams):
         # lint was complaining that benchTime was too complex!
         (
@@ -606,52 +669,15 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.pair = commsParams.pair
         self.collectiveArgs.collective_pair = commsParams.collective_pair
         self.collectiveArgs.pt2pt = commsParams.pt2pt
-        self.collectiveArgs.src_rank = commsParams.src_rank
-        self.collectiveArgs.dst_rank = commsParams.dst_rank
         self.collectiveArgs.window = commsParams.window
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
 
-        # incast does not include root self-transfer
-        if (
-            self.collectiveArgs.collective == "incast"
-            and self.collectiveArgs.srcOrDst in self.collectiveArgs.src_ranks
-        ):
-            self.collectiveArgs.src_ranks.remove(self.collectiveArgs.srcOrDst)
-
-        # multicast does not include root self-transfer
-        if (
-            self.collectiveArgs.collective == "multicast"
-            and self.collectiveArgs.srcOrDst in self.collectiveArgs.dst_ranks
-        ):
-            self.collectiveArgs.dst_ranks.remove(self.collectiveArgs.srcOrDst)
-
         if self.collectiveArgs.collective == "pt2pt":
-            if self.collectiveArgs.pt2pt == "one2one":
-                self.collectiveArgs.src_ranks = [self.collectiveArgs.src_rank]
-                self.collectiveArgs.dst_ranks = [self.collectiveArgs.dst_rank]
-            elif self.collectiveArgs.pt2pt == "pairwise":
-                # pairwise pt2pt requires identical number of ranks in src_ranks and dst_ranks.
-                if len(self.collectiveArgs.src_ranks) != len(
-                    self.collectiveArgs.dst_ranks
-                ):
-                    if global_rank == 0:
-                        logging.error(
-                            "Pairwise Pt2Pt requires identical number of members in src_ranks and dst_ranks! "
-                        )
-                    comms_utils.gracefulExit()
-                # pairwise pt2pt does not allow same rank to exist in both groups
-                if bool(
-                    set(self.collectiveArgs.src_ranks).intersection(
-                        self.collectiveArgs.dst_ranks
-                    )
-                ):
-                    if global_rank == 0:
-                        logging.error(
-                            "Pairwise Pt2Pt requires distinct members in src_ranks and dst_ranks! "
-                        )
-                    comms_utils.gracefulExit()
+            self.checkPt2PtRanks()
+        else:
+            self.checkCollectiveRanks()
 
         computeFunc = None
         if commsParams.mode != "comms":  # Compute mode related initialization.

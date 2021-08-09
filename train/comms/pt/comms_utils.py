@@ -61,8 +61,7 @@ def parsesize(ipValue):
 
 
 def parseRankList(ipStr, ipName, comms_world_info):
-    # Default all ranks
-    rankList = [*range(comms_world_info.world_size)]
+    rankList = [] # default empty
 
     if ipStr:
         if ipStr.isnumeric():
@@ -76,8 +75,6 @@ def parseRankList(ipStr, ipName, comms_world_info):
             # a range of ranks defined by [start:end]
             pos = list(map(int, [r.strip() for r in ipStr.split(":")]))
             rankList = [*range(pos[0], pos[1] + 1)]
-        else:
-            rankList = []
 
         # Check if input is valid
         if len(rankList) == 0 or any(
@@ -469,8 +466,6 @@ class commsParamsHolder(commsParamsHolderBase):
         self.collective_pair = args.collective_pair
 
         self.pt2pt = args.pt2pt
-        self.src_rank = args.src_rank
-        self.dst_rank = args.dst_rank
         self.window = args.window
 
         self.src_ranks = parseRankList(args.src_ranks, "src_ranks", comms_world_info)
