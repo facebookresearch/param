@@ -698,7 +698,7 @@ class commsTraceReplayBench(paramCommsBench):
         try:
             from internals import fbTraceParser
         except ImportError:
-            logger.warning("Cannot parse FB trace...skip...")
+            logger.info("FB internals not present, skipping Kineto fbTraceParser")
         else:
             self.comms_trace = fbTraceParser(self.comms_trace, target_rank=self.global_rank)
 
