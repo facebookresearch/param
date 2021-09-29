@@ -616,7 +616,7 @@ class PyTorchDistBackend(backendFunctions):
         self.commsParams.benchTime(index, self.commsParams, self)
         return
 
-    def __del__(self):
-        if dist.is_initialized():
-            dist.destroy_process_group()
-        pass
+    # def __del__(self):
+    #     if dist.is_initialized():
+    #         dist.destroy_process_group()
+    #     pass
