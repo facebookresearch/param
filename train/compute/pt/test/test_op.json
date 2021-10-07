@@ -1,0 +1,64 @@
+{
+  "aten::add": {
+    "build_data_generator": "DefaultDataGenerator",
+    "input_iterator": "SampleConfigIterator",
+    "input_data_generator": "DefaultDataGenerator",
+    "configs": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "aten::mul": {
+    "build_data_generator": "DefaultDataGenerator",
+    "input_iterator": "SampleConfigIterator",
+    "input_data_generator": "DefaultDataGenerator",
+    "configs": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

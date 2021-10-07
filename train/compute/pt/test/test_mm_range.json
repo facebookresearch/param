@@ -1,0 +1,199 @@
+{
+  "aten::baddbmm": {
+    "build_data_generator": "DefaultDataGenerator",
+    "input_iterator": "RangeConfigIterator",
+    "input_data_generator": "DefaultDataGenerator",
+    "configs": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  [
+                    1,
+                    2,
+                    1
+                  ],
+                  -1,
+                  -1
+                ],
+                "type": "tensor",
+                "__range__": [
+                  "shape"
+                ],
+                "__copy__": [
+                  {
+                    "shape": [
+                      1,
+                      [
+                        1,
+                        1
+                      ]
+                    ]
+                  },
+                  {
+                    "shape": [
+                      2,
+                      [
+                        2,
+                        2
+                      ]
+                    ]
+                  }
+                ]
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  -1,
+                  [
+                    512,
+                    513,
+                    1
+                  ],
+                  [
+                    515,
+                    518,
+                    1
+                  ]
+                ],
+                "type": "tensor",
+                "__range__": [
+                  "shape"
+                ],
+                "__copy__": [
+                  {
+                    "shape": [
+                      0,
+                      [
+                        0,
+                        0
+                      ]
+                    ]
+                  }
+                ]
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  -1,
+                  -1,
+                  [
+                    512,
+                    515,
+                    1
+                  ]
+                ],
+                "type": "tensor",
+                "__range__": [
+                  "shape"
+                ],
+                "__copy__": [
+                  {
+                    "shape": [
+                      0,
+                      [
+                        0,
+                        0
+                      ]
+                    ]
+                  },
+                  {
+                    "shape": [
+                      1,
+                      [
+                        1,
+                        2
+                      ]
+                    ]
+                  }
+                ]
+              }
+            ],
+            "kwargs": {
+              "beta": {
+                "type": "int",
+                "value": 1
+              },
+              "alpha": {
+                "type": "int",
+                "value": 1
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "aten::bmm": {
+    "build_data_generator": "DefaultDataGenerator",
+    "input_iterator": "RangeConfigIterator",
+    "input_data_generator": "DefaultDataGenerator",
+    "configs": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  512,
+                  [
+                    512,
+                    514,
+                    1
+                  ],
+                  30
+                ],
+                "type": "tensor",
+                "__range__": [
+                  "shape"
+                ]
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  512,
+                  30,
+                  64
+                ],
+                "type": "tensor"
+              }
+            ]
+          },
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  512,
+                  64,
+                  30
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  512,
+                  30,
+                  [
+                    128,
+                    130,
+                    1
+                  ]
+                ],
+                "type": "tensor",
+                "__range__": [
+                  "shape"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

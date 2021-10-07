@@ -10,8 +10,6 @@ import argparse, json, os, sys
 import logging
 import subprocess
 import time
-from enum import Enum
-from pprint import pprint
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 FORMAT = "[%(asctime)s] %(filename)s [%(levelname)s]: %(message)s"
