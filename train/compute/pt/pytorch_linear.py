@@ -207,6 +207,10 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
             optimizer = apex.optimizers.FusedSGD(
                 model.parameters(), lr=lr, set_grad_none=True
             )
+        elif optimizer_type == "lamb":
+            optimizer = apex.optimizers.FusedLAMB(
+                model.parameters(), lr=lr, set_grad_none=True
+            )
         else:
             assert 0, "Unsupported optimizer type"
 
@@ -285,7 +289,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Measure the performance of MLP")
     parser.add_argument("--device", required=True, choices=["cpu", "gpu", "tpu"])
     parser.add_argument(
-        "--optimizer-type", default="sgd", help="Optimizer: SGD", choices=["sgd"]
+        "--optimizer-type", default="sgd", help="Optimizer: SGD", choices=["sgd", "lamb"]
     )
     parser.add_argument(
         "--dtype",
