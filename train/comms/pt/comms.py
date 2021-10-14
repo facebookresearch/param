@@ -205,23 +205,24 @@ class commsCollBench(paramCommsBench):
         args.dtype = self.dtypeMap[args.data_type]
 
         if args.b < 1:
-            logger.warn(
+            logger.warning(
                 f"Starting size (--b {args.b}) should be greater than 1 byte...fix and continue"
             )
             args.b = 1
 
         if args.e < args.b:
-            logger.warn(
+            logger.warning(
                 f"the begin-size (--b {args.b}) is larger than the end-size (--e {args.e})"
             )
 
         if args.device == "cpu" and args.backend == "nccl":
             raise ValueError(f"NCCL is not supported for device type {args.device}")
 
-        if args.c == 1 and args.z == 0:
-            logger.warn(
-                "Data validation may not be fully supported for non-blocking mode"
+        if args.c == 1 and args.z == 0 and args.collective in ("all_reduce", "reduce", "reduce_scatter"):
+            logger.warning(
+                f"Data validation is not supported for {args.collective} in non-blocking mode, disabled and continue"
             )
+            args.c = 0
 
         # run a few sanity checks
         if args.bitwidth < 32:
@@ -258,11 +259,11 @@ class commsCollBench(paramCommsBench):
                 elapsedTimeNS = 0.0
                 self.collectiveArgs.quant_time.reset()
                 self.collectiveArgs.dequant_time.reset()
+            # reset tensor values for data validation check
+            if enable_comms:
+                self.setTensorVal(self.collectiveArgs.opTensor)
             # for blocking mode, do barrier before starting collective
             if is_blocking:
-                # reset tensor values for data validation check
-                if enable_comms:
-                    self.setTensorVal(self.collectiveArgs.opTensor)
                 self.backendFuncs.sync_barrier(self.collectiveArgs)
 
             start = time.monotonic()  # available only in py3

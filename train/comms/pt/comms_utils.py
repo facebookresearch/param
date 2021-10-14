@@ -218,7 +218,7 @@ def checkQuantArgs(collective, dtype, beginSize, quant_a2a_embedding_dim, blocki
         )
     if collective in ("all_to_all", "all_to_allv"):
         if (beginSize // 4) % quant_a2a_embedding_dim != 0:
-            logger.warn(
+            logger.warning(
                 f"begin size {beginSize} must be a multiple of --quant-a2a-embedding-dim {quant_a2a_embedding_dim} for all_to_all operation"
             )
         if blockingFlag != 1:
