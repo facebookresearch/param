@@ -249,6 +249,7 @@ def paramToCommName(name, supported_comms=None):
         "alltoallv": "all_to_allv",
         "alltoallbase": "all_to_allv",
         "allreduce": "all_reduce",
+        "allgather": "all_gather",
         "allgatherbase": "all_gather_base",
         "reducescatter": "reduce_scatter",
         "recvanysource": "recv",
@@ -259,10 +260,10 @@ def paramToCommName(name, supported_comms=None):
     new_name = "".join(x for x in new_name if x.isalpha())
     if new_name in name_aliases:
         new_name = name_aliases[new_name]
+    else:
+        new_name = name
 
-    if supported_comms is not None and (
-        name not in supported_comms and new_name not in supported_comms
-    ):
+    if supported_comms is not None and new_name not in supported_comms:
         logger.error(
             f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}"
         )
