@@ -5,17 +5,24 @@
 
 import logging
 import os
+from itertools import cycle
 
 import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from comms_utils import backendFunctions, collectiveArgsHolder, paramProfile
+from comms_utils import (
+    backendFunctions,
+    collectiveArgsHolder,
+    paramProfile,
+)
 
 try:
     from internals import all_to_allv_internal, all_to_all_internal
 except ImportError:
     pass
+
+logger = logging.getLogger(__name__)
 
 
 def _downcast(input, bitwidth):
@@ -65,7 +72,6 @@ class PyTorchDistBackend(backendFunctions):
             print(hello_msg)
         else:
             # if mpi4py exists, use mpi to collect info and print prettier message :)
-            # FIXME: use PG instead?
             comm = MPI.COMM_WORLD
 
             all_hello_msgs = comm.gather(hello_msg, root=0)
@@ -495,7 +501,13 @@ class PyTorchDistBackend(backendFunctions):
     def alloc_empty(self, sizeArr, dtype, curRankDevice):
         return torch.empty(sizeArr, device=curRankDevice, dtype=dtype)
 
-    def clear_memory(self):
+    def clear_memory(self, collectiveArgs):
+        del collectiveArgs.ipTensor
+        del collectiveArgs.opTensor
+        if collectiveArgs.ipTensor_pair is not None:
+            del collectiveArgs.ipTensor_pair
+            del collectiveArgs.opTensor_pair
+
         torch.cuda.empty_cache()
 
     # Getting world-size and other information.
@@ -529,12 +541,15 @@ class PyTorchDistBackend(backendFunctions):
     def get_hw_device(self):
         self.get_device()
 
-    def get_default_group(self, world_size):
+    def get_default_group(self):
         # return the world group to always perform collectives on default PG
         return dist.GroupMember.WORLD
 
     def get_groups(self):
         return self.groups
+
+    def get_next_group(self):
+        return next(self.round_robin_group)
 
     def set_device(self):
         """set current device: 'cpu' or 'cuda'"""
@@ -552,15 +567,19 @@ class PyTorchDistBackend(backendFunctions):
                 )
             torch.cuda.set_device(self.get_local_rank())
 
-        logging.info(f"rank {self.get_global_rank()} set torch device to {dev_str}")
+        logger.info(f"rank {self.get_global_rank()} set torch device to {dev_str}")
 
     # Init functions
     def __init__(self, comms_world_info, commsParams):
         super().__init__()
         self.comms_world_info = comms_world_info
         self.commsParams = commsParams
-        # Add single wait op (Note this is not supported in pytorch_tpu_backend.py now)
+        # extra ops supported (Note these are not supported in pytorch_tpu_backend.py)
         self.collectiveFunc["wait"] = self.complete_single_op
+        self.collectiveFunc["send"] = self.send
+        self.collectiveFunc["recv"] = self.recv
+        self.collectiveFunc["isend"] = self.isend
+        self.collectiveFunc["irecv"] = self.irecv
 
         backend = (
             self.commsParams["backend"]
@@ -589,7 +608,7 @@ class PyTorchDistBackend(backendFunctions):
         world_size = self.get_world_size()
         # Torch initializaiton
         if "MASTER_ADDR" in os.environ and str(master_ip) == "127.0.0.1":
-            print("Using MASTER_ADDR=" + os.environ["MASTER_ADDR"])
+            logger.info("Using MASTER_ADDR=" + os.environ["MASTER_ADDR"])
         else:
             os.environ["MASTER_ADDR"] = str(master_ip)  # '127.0.0.1'
         os.environ["MASTER_PORT"] = str(master_port)
@@ -599,12 +618,14 @@ class PyTorchDistBackend(backendFunctions):
         # default group
         dist.init_process_group(backend, rank=global_rank, world_size=world_size)
         self.groups = []
-        self.groups.append(self.get_default_group(self.get_world_size()))
+        self.groups.append(self.get_default_group())
 
         # non-default groups
         for _ in range(1, self.commsParams.num_pgs):
             pg = dist.new_group(backend=backend)
             self.groups.append(pg)
+
+        self.round_robin_group = cycle(self.groups)
 
     def benchmark_comms(self):
         self.initialize_backend(

@@ -15,9 +15,8 @@ from os import path
 from typing import Dict, List, Set
 
 import comms_utils
-from comms_utils import paramCommsBench, paramTimer, paramProfile
 import numpy as np
-from torch.autograd.profiler import record_function
+from comms_utils import paramCommsBench, paramTimer, paramProfile, paramToCommName
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +42,16 @@ def writeCommDetails(commsTracePerf, rank, folder="./"):
     if saveToLocal:
         try:
             import subprocess
-            subprocess.check_output(["mkdir", "-p", str(folder)], universal_newlines=True)
+
+            subprocess.check_output(
+                ["mkdir", "-p", str(folder)], universal_newlines=True
+            )
         except Exception as err:
             logger.error("\t Error: %s while creating directory: %s " % (err, folder))
             pass
         with open(comms_file, "w") as write_file:
             json.dump(commsTracePerf, write_file, indent=2)
+
 
 class commsTraceReplayBench(paramCommsBench):
     def __init__(self):
@@ -73,7 +76,6 @@ class commsTraceReplayBench(paramCommsBench):
 
         self.batchLat = []
         self.collLat: Dict[str, List] = {}
-        self.collTraceStat: Dict[str, List] = {}
 
         self.comms_blocks: Dict[str, List] = {}
         self.traceWithPerf = []
@@ -130,7 +132,8 @@ class commsTraceReplayBench(paramCommsBench):
             help="Toggle to disable performing extra replaying for warm-up",
         )
         parser.add_argument(
-            "--allow-ops", "--allow-list",
+            "--allow-ops",
+            "--allow-list",
             type=str,
             default="all",
             help="List of desired collectives (separate by comma) to be replayed, e.g., `--allow-ops all_reduce,all_to_allv,wait`, typo or not supported collectives will be ignored.",
@@ -139,23 +142,24 @@ class commsTraceReplayBench(paramCommsBench):
             "--output-path",
             type=str,
             default=self.out_path,
-            nargs='?',
+            nargs="?",
             const="",
-            help="Output path to write the replayed trace for post performance analysis. Set empty string, i.e., \"\", to skip output",
+            help='Output path to write the replayed trace for post performance analysis. Set as empty string, i.e., "", to skip output',
         )
         parser.add_argument(
             "--colls-per-batch",
             type=int,
             default=self.colls_per_batch,
-            help="Toggle to set number of consecutive collectives in a batch. This also enables per batch latency stats."
+            help="Toggle to set number of consecutive collectives in a batch. This also enables per batch latency stats.",
         )
         return parser.parse_args()
 
     def checkArgs(self, args):
         super().checkArgs(args)
 
-        if ((not self.use_remote_trace) and
-            (path.exists(self.trace_file) is False or path.isfile(self.trace_file) is False)
+        if (not self.use_remote_trace) and (
+            path.exists(self.trace_file) is False
+            or path.isfile(self.trace_file) is False
         ):
             raise ValueError(
                 f"Trace file {self.trace_file} not exist or not a file! Please specifiy the correct path using --trace-path"
@@ -228,7 +232,15 @@ class commsTraceReplayBench(paramCommsBench):
                     continue
 
                 Lat = np.array(lats)
-                print("{}\n Replayed {} {} ({:.2f}%): \n{}".format("-" * 50, len(lats), coll, (Lat.sum()/self.totalCommsLatency)*100, "-" * 50))
+                print(
+                    "{}\n Replayed {} {} ({:.2f}%): \n{}".format(
+                        "-" * 50,
+                        len(lats),
+                        coll,
+                        (Lat.sum() / self.totalCommsLatency) * 100,
+                        "-" * 50,
+                    )
+                )
 
                 print(
                     f"Latency (us)\n {'Total':>10} {'Max.':>10} {'Min.':>10} {'Average':>10} {'p50':>10} {'p95':>10}"
@@ -243,17 +255,21 @@ class commsTraceReplayBench(paramCommsBench):
                         np.percentile(Lat, 95),
                     )
                 )
-                msgSizeAndLatency = tuple(
-                    zip(lats, self.collInMsgSizes[coll], self.collOutMsgSizes[coll])
-                ) if coll in self.collInMsgSizes else lats
+                msgSizeAndLatency = (
+                    tuple(
+                        zip(lats, self.collInMsgSizes[coll], self.collOutMsgSizes[coll])
+                    )
+                    if coll in self.collInMsgSizes
+                    else lats
+                )
                 logger.debug(f"Latency and size of First ten: {msgSizeAndLatency[:10]}")
 
             if self.colls_per_batch > 0:
                 print("\n{} Batch Latency Performance {}".format("=" * 20, "=" * 20))
                 BatchLat = np.array(self.batchLat)
                 print(
-                        f"Batch Latency (ms)\n {'Total':>10} {'Max.':>10} {'Min.':>10} {'Average':>10} {'p50':>10} {'p95':>10}"
-                    )
+                    f"Batch Latency (ms)\n {'Total':>10} {'Max.':>10} {'Min.':>10} {'Average':>10} {'p50':>10} {'p95':>10}"
+                )
                 print(
                     " {:10.2f} {:10.2f} {:10.2f} {:10.2f} {:10.2f} {:10.2f}".format(
                         BatchLat.sum(),
@@ -271,12 +287,11 @@ class commsTraceReplayBench(paramCommsBench):
         self.num_msg = len(self.comms_trace)
         self.max_msg_cnt = self.num_msg if self.max_msg_cnt == 0 else self.max_msg_cnt
         # first pass to know the statistics and get required info.
-        for curComm in self.comms_trace[:self.max_msg_cnt]:
+        for curComm in self.comms_trace[: self.max_msg_cnt]:
             # record the current comm
-            collName = curComm["comms"]
+            collName = paramToCommName(curComm["comms"])
             curBlocks = curComm["marker_stack"] if "marker_stack" in curComm else []
-            if collName not in self.collTraceStat.keys():
-                self.collTraceStat[collName] = []
+            if collName not in self.collLat.keys():
                 self.collLat[collName] = []
                 # some ops don't have sizes
                 if "in_msg_size" in curComm:
@@ -312,112 +327,124 @@ class commsTraceReplayBench(paramCommsBench):
                             }
                         )
 
-    # TODO: this function could be generalized for both this and comms.py
-    def prepComms(self, curComm):
-        if curComm["comms"] in ("wait", "barrier"):
-            return
-        # either in_split or out_split should be specified for alltoallv; meaningless for other collectives
-        self.collectiveArgs.opTensor_split = (
-            curComm["out_split"] if ("out_split" in curComm.keys()) else []
-        )
-        self.collectiveArgs.ipTensor_split = (
-            curComm["in_split"] if ("in_split" in curComm.keys()) else []
-        )
+    def prepComms(self, curComm, commsParams):
+        commOp = paramToCommName(curComm["comms"])
+        if commOp in ("wait", "barrier"):
+            return ([], [])
 
-        curInNumElem = curComm["in_msg_size"]
-        curOutNumElem = curComm["out_msg_size"]
-
-        # FIXME: this is for debug purpose only since we don't always get to run very large scale; this is useful to debug in small scale, but the same trace
+        # for all_to_allv, we can shrink the size if running on smaller scale
+        # this is for sanity test or debug purpose only since we don't always get to run very large scale
         if self.shrink:
-            self.collectiveArgs.opTensor_split = (
-                curComm["out_split"][: self.collectiveArgs.world_size]
-                if ("out_split" in curComm.keys())
-                else []
-            )
-            self.collectiveArgs.ipTensor_split = (
-                curComm["in_split"][: self.collectiveArgs.world_size]
-                if ("in_split" in curComm.keys())
-                else []
-            )
-            curInNumElem = (
-                sum(self.collectiveArgs.ipTensor_split)
-                if len(self.collectiveArgs.ipTensor_split) > 0
-                else curInNumElem
-            )
-            curOutNumElem = (
-                sum(self.collectiveArgs.opTensor_split)
-                if len(self.collectiveArgs.opTensor_split) > 0
-                else curOutNumElem
-            )
+            cur_world_size = self.collectiveArgs.world_size
+            real_world_size = cur_world_size
 
-            if curComm["comms"] == "all_to_allv":
-                ip_split_len = len(curComm["in_split"])
-                op_split_len = len(curComm["out_split"])
-                if ((ip_split_len > 0) and (op_split_len == 0)):
-                    curOutNumElem = (curOutNumElem // ip_split_len) * self.collectiveArgs.world_size
-                if ((ip_split_len == 0) and (op_split_len > 0)):
-                    curInNumElem = (curInNumElem // op_split_len) * self.collectiveArgs.world_size
+            if "world_size" in curComm.keys():
+                real_world_size = curComm["world_size"]
+            else:
+                # if the trace does not record world size, we may use a2av splits to infer it
+                if commOp == "all_to_allv":
+                    in_split_len = len(curComm["in_split"])
+                    out_split_len = len(curComm["out_split"])
+                    if in_split_len > 0:
+                        real_world_size = in_split_len
+                    elif out_split_len > 0:
+                        real_world_size = out_split_len
+
+            newNumElemsIn = (curComm["in_msg_size"] // real_world_size) * cur_world_size
+            newNumElemsOut = (
+                curComm["out_msg_size"] // real_world_size
+            ) * cur_world_size
+
+            if commOp == "all_to_allv":
+                curComm["out_split"] = (
+                    curComm["out_split"][:cur_world_size]
+                    if ("out_split" in curComm.keys())
+                    else []
+                )
+                curComm["in_split"] = (
+                    curComm["in_split"][:cur_world_size]
+                    if ("in_split" in curComm.keys())
+                    else []
+                )
+                if len(curComm["in_split"]) > 0:
+                    newNumElemsIn = sum(curComm["in_split"])
+                if len(curComm["out_split"]) > 0:
+                    newNumElemsOut = sum(curComm["out_split"])
+            elif commOp == "all_gather":
+                newNumElemsOut = newNumElemsIn * cur_world_size
+
+            curComm["in_msg_size"] = newNumElemsIn
+            curComm["out_msg_size"] = newNumElemsOut
 
             logger.debug(
-                f"shrink message sizes to curInNumElem {curInNumElem}, curOutNumElem {curOutNumElem}"
+                f"shrink message sizes to curInNumElem {curComm['in_msg_size']}, curOutNumElem {curComm['out_msg_size']}"
             )
 
-        # allocate tensors
-        self.collectiveArgs.ipTensor = self.backendFuncs.alloc_random(
-            [curInNumElem],
-            curRankDevice=self.collectiveArgs.device,
-            dtype=self.strToTorchDtype[curComm["dtype"]],
-        )
-        if curComm["comms"] in ("all_to_all", "all_to_allv"):
-            # alltoall requires two tensors
-            self.collectiveArgs.opTensor = self.backendFuncs.alloc_random(
-                [curOutNumElem],
-                curRankDevice=self.collectiveArgs.device,
-                dtype=self.strToTorchDtype[curComm["dtype"]],
-            )
-        elif curComm["comms"] in ("allgather", "all_gather"):
-            # allgather requires a tensor list, e.g., List[torch.Tensor]
-            self.collectiveArgs.opTensor = []
-            for _ in range(self.collectiveArgs.world_size):
-                self.collectiveArgs.opTensor.append(
-                    self.backendFuncs.alloc_empty(
-                        [curInNumElem],
-                        curRankDevice=self.collectiveArgs.device,
-                        dtype=self.strToTorchDtype[curComm["dtype"]],
-                    )
-                )
-        else:
-            # only one tensor required for allreduce, reduce and broadcast
-            self.collectiveArgs.opTensor = self.collectiveArgs.ipTensor
+        commsParams.dtype = self.strToTorchDtype[curComm["dtype"]]
+        # allocate and return tensors
+        return super().prepComm(curComm, commsParams)
 
     def warmUpBench(self, commsParams):
-        for cnt, curComm in enumerate(self.comms_trace[:self.max_msg_cnt]):
+        for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
             if curComm["comms"] not in self.allowList:
                 continue
             if self.backendFuncs.get_global_rank() == 0:
-                logger.debug(f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(curComm)}\n")
+                logger.debug(
+                    f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(curComm)}\n"
+                )
                 print(
-                    f"[Warm-up][{cnt} / {self.max_msg_cnt}] Replaying {curComm['comms']:>10}...", end="\r"
+                    f"[Warm-up][{cnt} / {self.max_msg_cnt}] Replaying {curComm['comms']:>10}...",
+                    end="\r",
                 )
 
             # read fields and prepare the tensors
-            self.prepComms(curComm)
+            (
+                self.collectiveArgs.ipTensor,
+                self.collectiveArgs.opTensor,
+            ) = self.prepComms(curComm, commsParams)
 
             if curComm["comms"] in self.backendFuncs.collectiveFunc.keys():
                 self.backendFuncs.collectiveFunc[curComm["comms"]](self.collectiveArgs)
-            elif curComm["comms"] == "wait":
-                self.backendFuncs.complete_single_op(self.collectiveArgs)
-            else:
-                # not supported collective, skip
-                pass
+            # skip not supported ops
 
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+
+    def runComms(self, collName, curBlockStack):
+        self.collectiveArgs.quant_time.reset()
+        self.collectiveArgs.dequant_time.reset()
+        collTimer = paramTimer()
+
+        if self.is_blocking:
+            self.backendFuncs.sync_barrier(self.collectiveArgs)
+        # replay the collective
+        with paramProfile(
+            timer=collTimer, description="# PARAM replay: " + curBlockStack
+        ):
+            if collName in self.backendFuncs.collectiveFunc.keys():
+                self.backendFuncs.collectiveFunc[collName](
+                    self.collectiveArgs, retFlag=True
+                )
+            # skip not supported ops
+
+            if self.is_blocking:
+                self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+
+        if self.is_blocking:
+            with paramProfile(
+                description="# PARAM replay barrier # " + curBlockStack
+            ) as bt:
+                self.backendFuncs.sync_barrier(self.collectiveArgs)
+
+        latency = collTimer.getTimeUS()
+        global_latency = latency + (bt.intervalNS / 1e3)
+
+        return (latency, global_latency)
 
     def benchTime(self, commsParams):
         """
         The json format is expecting to be either
         {
-            "marker_stack": ["## all2all_tw_data:init ##"]
+            "marker_stack": ["## all2all ##"]
             "comms": "all_to_allv",
             "in_msg_size": 10357149,
             "out_msg_size": 23093760,
@@ -427,7 +454,7 @@ class commsTraceReplayBench(paramCommsBench):
         },
         or w/o in/out_split
         {
-            "marker_stack": ["## all2all_tw_data:init ##"]
+            "marker_stack": ["## all2all ##"]
             "comms": "all_reduce",
             "in_msg_size": 1048576,
             "out_msg_size": 1048576,
@@ -435,7 +462,7 @@ class commsTraceReplayBench(paramCommsBench):
         }
         or wait/barrier
         {
-            "marker_stack": ["## all2all_tw_data:init ##"]
+            "marker_stack": ["## all2all ##"]
             "comms": "wait",
         }
         NOTE:
@@ -447,8 +474,7 @@ class commsTraceReplayBench(paramCommsBench):
             self.warmUpBench(commsParams)
 
         # sync everything before starting real runs
-        self.backendFuncs.barrier(self.collectiveArgs)
-        self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
+        self.backendFuncs.sync_barrier(self.collectiveArgs)
 
         if self.backendFuncs.get_global_rank() == 0:
             print(
@@ -457,72 +483,45 @@ class commsTraceReplayBench(paramCommsBench):
             for coll, sizes in self.collInMsgSizes.items():
                 logger.info(f"\t{coll}: {len(sizes)}")
 
-        batch_num = 1
         coll_in_batch_num = 0
-        # second pass to perform collectives
-        collTimer = paramTimer()
-        for cnt, curComm in enumerate(self.comms_trace[:self.max_msg_cnt]):
-            if self.colls_per_batch > 0:
-                if coll_in_batch_num == 0:
-                    batch_begin = time.monotonic()
-            if curComm["comms"] not in self.allowList:
+        for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
+            collName = paramToCommName(curComm["comms"])
+            if collName not in self.allowList:
                 continue
-            collName = curComm["comms"]
+
             curBlocks = curComm["marker_stack"] if "marker_stack" in curComm else []
-            curBlockStack = ' '.join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
+            curBlockStack = (
+                " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
+            )
 
             if self.backendFuncs.get_global_rank() == 0:
-                logger.debug(f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(curComm)}\n")
-                print(
-                    f"[{cnt} / {self.max_msg_cnt}]", end="\r"
+                logger.debug(
+                    f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(curComm)}\n"
                 )
+                print(f"[{cnt} / {self.max_msg_cnt}]", end="\r")
 
             # read fields and prepare the tensors
-            self.prepComms(curComm)
-            self.collectiveArgs.quant_time.reset()
-            self.collectiveArgs.dequant_time.reset()
-            collTimer.reset()
+            (
+                self.collectiveArgs.ipTensor,
+                self.collectiveArgs.opTensor,
+            ) = self.prepComms(curComm, commsParams)
 
-            if self.is_blocking:
-                self.backendFuncs.sync_barrier(self.collectiveArgs)
-            # replay the collective
-            with paramProfile(timer=collTimer, description="# PARAM replay: "+curBlockStack):
-                if collName in self.backendFuncs.collectiveFunc.keys():
-                    self.backendFuncs.collectiveFunc[collName](
-                        self.collectiveArgs, retFlag=True
-                    )
-                elif collName == "wait":
-                    self.backendFuncs.complete_single_op(self.collectiveArgs)
-                else:
-                    # not supported collective, skip
-                    pass
+            if self.colls_per_batch > 0 and coll_in_batch_num == 0:
+                batch_begin = time.monotonic()
 
-                # calculating batch latency (batch defined by --colls-per-batch)
-                if collName == "wait" and self.colls_per_batch > 0:
-                    coll_in_batch_num += 1
-                    if coll_in_batch_num == self.colls_per_batch:
-                        batch_end = time.monotonic()
-                        batch_latency = (batch_end - batch_begin) * 1e3 # make it millisecond
-                        coll_in_batch_num = 0
-                        batch_num += 1
-                        self.batchLat.append(batch_latency)
+            (latency, global_latency) = self.runComms(collName, curBlockStack)
 
-                if self.is_blocking:
-                    self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-
-            if self.is_blocking:
-                with paramProfile(description="# PARAM replay barrier # "+curBlockStack) as bt:
-                    self.backendFuncs.sync_barrier(self.collectiveArgs)
-
-            latency = collTimer.getTimeUS()
-            global_latency = latency + (bt.intervalNS / 1e3)
+            # calculating batch latency (batch defined by --colls-per-batch)
+            if collName == "wait" and self.colls_per_batch > 0:
+                coll_in_batch_num += 1
+                if coll_in_batch_num == self.colls_per_batch:
+                    batch_latency = (
+                        time.monotonic() - batch_begin
+                    ) * 1e3  # make it millisecond
+                    coll_in_batch_num = 0
+                    self.batchLat.append(batch_latency)
 
             self.collLat[collName].append(latency)
-            self.collTraceStat[collName].append(
-                (curComm["in_msg_size"], curComm["out_msg_size"], latency)
-                if "in_msg_size" in curComm
-                else (0, 0, latency)
-            )
 
             curComm["seqnum"] = cnt
             curComm["latency_us"] = latency
@@ -535,20 +534,8 @@ class commsTraceReplayBench(paramCommsBench):
 
             # categorized by the marker
             for curBlock in curBlocks:
-                elem_size = self.collectiveArgs.ipTensor.element_size()
-                self.comms_blocks[curBlock].append(
-                    {
-                        "comms": collName,
-                        "seqnum": cnt,
-                        "blocked": "Y" if (self.is_blocking) else "N",
-                        "in_msg_size_bytes": curComm["in_msg_size"] * elem_size if "in_msg_size" in curComm else 0,
-                        "out_msg_size_bytes": curComm["out_msg_size"] * elem_size if "out_msg_size" in curComm else 0,
-                        "global_latency_us": global_latency,
-                        "latency_us": latency,
-                        "quant_us": self.collectiveArgs.quant_time.getTimeUS(),
-                        "dequan_us": self.collectiveArgs.dequant_time.getTimeUS(),
-                    }
-                )
+                # elem_size = self.collectiveArgs.ipTensor.element_size()
+                self.comms_blocks[curBlock].append(curComm)
 
             if self.backendFuncs.get_global_rank() == 0:
                 logger.info(
@@ -557,16 +544,18 @@ class commsTraceReplayBench(paramCommsBench):
 
         # make sure all ops are completed
         self.backendFuncs.sync_barrier(self.collectiveArgs)
-        self.backendFuncs.clear_memory()
+        self.backendFuncs.clear_memory(self.collectiveArgs)
 
     def runBench(self, comms_world_info, commsParams):
-        """ Run the comms-replay benchmark:
-                1) Each rank reads its trace
-                2) First pass of the trace to ensure the format is valid and get basic stats
-                3) Execute communication replay [Skip if on dry-run mode]
-                4) report stats and performance (if not dry-run)
+        """Run the comms-replay benchmark:
+        1) Each rank reads its trace
+        2) First pass of the trace to ensure the format is valid and get basic stats
+        3) Execute communication replay [Skip if on dry-run mode]
+        4) report stats and performance (if not dry-run)
         """
-        logger.info(f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}")
+        logger.info(
+            f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}"
+        )
         self.comm_size = comms_world_info.world_size
         self.global_rank = comms_world_info.global_rank
 
@@ -589,7 +578,11 @@ class commsTraceReplayBench(paramCommsBench):
             # writeCommDetails(self.comms_blocks, rank=comms_world_info.global_rank)
 
         if not self.is_dry_run:
-            writeCommDetails(self.traceWithPerf, folder=self.out_path, rank=comms_world_info.global_rank)
+            writeCommDetails(
+                self.traceWithPerf,
+                folder=self.out_path,
+                rank=comms_world_info.global_rank,
+            )
             # TODO: collect perf. from all ranks to rank 0 and detect any imbalanced perf?
             self.backendFuncs.barrier(self.collectiveArgs)
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
@@ -605,14 +598,14 @@ class commsTraceReplayBench(paramCommsBench):
 
             self.backendFuncs = PyTorchTPUBackend(comms_world_info, commsParams)
         else:
-            print("\t Error: Unsopported NW stack! ")
+            logger.error("Unsopported NW stack! ")
             comms_utils.gracefulExit()
 
         self.backendFuncs.initialize_backend(
-                comms_world_info.master_ip,
-                comms_world_info.master_port,
-                backend=commsParams.backend,
-            )
+            comms_world_info.master_ip,
+            comms_world_info.master_port,
+            backend=commsParams.backend,
+        )
         self.backendFuncs.sayHello()
 
         # set basic collective info
@@ -643,10 +636,10 @@ class commsTraceReplayBench(paramCommsBench):
         self.collectiveArgs.quant_threshold = commsParams.quant_threshold
 
         # set of collectives to be replayed
-        if (self.allowList in ("all", "default", "*")):
+        if self.allowList in ("all", "default", "*"):
             self.allowList = self.backendFuncs.collectiveFunc.keys()
         else:
-            self.allowList = self.allowList.split(',')
+            self.allowList = [paramToCommName(op) for op in self.allowList.split(",")]
 
     def initBench(self, comms_world_info, commsParams, args):
         self.is_dry_run = args.dry_run
@@ -674,9 +667,11 @@ class commsTraceReplayBench(paramCommsBench):
             self.use_remote_trace = True
 
     def readTrace(self, remotePath):
-        """ Read trace file from remote server or local disk """
+        """Read trace file from remote server or local disk"""
         if self.use_remote_trace:
-            protocol = remotePath.split("://", 2)[0] # format "<protocol prefix>://<url or path>"
+            protocol = remotePath.split("://", 2)[
+                0
+            ]  # format "<protocol prefix>://<url or path>"
             raw_comms_trace = []
             if protocol in ("http", "https", "ftp"):
                 raw_comms_trace = comms_utils.commonUrlRead(remotePath=remotePath)
@@ -684,7 +679,9 @@ class commsTraceReplayBench(paramCommsBench):
                 try:
                     from internals import readRemoteTrace as readFbRemoteTrace
                 except ImportError:
-                    logger.error(f"Not supported protocol for the URL provided {remotePath}")
+                    logger.error(
+                        f"Not supported protocol for the URL provided {remotePath}"
+                    )
                 else:
                     raw_comms_trace = readFbRemoteTrace(remotePath=remotePath)
 
@@ -700,7 +697,10 @@ class commsTraceReplayBench(paramCommsBench):
         except ImportError:
             logger.info("FB internals not present, skipping Kineto fbTraceParser")
         else:
-            self.comms_trace = fbTraceParser(self.comms_trace, target_rank=self.global_rank)
+            self.comms_trace = fbTraceParser(
+                self.comms_trace, target_rank=self.global_rank
+            )
+
 
 def main():
 

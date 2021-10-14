@@ -116,7 +116,7 @@ class PyTorchTPUBackend(backendFunctions):
     def alloc_empty(self, sizeArr, dtype, curRankDevice):
         return torch.empty(sizeArr, device=curRankDevice, dtype=dtype)
 
-    def clear_memory(self):
+    def clear_memory(self, collectiveArgs):
         pass  # torch.cuda.empty_cache()
 
     # Getting world-size and other information.
@@ -145,7 +145,7 @@ class PyTorchTPUBackend(backendFunctions):
     ):
         return xm._xla_real_device(xm.xla_device())
 
-    def get_default_group(self, world_size):
+    def get_default_group(self):
         pass
 
     def get_groups(self):

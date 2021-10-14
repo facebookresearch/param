@@ -53,7 +53,7 @@ def parsesize(ipValue):
         units = 1
         value = ipValue
     else:
-        print("\t ERROR: Could not parse input size %s " % (ipValue))
+        logger.error(f"Could not parse input size {ipValue}")
         gracefulExit()
 
     size = int(value) * units
@@ -61,7 +61,7 @@ def parsesize(ipValue):
 
 
 def parseRankList(ipStr, ipName, comms_world_info):
-    rankList = [] # default empty
+    rankList = []  # default empty
 
     if ipStr:
         if ipStr.isnumeric():
@@ -81,7 +81,7 @@ def parseRankList(ipStr, ipName, comms_world_info):
             r < 0 or r >= comms_world_info.world_size for r in rankList
         ):
             if comms_world_info.global_rank == 0:
-                print("\t ERROR: Could not parse %s %s" % (ipName, ipStr))
+                logger.error(f"Could not parse {ipName}: {ipStr}")
             gracefulExit()
     return rankList
 
@@ -108,9 +108,8 @@ def getSizes(beginSize, endSize, stepFactor):
         curSize = curSize * stepFactor
         numIters = numIters + 1
         if numIters > 100:
-            print(
-                "\t ERROR: For finding allSizes numIters: %d is greater than maxIters: %d "
-                % (numIters, maxIters)
+            logger.error(
+                f"For finding allSizes numIters: {numIters} is greater than maxIters: {maxIters}"
             )
             break
     return allSizes
@@ -123,6 +122,17 @@ def fixBeginSize(commsParams, world_size):
     ):
         if (commsParams.beginSize / commsParams.element_size) < world_size:
             commsParams.beginSize = world_size * commsParams.element_size
+
+        if (
+            commsParams.bitwidth < 32
+            and (commsParams.beginSize / commsParams.element_size / world_size)
+            < commsParams.quant_a2a_embedding_dim
+        ):
+            commsParams.beginSize = (
+                commsParams.quant_a2a_embedding_dim
+                * world_size
+                * commsParams.element_size
+            )
     elif (commsParams.collective == "all_reduce") or (
         commsParams.collective == "reduce"
     ):
@@ -134,7 +144,7 @@ def get_rank_details(backendFuncs):
     local_rank = backendFuncs.get_local_rank()
     global_rank = backendFuncs.get_global_rank()
     world_size = backendFuncs.get_world_size()
-    group = backendFuncs.get_default_group(world_size)
+    group = backendFuncs.get_default_group()
     curDevice = backendFuncs.get_device()
     curHwDevice = backendFuncs.get_hw_device()
 
@@ -196,6 +206,29 @@ def initQuantCommCtx(collectiveArgs, commsParams):
         pass
 
 
+def checkQuantArgs(collective, dtype, beginSize, quant_a2a_embedding_dim, blockingFlag):
+    if collective not in (
+        "all_to_all",
+        "all_to_allv",
+        "reduce",
+        "all_reduce",
+    ):
+        raise NotImplementedError(
+            f"quantized communication for {collective} is currently unsupported."
+        )
+    if collective in ("all_to_all", "all_to_allv"):
+        if (beginSize // 4) % quant_a2a_embedding_dim != 0:
+            logger.warn(
+                f"begin size {beginSize} must be a multiple of --quant-a2a-embedding-dim {quant_a2a_embedding_dim} for all_to_all operation"
+            )
+        if blockingFlag != 1:
+            raise NotImplementedError("quantized All_to_all must be synchronous.")
+    if dtype != torch.float32:
+        raise NotImplementedError(
+            f"quantization for {dtype} is not supported. Use float32 instead."
+        )
+
+
 def clearQuantCommCtx(collectiveArgs):
     try:
         logger.debug("Removing installed quantization handlers.")
@@ -204,6 +237,49 @@ def clearQuantCommCtx(collectiveArgs):
         remove_quantization_handlers(collectiveArgs)
     except ImportError:
         pass
+
+
+def paramToCommName(name, supported_comms=None):
+    """
+    Map any possible creative collective names to the internal name
+    Validate the `name` if `supported_comms` is providedd
+    """
+    name_aliases = {
+        "alltoall": "all_to_all",
+        "alltoallv": "all_to_allv",
+        "alltoallbase": "all_to_allv",
+        "allreduce": "all_reduce",
+        "allgatherbase": "all_gather_base",
+        "reducescatter": "reduce_scatter",
+        "recvanysource": "recv",
+    }
+
+    new_name = name.lower()
+
+    new_name = "".join(x for x in new_name if x.isalpha())
+    if new_name in name_aliases:
+        new_name = name_aliases[new_name]
+
+    if supported_comms is not None and (
+        name not in supported_comms and new_name not in supported_comms
+    ):
+        logger.error(
+            f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}"
+        )
+        gracefulExit()
+
+    return new_name
+
+
+def ensureTensorFlush(tensors):
+    x = None
+    if isinstance(tensors, list) and len(tensors) > 0:
+        # some collectives like allgather use a list of tensors
+        x = tensors[-1][-1].item()  # to ensure collective won't be optimized away.
+    elif isinstance(tensors, torch.Tensor) and tensors.nelement() > 0:
+        x = tensors[-1].item()  # to ensure collective won't be optimized away.
+
+    return x
 
 
 @dataclass
@@ -263,6 +339,7 @@ class backendFunctions(ABC):
             "barrier": self.barrier,
             "incast": self.incast,
             "multicast": self.multicast,
+            "noop": self.noop,
         }
 
     def getBusBW(self, collective, algBW, collectiveArgs):
@@ -289,9 +366,8 @@ class backendFunctions(ABC):
         elif collective in ("reduce", "broadcast", "incast", "multicast"):
             busBW = algBW
         else:
-            print(
-                "\t ERROR: collective: %s is not supported in computing bus BW! "
-                % (collective)
+            logger.error(
+                f"collective: {collective} is not supported in computing bus BW! "
             )
         return busBW
 
@@ -302,6 +378,10 @@ class backendFunctions(ABC):
         if scaleFactor != 1.0:
             ipTensor = ipTensor * scaleFactor
         return ipTensor
+
+    def noop(self, collectiveArgs=None, retFlag=False, pair=False):
+        """no-op for the case we want to skip comms/compute"""
+        pass
 
     @abstractmethod
     def sayHello(self, global_rank, local_rank, world_size, master_ip):
@@ -362,7 +442,7 @@ class backendFunctions(ABC):
         pass
 
     @abstractmethod
-    def clear_memory(self):
+    def clear_memory(self, collectiveArgs):
         pass
 
     # Getting world-size and other information.
@@ -387,7 +467,7 @@ class backendFunctions(ABC):
         pass
 
     @abstractmethod
-    def get_default_group(self, world_size):
+    def get_default_group(self):
         pass
 
     @abstractmethod
@@ -428,7 +508,7 @@ class commsParamsHolderBase:
         self.bitwidth = args.bitwidth
         self.quant_a2a_embedding_dim = args.quant_a2a_embedding_dim
         self.quant_threshold = args.quant_threshold
-
+        self.dcheck = args.c
         self.num_pgs = 1
 
 
@@ -443,7 +523,6 @@ class commsParamsHolder(commsParamsHolderBase):
         self.maxSize = int(args.e // self.element_size)
         self.stepFactor = args.f
         self.srcOrDst = args.root
-        self.dcheck = args.c
         self.quant_threshold = max(
             self.endSize, self.quant_threshold
         )  # use quantization for all sizes in collective benchmark
@@ -470,6 +549,7 @@ class commsParamsHolder(commsParamsHolderBase):
 
         self.src_ranks = parseRankList(args.src_ranks, "src_ranks", comms_world_info)
         self.dst_ranks = parseRankList(args.dst_ranks, "dst_ranks", comms_world_info)
+        self.comms_world_info = comms_world_info
 
 
 class collectiveArgsHolder:
@@ -518,8 +598,8 @@ class collectiveArgsHolder:
         self.ipTensor_split_pair = []
         self.opTensor_split_pair = []
 
-        self.ipTensor_pair = []
-        self.opTensor_pair = []
+        self.ipTensor_pair = None
+        self.opTensor_pair = None
         self.dataSize_pair = 0
         self.numElements_pair = 0
 
@@ -608,6 +688,94 @@ class paramCommsBench(ABC):
                 t[:] = newVal
         else:
             tensor[:] = newVal
+
+    def prepComm(self, curComm, commsParams):
+        """Allocate the tensors for collective"""
+        commOp = paramToCommName(
+            curComm["comms"] if ("comms" in curComm.keys()) else commsParams.collective,
+            supported_comms=self.backendFuncs.collectiveFunc.keys(),
+        )
+
+        if commOp in ("wait", "barrier"):
+            return ([], [])
+
+        numElementsIn = curComm["in_msg_size"]
+        numElementsOut = curComm["out_msg_size"]
+        world_size = self.collectiveArgs.world_size
+        dtype = commsParams.dtype
+        curDevice = commsParams.device
+        # scaleFactor = 1 if commsParams.collective == "all_to_all" else numElements * numElements
+        scaleFactor = numElementsOut * numElementsOut
+        opTensor = []
+
+        if commsParams.dcheck == 1:
+            # use predictable values for data validation check
+            ipTensor = self.backendFuncs.alloc_ones(
+                [numElementsIn], curDevice, dtype, scaleFactor=self.initVal
+            )
+        else:
+            ipTensor = self.backendFuncs.alloc_random(
+                [numElementsIn], curDevice, dtype, scaleFactor
+            )
+
+        if commOp == "all_to_allv":
+            # all_to_all(v) requires two tensors
+            opTensor = self.backendFuncs.alloc_random(
+                [numElementsOut], curDevice, dtype, scaleFactor
+            )
+            # all_to_allv requires tensors to specify split
+            self.collectiveArgs.opTensor_split = (
+                curComm["out_split"] if ("out_split" in curComm.keys()) else []
+            )
+            self.collectiveArgs.ipTensor_split = (
+                curComm["in_split"] if ("in_split" in curComm.keys()) else []
+            )
+        elif commOp == "all_gather":
+            # allgather requires a tensor list, e.g., List[torch.Tensor]
+            for _ in range(world_size):
+                opTensor.append(
+                    self.backendFuncs.alloc_random(
+                        [numElementsOut], curDevice, dtype, scaleFactor
+                    )
+                )
+        elif commOp == "all_gather_base":
+            # this is a single all gather with flat output tensor
+            opTensor = self.backendFuncs.alloc_random(
+                numElementsOut * world_size,
+                curDevice,
+                dtype,
+                scaleFactor,
+            )
+        elif commOp == "incast":
+            # incast requires a tensor list with length of src_ranks, e.g., List[torch.Tensor]
+            for _ in self.collectiveArgs.src_ranks:
+                opTensor.append(
+                    self.backendFuncs.alloc_random(
+                        [numElementsOut], curDevice, dtype, scaleFactor
+                    )
+                )
+        elif commOp == "reduce_scatter":
+            opTensor = ipTensor
+            ipTensor = []
+            for _ in range(world_size):
+                ipTensor.append(
+                    self.backendFuncs.alloc_random(
+                        [numElementsOut], curDevice, dtype, scaleFactor
+                    )
+                )
+        elif commOp in ("all_to_all", "pt2pt"):
+            # pt2pt or out-of-place collectives
+            opTensor = self.backendFuncs.alloc_random(
+                [numElementsOut],
+                curDevice,
+                dtype,
+                scaleFactor,
+            )
+        else:
+            # in-place case for other collectives such as allreduce, reduce, broadcast
+            opTensor = ipTensor
+
+        return (ipTensor, opTensor)
 
     @abstractmethod
     def runBench(self, *args, **kwargs):
@@ -708,34 +876,41 @@ class paramCommsBench(ABC):
             default=33554432,
             help="threshold of message sizes to perform quantization if enabled",
         )  # quantization threshold, default 32 MB
+        parser.add_argument(
+            "--c",
+            type=int,
+            default=0,
+            help="enable data validation check",
+            choices=[0, 1],
+        )  # validation check
         pass
 
     @abstractmethod
     def checkArgs(self, args):
         """Validate some basic/common arguments for all PARAM-Comm benchmarks"""
         if args.nw_stack not in self.supportedNwstacks:
-            print(
-                "\t ERROR: Specified backend: %s is not one of the supported backends: %s. Make sure the input is using the correct case."
-                % (args.nw_stack, str(self.supportedNwstacks))
+            logger.error(
+                f"Specified backend: {args.nw_stack} is not one of the supported backends: {str(self.supportedNwstacks)}. Make sure the input is using the correct case."
             )
             gracefulExit()
         if args.data_type not in self.supportedDtype:
-            print(
-                "\t ERROR: Specified dtype: %d is not one of the supported commstyle: %s"
-                % (args.data_type, str(self.supportedDtype))
+            logger.error(
+                f"Specified dtype: {args.data_type} is not one of the supported commstyle: {str(self.supportedDtype)}"
             )
             gracefulExit()
         if args.num_tpu_cores not in self.supported_tpu_core_valuses:
-            print(
-                "\t ERROR: TPU core value: %d is not one of the supported values: %s "
-                % (args.num_tpu_cores, self.supported_tpu_core_valuses)
+            logger.error(
+                f"TPU core value: {args.num_tpu_cores} is not one of the supported values: {self.supported_tpu_core_valuses}"
             )
             gracefulExit()
         # check and set log level
         numeric_level = getattr(logging, args.log.upper(), None)
         if not isinstance(numeric_level, int):
-            raise ValueError("Invalid log level: %s" % args.log)
+            raise ValueError(f"Invalid log level: {args.log}")
+        mpi_env_params = read_mpi_env_vars()
         logging.basicConfig(
             level=numeric_level,
-            format="[%(asctime)s][%(name)s][%(levelname)s] - %(message)s",
+            format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
+                mpi_env_params["global_rank"]
+            ),
         )
