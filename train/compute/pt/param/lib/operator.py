@@ -59,22 +59,22 @@ class CallableOp(OperatorInterface):
         self.func(*args, **kwargs)
 
 
-def register_operator(name: str, operator: OperatorInterface):
+def register_operator(name: str, operator_class: Type[OperatorInterface]):
     global op_map
     if name not in op_map:
-        op_map[name] = operator
+        op_map[name] = operator_class
     else:
         raise ValueError(f'Duplicate operator registration name: "{name}"')
 
 
-def register_operators(op_dict: Dict[str, OperatorInterface]):
+def register_operators(op_dict: Dict[str, Type[OperatorInterface]]):
     global op_map
-    for name, operator in op_dict.items():
+    for name, operator_class in op_dict.items():
         if name not in op_map:
-            op_map[name] = operator
+            op_map[name] = operator_class
         else:
             raise ValueError(f'Duplicate operator registration name: "{name}"')
 
 
 # Global operator registry, a mapping of name to operator object
-op_map: Dict[str, OperatorInterface] = {}
+op_map: Dict[str, Type[OperatorInterface]] = {}

@@ -166,15 +166,15 @@ class DummyConfigIterator(ConfigIterator):
             raise StopIteration
 
 
-def register_config_iterator(name: str, iterator: ConfigIterator):
+def register_config_iterator(name: str, iterator_class: Type[ConfigIterator]):
     global config_iterator_map
     if name not in config_iterator_map:
-        config_iterator_map[name] = iterator
+        config_iterator_map[name] = iterator_class
     else:
         raise ValueError(f'Duplicate iterator registration name: "{name}"')
 
 
-config_iterator_map: Dict[str, ConfigIterator] = {}
+config_iterator_map: Dict[str, Type[ConfigIterator]] = {}
 
 register_config_iterator("SampleConfigIterator", SampleConfigIterator)
 register_config_iterator("RangeConfigIterator", RangeConfigIterator)

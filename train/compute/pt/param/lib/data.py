@@ -7,7 +7,6 @@ from enum import Enum
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 import torch
-
 from param.utils.generator import full_range, IterableList, ListProduct, TableProduct
 
 pytorch_dtype_map: Dict[str, torch.dtype] = {
@@ -174,13 +173,15 @@ class DefaultDataGenerator(DataGenerator):
 
         return (self.op_args, self.op_kwargs)
 
-data_generator_map: Dict[str, DataGenerator] = {}
 
-def register_data_generator(name: str, data_gen: DataGenerator):
+def register_data_generator(name: str, data_gen_class: Type[DataGenerator]):
     global data_generator_map
     if name not in data_generator_map:
-        data_generator_map[name] = data_gen
+        data_generator_map[name] = data_gen_class
     else:
         raise ValueError(f'Duplicate data generator registration name: "{name}"')
+
+
+data_generator_map: Dict[str, Type[DataGenerator]] = {}
 
 register_data_generator("DefaultDataGenerator", DefaultDataGenerator)

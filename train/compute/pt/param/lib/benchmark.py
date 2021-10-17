@@ -103,6 +103,62 @@ def warmup(
 #     out_file.write(json.dumps(stats) + "\n")
 #     out_file.flush()
 
+def run_op_for_inputs(config: Dict[str, Any], op_config, device, config_id, build_id, warmup_iter):
+
+    generate_input_config: ConfigIterator = op_config.input_iterator(
+        config, "input", device
+    )
+
+    for (input_id, input_config) in generate_input_config:
+        logging.info(f"{op_config.name}[{config_id}:{build_id}:{input_id}]:")
+        logging.info(f"  {input_config}")
+        # generate data
+
+        input_data_gen = op_config.input_data_generator()
+        (input_args, input_kwargs) = input_data_gen.get_data(
+            input_config, device
+        )
+        id = f"{config_id}:{build_id}:{input_id}"
+        warmup(
+            op_config.name,
+            id,
+            op_config.op,
+            input_args,
+            input_kwargs,
+            device,
+            warmup_iter,
+        )
+
+        final_config = {"build": config["build"], "input": input_config}
+
+        # # collect CUDA metrics
+        # if metric_mode:
+        #     collect_metric(
+        #         op_name,
+        #         id,
+        #         op,
+        #         input_args,
+        #         input_kwargs,
+        #         device,
+        #         num_iter,
+        #         final_config,
+        #         out_file,
+        #     )
+        # else:
+        #     measure_latency(
+        #         op_name,
+        #         id,
+        #         op,
+        #         input_args,
+        #         input_kwargs,
+        #         device,
+        #         num_iter,
+        #         final_config,
+        #         out_file,
+        #     )
+
+        logging.debug(f"Finished running {op_config.name}[{id}].")
+
 
 def run_op(
     op_config: OperatorConfig,
@@ -122,6 +178,7 @@ def run_op(
 
         # build op
         build_config = []
+        build_input_config = {}
         if op_config.build_iterator:
             if "build" not in config:
                 logging.error(
@@ -132,71 +189,22 @@ def run_op(
                 config, "build", device
             )
 
-        build_input_config = {}
-
-        for (build_id, build_config) in generate_build_config:
-            logging.info(f"{config_id}:{build_id} {build_config}")
-            build_data_gen = op_config.build_data_generator()
-            (build_args, build_kwargs) = build_data_gen.get_data(build_config, device)
-            logging.info(f"{build_args} {build_kwargs}")
-            # reset operator to clear memory before new build
-            op_config.op.cleanup()
-            if device.startswith("cuda"):
-                torch.cuda.empty_cache()
-            op_config.op.build(*build_args, **build_kwargs)
+            for (build_id, build_config) in generate_build_config:
+                logging.info(f"{config_id}:{build_id} {build_config}")
+                build_data_gen = op_config.build_data_generator()
+                (build_args, build_kwargs) = build_data_gen.get_data(build_config, device)
+                logging.info(f"{build_args} {build_kwargs}")
+                # reset operator to clear memory before new build
+                op_config.op.cleanup()
+                if device.startswith("cuda"):
+                    torch.cuda.empty_cache()
+                op_config.op.build(*build_args, **build_kwargs)
+                build_input_config["build"] = build_config
+                build_input_config["input"] = config["input"]
+                run_op_for_inputs(build_input_config, op_config, device, config_id, build_id, warmup_iter)
+        else:
             build_input_config["build"] = build_config
             build_input_config["input"] = config["input"]
-            generate_input_config: ConfigIterator = op_config.input_iterator(
-                build_input_config, "input", device
-            )
-            for (input_id, input_config) in generate_input_config:
-                logging.info(f"{op_config.name}[{config_id}:{build_id}:{input_id}]:")
-                logging.info(f"  {input_config}")
-                # generate data
-
-                input_data_gen = op_config.input_data_generator()
-                (input_args, input_kwargs) = input_data_gen.get_data(
-                    input_config, device
-                )
-                id = f"{config_id}:{build_id}:{input_id}"
-                warmup(
-                    op_config.name,
-                    id,
-                    op_config.op,
-                    input_args,
-                    input_kwargs,
-                    device,
-                    warmup_iter,
-                )
-
-                final_config = {"build": build_config, "input": input_config}
-
-                # # collect CUDA metrics
-                # if metric_mode:
-                #     collect_metric(
-                #         op_name,
-                #         id,
-                #         op,
-                #         input_args,
-                #         input_kwargs,
-                #         device,
-                #         num_iter,
-                #         final_config,
-                #         out_file,
-                #     )
-                # else:
-                #     measure_latency(
-                #         op_name,
-                #         id,
-                #         op,
-                #         input_args,
-                #         input_kwargs,
-                #         device,
-                #         num_iter,
-                #         final_config,
-                #         out_file,
-                #     )
-
-                logging.debug(f"Finished running {op_config.name}[{id}].")
+            run_op_for_inputs(build_input_config, op_config, device, config_id, 0, warmup_iter)
 
         config_id += 1
