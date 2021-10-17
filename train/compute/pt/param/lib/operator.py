@@ -29,6 +29,7 @@ class OperatorInterface(metaclass=abc.ABCMeta):
     def backward(self):
         raise NotImplementedError
 
+
 # Inplace ops is called in the form of tensor.op(args), we convert it
 # to a regular function call with "getattr(tensor, op)(args)"
 class InPlaceOpByName(OperatorInterface):
@@ -57,6 +58,7 @@ class CallableOp(OperatorInterface):
     def forward(self, *args, **kwargs):
         self.func(*args, **kwargs)
 
+
 def register_operator(name: str, operator: OperatorInterface):
     global op_map
     if name not in op_map:
@@ -72,6 +74,7 @@ def register_operators(op_dict: Dict[str, OperatorInterface]):
             op_map[name] = operator
         else:
             raise ValueError(f'Duplicate operator registration name: "{name}"')
+
 
 # Global operator registry, a mapping of name to operator object
 op_map: Dict[str, OperatorInterface] = {}

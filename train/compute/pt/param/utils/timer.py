@@ -1,6 +1,5 @@
-
-
 import time
+
 import torch
 
 # Timer in seconds

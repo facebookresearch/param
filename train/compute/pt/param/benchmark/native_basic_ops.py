@@ -1,5 +1,6 @@
 from typing import Dict
 
+import torch
 from param.lib.operator import (
     CallableOp,
     InPlaceOpByName,
@@ -7,7 +8,7 @@ from param.lib.operator import (
     register_operator,
     register_operators,
 )
-import torch
+
 
 def testing():
     print("hello test")

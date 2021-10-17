@@ -1,8 +1,7 @@
-
-
 import importlib
 import logging
 import pkgutil
+
 
 def init_logging():
     FORMAT = "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
