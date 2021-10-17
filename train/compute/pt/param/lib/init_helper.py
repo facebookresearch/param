@@ -4,7 +4,7 @@ import pkgutil
 
 
 def init_logging():
-    FORMAT = "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
+    FORMAT = "[%(asctime)s] %(filename)s:%(lineno)-4d [%(levelname)s]: %(message)s"
     logging.basicConfig(format=FORMAT)
     logging.getLogger().setLevel(logging.INFO)
 

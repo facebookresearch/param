@@ -234,7 +234,7 @@
                 "dtype": "float",
                 "shape": [
                   512,
-                  37020
+                  3702
                 ],
                 "type": "tensor"
               }

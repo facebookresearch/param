@@ -20,9 +20,9 @@ def benchmark_op(
             _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
             torch.cuda.empty_cache()
 
+        logging.debug(f"running {op_id}")
         with Timer(device) as timer:
             op.forward(*args, **kwargs)
-            logging.info(f"running {op_id}")
         time_records.append(timer.elapsed_time())
     return time_records
 
@@ -72,7 +72,7 @@ def warmup(
     logging.debug(f"Running {op_name}[{id}] for {num_iter} warm up iterations")
     # warm up
     time_records = benchmark_op(f"{op_name}[{id}]", op, args, kwargs, device, num_iter)
-    logging.info(f"  warmup: {time_records}")
+    logging.info(f"    warm: {time_records}")
 
 
 def measure_latency(
@@ -91,9 +91,9 @@ def measure_latency(
     time_records = benchmark_op(f"{op_name}[{id}]", op, args, kwargs, device, num_iter)
     torch.cuda.nvtx.range_pop()
     tot = sum(time_records)
-    logging.info(f"  rec: {time_records}")
-    logging.info(f"  avg: {tot/num_iter:.6f} sec")
-    logging.info(f"  tot: {tot:.6f} sec")
+    logging.info(f"    time: {time_records}")
+    logging.info(f"    avg: {tot/num_iter:.6f} sec")
+    logging.info(f"    tot: {tot:.6f} sec")
     stats = {
         "name": op_name,
         "id": id,
@@ -116,14 +116,12 @@ def run_op_for_inputs(
     metric_mode,
     out_file,
 ):
-
     generate_input_config: ConfigIterator = op_config.input_iterator(
         config, "input", device
     )
 
     for (input_id, input_config) in generate_input_config:
-        logging.info(f"{op_config.name}[{config_id}:{build_id}:{input_id}]:")
-        logging.info(f"  {input_config}")
+        logging.info(f"    input_config [{config_id}:{build_id}:{input_id}]: {input_config}")
         # generate data
 
         input_data_gen = op_config.input_data_generator()
@@ -186,6 +184,7 @@ def run_op(
             )
             return
 
+        logging.info(f"{op_config.name}:")
         # build op
         build_config = []
         build_input_config = {}
@@ -200,12 +199,12 @@ def run_op(
             )
 
             for (build_id, build_config) in generate_build_config:
-                logging.info(f"{config_id}:{build_id} {build_config}")
+                logging.info(f"  build_config [{config_id}:{build_id}]: {build_config}")
                 build_data_gen = op_config.build_data_generator()
                 (build_args, build_kwargs) = build_data_gen.get_data(
                     build_config, device
                 )
-                logging.info(f"{build_args} {build_kwargs}")
+                logging.debug(f"{build_args} {build_kwargs}")
                 # reset operator to clear memory before new build
                 op_config.op.cleanup()
                 if device.startswith("cuda"):
@@ -225,6 +224,7 @@ def run_op(
                     out_file,
                 )
         else:
+            logging.info(f"  build_config [{config_id}:{0}]: {build_config}")
             build_input_config["build"] = build_config
             build_input_config["input"] = config["input"]
             run_op_for_inputs(

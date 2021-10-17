@@ -71,7 +71,6 @@ def main():
     with open(out_file_name, "w") as out_file:
         with record_function("## BENCHMARK ##"):
             for op_config in bench_config.op_configs:
-                print(op_config.name)
                 run_op(
                     op_config,
                     args.warmup,
