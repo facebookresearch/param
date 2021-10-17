@@ -1,13 +1,13 @@
 from typing import Dict
 
-from ..pytorch_op_interface import (
-    register_operator,
-    register_operators,
+from param.lib.operator import (
     CallableOp,
     InPlaceOpByName,
     OperatorInterface,
+    register_operator,
+    register_operators,
 )
-
+import torch
 
 def testing():
     print("hello test")
@@ -19,6 +19,13 @@ unary_ops: Dict[str, OperatorInterface] = {
     "aten::clamp_": InPlaceOpByName("clamp_"),
 }
 register_operators(unary_ops)
+
+callable_ops: Dict[str, OperatorInterface] = {
+    "aten::add": CallableOp(torch.add),
+    "aten::mul": CallableOp(torch.mul),
+}
+register_operators(callable_ops)
+
 # register_operator("aten::clamp_", InPlaceOpByName("clamp_"))
 
 

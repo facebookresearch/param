@@ -7,69 +7,25 @@ from __future__ import (
 )
 
 import argparse, json, sys
-import importlib
 import logging
-import pkgutil
 import random
-import time
+
 from enum import Enum
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
-import pydot
 import torch
 from caffe2.python import core
-from .pytorch_op_config import ConfigIterator, config_iterator_map, DummyConfigIterator
-from .pytorch_op_def import OperatorConfig
-from .pytorch_op_interface import OperatorInterface, operator_map
-from .pytorch_op_util import DefaultDataGenerator
+# from .pytorch_op_config import ConfigIterator, config_iterator_map, DummyConfigIterator
+# from .pytorch_op_def import OperatorConfig
+# from .pytorch_op_interface import OperatorInterface, operator_map
+# from .pytorch_op_util import DefaultDataGenerator
 from torch.autograd.profiler import record_function
+from param.utils.timer import Timer
+from param.utils.init_helper import init_logging, load_benchmarks
+from param.lib.config import BenchmarkConfig, OperatorConfig
+from param.lib.operator import op_map
 
-FORMAT = "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
-logging.basicConfig(format=FORMAT)
-logging.getLogger().setLevel(logging.INFO)
-
-import cea.ml_perf_model.gpu.microbench.pytorch.benchmark as benchmark
-
-
-def load_benchmarks(package):
-    # See https://packaging.python.org/guides/creating-and-discovering-plugins/
-    benchmark_modules = pkgutil.iter_modules(package.__path__, package.__name__ + ".")
-    for _, name, _ in benchmark_modules:
-        logging.debug(f"Loading benchmark module: {name}")
-        importlib.import_module(name)
-
-
-# Timer in seconds
-class Timer:
-    def __init__(self, device: str):
-        self.device: str = device
-        self.start_time: float = 0
-        self.end_time: float = 0
-        self.start_event = None
-        self.end_event = None
-
-    def __enter__(self):
-        if self.device == "cpu":
-            self.start_time = time.perf_counter()
-        else:
-            torch.cuda.synchronize()
-            self.start_event = torch.cuda.Event(enable_timing=True)
-            self.end_event = torch.cuda.Event(enable_timing=True)
-            self.start_event.record()
-            self.start_time = 0
-        return self
-
-    def __exit__(self, type, value, traceback):
-        if self.device == "cpu":
-            self.end_time = time.perf_counter()
-        else:
-            self.end_event.record()
-            torch.cuda.synchronize()
-            self.end_time = self.start_event.elapsed_time(self.end_event) * 1.0e-3
-
-    # returns time in seconds
-    def elapsed_time(self):
-        return self.end_time - self.start_time
+import param.benchmark
 
 
 def benchmark_op(
@@ -83,87 +39,88 @@ def benchmark_op(
             torch.cuda.empty_cache()
 
         with Timer(device) as timer:
-            op(*args, **kwargs)
+            # op(*args, **kwargs)
+            logging.info(f"running {op_id}")
         time_records.append(timer.elapsed_time())
     return time_records
 
 
-def collect_metric(
-    op_name: str,
-    id: str,
-    op: Callable,
-    args: Any,
-    kwargs: Any,
-    device: str,
-    num_iter: int,
-    config: Dict[str, Any],
-    out_file: TextIO,
-):
-    if device.startswith("cuda"):
-        # use nvtx allows us to collect only this part of kernel executions
-        # and match op and arg variants to metrics.
-        logging.info(f"Running {op_name}[{id}] for {num_iter} CUDA metric iterations")
-        torch.cuda.nvtx.range_push("op_bench")
-        for _ in range(num_iter):
-            # flush cache
-            _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
-            torch.cuda.empty_cache()
+# def collect_metric(
+#     op_name: str,
+#     id: str,
+#     op: Callable,
+#     args: Any,
+#     kwargs: Any,
+#     device: str,
+#     num_iter: int,
+#     config: Dict[str, Any],
+#     out_file: TextIO,
+# ):
+#     if device.startswith("cuda"):
+#         # use nvtx allows us to collect only this part of kernel executions
+#         # and match op and arg variants to metrics.
+#         logging.info(f"Running {op_name}[{id}] for {num_iter} CUDA metric iterations")
+#         torch.cuda.nvtx.range_push("op_bench")
+#         for _ in range(num_iter):
+#             # flush cache
+#             _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
+#             torch.cuda.empty_cache()
 
-            torch.cuda.nvtx.range_push(f"{op_name}[{id}]")
-            op(*args, **kwargs)
-            torch.cuda.nvtx.range_pop()
+#             torch.cuda.nvtx.range_push(f"{op_name}[{id}]")
+#             op(*args, **kwargs)
+#             torch.cuda.nvtx.range_pop()
 
-        torch.cuda.nvtx.range_pop()
-        stats = {"name": op_name, "id": id, "iter": num_iter, "config": config}
-        out_file.write(json.dumps(stats) + "\n")
-        out_file.flush()
-    else:
-        raise Exception("Non-GPU metric mode is not supported.")
-
-
-def warmup(
-    op_name: str,
-    id: str,
-    op: Callable,
-    args: Any,
-    kwargs: Any,
-    device: str,
-    num_iter: int,
-):
-    logging.debug(f"Running {op_name}[{id}] for {num_iter} warm up iterations")
-    # warm up
-    time_records = benchmark_op(f"{op_name}[{id}]", op, args, kwargs, device, num_iter)
-    logging.info(f"  warmup: {time_records}")
+#         torch.cuda.nvtx.range_pop()
+#         stats = {"name": op_name, "id": id, "iter": num_iter, "config": config}
+#         out_file.write(json.dumps(stats) + "\n")
+#         out_file.flush()
+#     else:
+#         raise Exception("Non-GPU metric mode is not supported.")
 
 
-def measure_latency(
-    op_name: str,
-    id: str,
-    op: Callable,
-    args: Any,
-    kwargs: Any,
-    device: str,
-    num_iter: int,
-    config: Dict[str, Any],
-    out_file: TextIO,
-):
-    logging.debug(f"Running {op_name}[{id}] for {num_iter} measured iterations")
-    torch.cuda.nvtx.range_push("op_bench")
-    time_records = benchmark_op(f"{op_name}[{id}]", op, args, kwargs, device, num_iter)
-    torch.cuda.nvtx.range_pop()
-    tot = sum(time_records)
-    logging.info(f"  rec: {time_records}")
-    logging.info(f"  avg: {tot/num_iter:.6f} sec")
-    logging.info(f"  tot: {tot:.6f} sec")
-    stats = {
-        "name": op_name,
-        "id": id,
-        "time": time_records,
-        "iter": num_iter,
-        "config": config,
-    }
-    out_file.write(json.dumps(stats) + "\n")
-    out_file.flush()
+# def warmup(
+#     op_name: str,
+#     id: str,
+#     op: Callable,
+#     args: Any,
+#     kwargs: Any,
+#     device: str,
+#     num_iter: int,
+# ):
+#     logging.debug(f"Running {op_name}[{id}] for {num_iter} warm up iterations")
+#     # warm up
+#     time_records = benchmark_op(f"{op_name}[{id}]", op, args, kwargs, device, num_iter)
+#     logging.info(f"  warmup: {time_records}")
+
+
+# def measure_latency(
+#     op_name: str,
+#     id: str,
+#     op: Callable,
+#     args: Any,
+#     kwargs: Any,
+#     device: str,
+#     num_iter: int,
+#     config: Dict[str, Any],
+#     out_file: TextIO,
+# ):
+#     logging.debug(f"Running {op_name}[{id}] for {num_iter} measured iterations")
+#     torch.cuda.nvtx.range_push("op_bench")
+#     time_records = benchmark_op(f"{op_name}[{id}]", op, args, kwargs, device, num_iter)
+#     torch.cuda.nvtx.range_pop()
+#     tot = sum(time_records)
+#     logging.info(f"  rec: {time_records}")
+#     logging.info(f"  avg: {tot/num_iter:.6f} sec")
+#     logging.info(f"  tot: {tot:.6f} sec")
+#     stats = {
+#         "name": op_name,
+#         "id": id,
+#         "time": time_records,
+#         "iter": num_iter,
+#         "config": config,
+#     }
+#     out_file.write(json.dumps(stats) + "\n")
+#     out_file.flush()
 
 
 def run_op(
@@ -193,11 +150,11 @@ def run_op(
                 )
                 return
             generate_build_config: ConfigIterator = build_iterator(
-                config, "build", device
+                config["build"], device
             )
         else:
             generate_build_config: ConfigIterator = DummyConfigIterator(
-                config, "build", device
+                config["build"], device
             )
 
         op_config = {}
@@ -214,7 +171,7 @@ def run_op(
             op_config["build"] = build_config
             op_config["input"] = config["input"]
             generate_input_config: ConfigIterator = input_iterator(
-                op_config, "input", device
+                op_config["input"], device
             )
             for (input_id, input_config) in generate_input_config:
                 logging.info(f"{op_name}[{config_id}:{build_id}:{input_id}]:")
@@ -262,7 +219,7 @@ def run_op(
 
 
 def main():
-
+    init_logging()
     parser = argparse.ArgumentParser(description="Microbenchmarks")
     parser.add_argument("--config", type=str, required=True, help="The op config file.")
     parser.add_argument(
@@ -308,13 +265,16 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    load_benchmarks(benchmark)
+    load_benchmarks(param.benchmark)
 
-    print(operator_map)
+    print("op map =", op_map)
 
     op_filter = {x.strip() for x in args.filter.split(",") if x.strip()}
 
-    op_configs = OperatorConfig(args.config, args.device, op_filter)
+    bench_configs = BenchmarkConfig(args.config, args.device)
+
+    for op_config in bench_configs.get_op_configs():
+        print(op_config.name)
 
     out_file_name = args.out_file_name
     if args.metric:
@@ -323,22 +283,22 @@ def main():
     # We don't want too many threads for stable benchmarks
     torch.set_num_threads(1)
 
-    with open(out_file_name, "w") as out_file:
-        with record_function("## BENCHMARK ##"):
-            for (op_name, op, configs) in op_configs.get_selected_ops():
-                run_op(
-                    op_name,
-                    op,
-                    configs,
-                    args.warmup,
-                    args.iter,
-                    args.device,
-                    out_file,
-                    args.metric,
-                )
-        # TODO lofe: repeating the record_function for execution graph only.
-        with record_function("## BENCHMARK ##"):
-            logging.info(f"Log written to {args.out_file_name}")
+    # with open(out_file_name, "w") as out_file:
+    #     with record_function("## BENCHMARK ##"):
+    #         for (op_name, op, configs) in op_configs.get_selected_ops():
+    #             run_op(
+    #                 op_name,
+    #                 op,
+    #                 configs,
+    #                 args.warmup,
+    #                 args.iter,
+    #                 args.device,
+    #                 out_file,
+    #                 args.metric,
+    #             )
+    #     # TODO lofe: repeating the record_function for execution graph only.
+    #     with record_function("## BENCHMARK ##"):
+    #         logging.info(f"Log written to {args.out_file_name}")
 
 
 if __name__ == "__main__":

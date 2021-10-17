@@ -1,3 +1,4 @@
+import abc
 import copy
 import json
 import logging
@@ -7,7 +8,7 @@ from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 import torch
 
-from .generator import full_range, IterableList, ListProduct, TableProduct
+from param.utils.generator import full_range, IterableList, ListProduct, TableProduct
 
 pytorch_dtype_map: Dict[str, torch.dtype] = {
     "float": torch.float,
@@ -15,20 +16,6 @@ pytorch_dtype_map: Dict[str, torch.dtype] = {
     "int": torch.int,
     "long": torch.long,
 }
-
-# Special meta attributes in range based configs
-ATTR_COPY = "__copy__"
-ATTR_RANGE = "__range__"
-ATTR_LIST = "__list__"
-META_ATTRS = {ATTR_COPY, ATTR_RANGE, ATTR_LIST}
-
-
-def genericList_to_list(genericList: Dict[str, Any]):
-    result = []
-    for item in genericList["value"]:
-        result.append(item["value"])
-    return result
-
 
 # Given an arg configuration, generate the test data for that arg.
 def create_arg(arg: Dict[str, Any], device: str):
@@ -103,108 +90,27 @@ def create_arg(arg: Dict[str, Any], device: str):
     return arg_factory[arg["type"]](arg)
 
 
-def create_range_iter(arg: Dict[str, Any]):
-    def create_tensor(attr: Dict[str, Any]):
-        logging.debug(f"{attr}")
-        result = copy.copy(attr)
-        # if ranges exists, create iterator
-        if ATTR_RANGE in attr:
-            ranges = set(attr[ATTR_RANGE])
-            for key, val in attr.items():
-                if key in ranges:
-                    result[key] = arg_factory_iter[key](val)
-                else:
-                    result[key] = val
-            return TableProduct(result)
-        # otherwise return unchanged
-        return result
+class DataGenerator(metaclass=abc.ABCMeta):
+    @classmethod
+    def __subclasshook__(cls, subclass):
+        return (
+            hasattr(subclass, "get_data")
+            and callable(subclass.get_data)
+            or NotImplemented
+        )
 
-    def create_float(attr: Dict[str, Any]):
-        # Not supporting range float values, any use cases?
-        return copy.copy(attr)
+    def __init__(self):
+        pass
 
-    def create_int(attr: Dict[str, Any]):
-        result = copy.copy(attr)
-        if ATTR_RANGE in attr:
-            ranges = set(attr[ATTR_RANGE])
-            if "value" in ranges:
-                result["value"] = full_range(*attr["value"])
-                return TableProduct(result)
-        return result
-
-    def create_str(attr: Dict[str, Any]):
-        result = copy.copy(attr)
-        if ATTR_RANGE in attr:
-            ranges = set(attr[ATTR_RANGE])
-            if "value" in ranges:
-                result["value"] = IterableList(attr["value"])
-                return TableProduct(result)
-        return result
-
-    def create_bool(attr: Dict[str, Any]):
-        result = copy.copy(attr)
-        if ATTR_RANGE in attr:
-            ranges = set(attr[ATTR_RANGE])
-            if "value" in ranges:
-                result["value"] = IterableList(attr["value"])
-                return TableProduct(result)
-        return result
-
-    def create_none(attr: Dict[str, Any]):
-        return copy.copy(attr)
-
-    def create_dtype(values: List[str]):
-        return IterableList(values)
-
-    def create_shape(values: List[Any]):
-        shape = []
-        for val in values:
-            if type(val) is list:
-                shape.append(full_range(*val))
-            else:
-                shape.append(val)
-        return ListProduct(shape)
-
-    def create_device(attr: Dict[str, Any]):
-        result = copy.copy(attr)
-        if ATTR_RANGE in attr:
-            ranges = set(attr[ATTR_RANGE])
-            if "value" in ranges:
-                result["value"] = IterableList(attr["value"])
-                return TableProduct(result)
-        return result
-
-    def create_genericlist(attr: List[Any]):
-        result = copy.copy(attr)
-        if ATTR_RANGE in attr:
-            ranges = set(attr[ATTR_RANGE])
-            if "value" in ranges:
-                values = []
-                for item in attr["value"]:
-                    values.append(arg_factory_iter[item["type"]](item))
-                result["value"] = ListProduct(values)
-                return TableProduct(result)
-        return result
-
-    arg_factory_iter: Dict[str, Callable] = {
-        "tensor": create_tensor,
-        "float": create_float,
-        "double": create_float,
-        "int": create_int,
-        "long": create_int,
-        "str": create_str,
-        "none": create_none,
-        "bool": create_bool,
-        "dtype": create_dtype,
-        "shape": create_shape,
-        "device": create_device,
-        "genericlist": create_genericlist,
-    }
-    return arg_factory_iter[arg["type"]](arg)
+    # Loads arg configurations and generates the arg data for an op.
+    @abc.abstractmethod
+    def get_data(self):
+        raise NotImplementedError
 
 
-class DefaultDataGenerator:
+class DefaultDataGenerator(DataGenerator):
     def __init__(self, cache: bool = False):
+        super(DefaultDataGenerator, self).__init__()
         # keep track/cache last arg_config so we only generate data for
         # args that's different from previous iteration.
         self.cache = cache
@@ -268,7 +174,13 @@ class DefaultDataGenerator:
 
         return (self.op_args, self.op_kwargs)
 
+data_generator_map: Dict[str, DataGenerator] = {}
 
-data_generator_map: Dict[str, Any] = {
-    "DefaultDataGenerator": DefaultDataGenerator,
-}
+def register_data_generator(name: str, data_gen: DataGenerator):
+    global data_generator_map
+    if name not in data_generator_map:
+        data_generator_map[name] = data_gen
+    else:
+        raise ValueError(f'Duplicate data generator registration name: "{name}"')
+
+register_data_generator("DefaultDataGenerator", DefaultDataGenerator)
