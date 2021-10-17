@@ -11,9 +11,9 @@ def init_logging():
 
 def load_modules(package):
     # See https://packaging.python.org/guides/creating-and-discovering-plugins/
-    benchmark_modules = pkgutil.iter_modules(package.__path__, package.__name__ + ".")
-    for _, name, _ in benchmark_modules:
-        logging.debug(f"Loading benchmark module: {name}")
+    modules = pkgutil.iter_modules(package.__path__, package.__name__ + ".")
+    for _, name, _ in modules:
+        logging.debug(f"Loading module: {name}")
         try:
             importlib.import_module(name)
         except ModuleNotFoundError as error:

@@ -1,25 +1,13 @@
-from __future__ import (
-    absolute_import,
-    division,
-    print_function,
-    unicode_literals,
-    annotations,
-)
-
-import argparse, json, sys
+import argparse
 import logging
-import random
 
-from enum import Enum
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 import torch
 from caffe2.python import core
 from torch.autograd.profiler import record_function
-from param.lib.timer import Timer
 from param.lib.init_helper import init_logging, load_modules
 from param.lib.config import BenchmarkConfig, OperatorConfig
-from param.lib.operator import op_map
 from param.lib.benchmark import run_op
 
 import param.workloads
@@ -71,7 +59,7 @@ def main():
 
     load_modules(param.workloads)
 
-    bench_configs = BenchmarkConfig(args.config, args.device)
+    bench_config = BenchmarkConfig(args.config, args.device)
 
     out_file_name = args.out_file_name
     if args.metric:
@@ -82,7 +70,7 @@ def main():
 
     with open(out_file_name, "w") as out_file:
         with record_function("## BENCHMARK ##"):
-            for op_config in bench_configs.op_configs:
+            for op_config in bench_config.op_configs:
                 print(op_config.name)
                 run_op(
                     op_config,
