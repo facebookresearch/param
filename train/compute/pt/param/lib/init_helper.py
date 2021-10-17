@@ -9,7 +9,7 @@ def init_logging():
     logging.getLogger().setLevel(logging.INFO)
 
 
-def load_benchmarks(package):
+def load_modules(package):
     # See https://packaging.python.org/guides/creating-and-discovering-plugins/
     benchmark_modules = pkgutil.iter_modules(package.__path__, package.__name__ + ".")
     for _, name, _ in benchmark_modules:

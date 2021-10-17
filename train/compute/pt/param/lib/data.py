@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 import torch
-from param.utils.generator import full_range, IterableList, ListProduct, TableProduct
+from .generator import full_range, IterableList, ListProduct, TableProduct
 
 pytorch_dtype_map: Dict[str, torch.dtype] = {
     "float": torch.float,

@@ -2,11 +2,11 @@ import logging
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 import torch
-from param.utils.timer import Timer
 
 from .config import OperatorConfig
 from .iterator import ConfigIterator
 from .operator import OperatorInterface
+from .timer import Timer
 
 
 def benchmark_op(
@@ -20,7 +20,7 @@ def benchmark_op(
             torch.cuda.empty_cache()
 
         with Timer(device) as timer:
-            # op(*args, **kwargs)
+            op.forward(*args, **kwargs)
             logging.info(f"running {op_id}")
         time_records.append(timer.elapsed_time())
     return time_records

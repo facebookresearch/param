@@ -16,13 +16,13 @@ from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 import torch
 from caffe2.python import core
 from torch.autograd.profiler import record_function
-from param.utils.timer import Timer
-from param.utils.init_helper import init_logging, load_benchmarks
+from param.lib.timer import Timer
+from param.lib.init_helper import init_logging, load_modules
 from param.lib.config import BenchmarkConfig, OperatorConfig
 from param.lib.operator import op_map
 from param.lib.benchmark import run_op
 
-import param.benchmark
+import param.workloads
 
 
 def main():
@@ -69,7 +69,7 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    load_benchmarks(param.benchmark)
+    load_modules(param.workloads)
 
     bench_configs = BenchmarkConfig(args.config, args.device)
 
