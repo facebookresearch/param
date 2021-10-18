@@ -33,6 +33,8 @@ class PyTorchTPUBackend(backendFunctions):
     # Collectives
     def all_reduce(self, collectiveArgs, retFlag=False):
         retObj = xm.all_reduce(collectiveArgs.op, [collectiveArgs.ipTensor])
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
         if retFlag:
             return retObj
 
@@ -42,6 +44,8 @@ class PyTorchTPUBackend(backendFunctions):
     def all_to_all(self, collectiveArgs, retFlag=False):
         retObj = xm.all_to_all(collectiveArgs.ipTensor, 0, 0, collectiveArgs.world_size)
         collectiveArgs.opTensor = retObj
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
         if retFlag:
             return retObj
 
@@ -51,6 +55,8 @@ class PyTorchTPUBackend(backendFunctions):
     def all_gather(self, collectiveArgs, retFlag=False):
         retObj = xm.all_gather(collectiveArgs.ipTensor, dim=0)
         collectiveArgs.opTensor = retObj
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
         if retFlag:
             return retObj
 
@@ -110,7 +116,7 @@ class PyTorchTPUBackend(backendFunctions):
     def alloc_empty(self, sizeArr, dtype, curRankDevice):
         return torch.empty(sizeArr, device=curRankDevice, dtype=dtype)
 
-    def clear_memory(self):
+    def clear_memory(self, collectiveArgs):
         pass  # torch.cuda.empty_cache()
 
     # Getting world-size and other information.
@@ -139,7 +145,10 @@ class PyTorchTPUBackend(backendFunctions):
     ):
         return xm._xla_real_device(xm.xla_device())
 
-    def get_group(self, world_size):
+    def get_default_group(self):
+        pass
+
+    def get_groups(self):
         pass
 
     # Init functions
