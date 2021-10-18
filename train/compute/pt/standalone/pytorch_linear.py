@@ -68,7 +68,10 @@ def train_gpu(
         model = apex.fp16_utils.network_to_half(model)
 
     # model.train()
-    start_time = time.time()
+    torch.cuda.synchronize()
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+    total_time = 0.0
 
     for i in range(args.steps + args.warmups):
         data = torch.randn(batch_size, input_size, device=device)
@@ -79,15 +82,20 @@ def train_gpu(
         if data_type == "float16":
             data = data.half()
 
+        if i >= args.warmups:
+            start_event.record()
+
         optimizer.zero_grad()
         output = model(data).float()
         loss = loss_f(output, target)
         loss.backward()
         optimizer.step()
-        if i < args.warmups:
-            start_time = time.time()
+        if i >= args.warmups:
+            end_event.record()
+            torch.cuda.synchronize()
+            total_time += start_event.elapsed_time(end_event) * 1.0e-3
 
-    return time.time() - start_time, loss
+    return total_time, loss
 
 
 def train_tpu(
@@ -199,6 +207,10 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
             optimizer = apex.optimizers.FusedSGD(
                 model.parameters(), lr=lr, set_grad_none=True
             )
+        elif optimizer_type == "lamb":
+            optimizer = apex.optimizers.FusedLAMB(
+                model.parameters(), lr=lr, set_grad_none=True
+            )
         else:
             assert 0, "Unsupported optimizer type"
 
@@ -277,7 +289,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Measure the performance of MLP")
     parser.add_argument("--device", required=True, choices=["cpu", "gpu", "tpu"])
     parser.add_argument(
-        "--optimizer-type", default="sgd", help="Optimizer: SGD", choices=["sgd"]
+        "--optimizer-type", default="sgd", help="Optimizer: SGD", choices=["sgd", "lamb"]
     )
     parser.add_argument(
         "--dtype",
