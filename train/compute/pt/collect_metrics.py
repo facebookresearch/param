@@ -1,11 +1,3 @@
-from __future__ import (
-    absolute_import,
-    division,
-    print_function,
-    unicode_literals,
-    annotations,
-)
-
 import argparse, json, os, sys
 import logging
 import subprocess

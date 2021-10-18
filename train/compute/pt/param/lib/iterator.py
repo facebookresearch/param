@@ -1,20 +1,24 @@
 import abc
 import copy
-import json
 import logging
-import random
-from enum import Enum
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 import torch
 from .generator import full_range, IterableList, ListProduct, TableProduct
-from .pytorch_op_util import (
-    create_arg,
-    create_range_iter,
-    ATTR_COPY,
-    ATTR_RANGE,
-    META_ATTRS,
-)
+
+
+# Special meta attributes in range based configs
+ATTR_COPY = "__copy__"
+ATTR_RANGE = "__range__"
+ATTR_LIST = "__list__"
+META_ATTRS = {ATTR_COPY, ATTR_RANGE, ATTR_LIST}
+
+
+def genericList_to_list(genericList: Dict[str, Any]):
+    result = []
+    for item in genericList["value"]:
+        result.append(item["value"])
+    return result
 
 
 class ConfigIterator(metaclass=abc.ABCMeta):
@@ -52,6 +56,104 @@ def remove_meta_attr(config: Dict[str, Any]):
             arg.pop(attr, None)
     return result_config
 
+def create_range_iter(arg: Dict[str, Any]):
+    def create_tensor(attr: Dict[str, Any]):
+        logging.debug(f"{attr}")
+        result = copy.copy(attr)
+        # if ranges exists, create iterator
+        if ATTR_RANGE in attr:
+            ranges = set(attr[ATTR_RANGE])
+            for key, val in attr.items():
+                if key in ranges:
+                    result[key] = arg_factory_iter[key](val)
+                else:
+                    result[key] = val
+            return TableProduct(result)
+        # otherwise return unchanged
+        return result
+
+    def create_float(attr: Dict[str, Any]):
+        # Not supporting range float values, any use cases?
+        return copy.copy(attr)
+
+    def create_int(attr: Dict[str, Any]):
+        result = copy.copy(attr)
+        if ATTR_RANGE in attr:
+            ranges = set(attr[ATTR_RANGE])
+            if "value" in ranges:
+                result["value"] = full_range(*attr["value"])
+                return TableProduct(result)
+        return result
+
+    def create_str(attr: Dict[str, Any]):
+        result = copy.copy(attr)
+        if ATTR_RANGE in attr:
+            ranges = set(attr[ATTR_RANGE])
+            if "value" in ranges:
+                result["value"] = IterableList(attr["value"])
+                return TableProduct(result)
+        return result
+
+    def create_bool(attr: Dict[str, Any]):
+        result = copy.copy(attr)
+        if ATTR_RANGE in attr:
+            ranges = set(attr[ATTR_RANGE])
+            if "value" in ranges:
+                result["value"] = IterableList(attr["value"])
+                return TableProduct(result)
+        return result
+
+    def create_none(attr: Dict[str, Any]):
+        return copy.copy(attr)
+
+    def create_dtype(values: List[str]):
+        return IterableList(values)
+
+    def create_shape(values: List[Any]):
+        shape = []
+        for val in values:
+            if type(val) is list:
+                shape.append(full_range(*val))
+            else:
+                shape.append(val)
+        return ListProduct(shape)
+
+    def create_device(attr: Dict[str, Any]):
+        result = copy.copy(attr)
+        if ATTR_RANGE in attr:
+            ranges = set(attr[ATTR_RANGE])
+            if "value" in ranges:
+                result["value"] = IterableList(attr["value"])
+                return TableProduct(result)
+        return result
+
+    def create_genericlist(attr: List[Any]):
+        result = copy.copy(attr)
+        if ATTR_RANGE in attr:
+            ranges = set(attr[ATTR_RANGE])
+            if "value" in ranges:
+                values = []
+                for item in attr["value"]:
+                    values.append(arg_factory_iter[item["type"]](item))
+                result["value"] = ListProduct(values)
+                return TableProduct(result)
+        return result
+
+    arg_factory_iter: Dict[str, Callable] = {
+        "tensor": create_tensor,
+        "float": create_float,
+        "double": create_float,
+        "int": create_int,
+        "long": create_int,
+        "str": create_str,
+        "none": create_none,
+        "bool": create_bool,
+        "dtype": create_dtype,
+        "shape": create_shape,
+        "device": create_device,
+        "genericlist": create_genericlist,
+    }
+    return arg_factory_iter[arg["type"]](arg)
 
 class RangeConfigIterator(ConfigIterator):
     def __init__(
@@ -118,14 +220,14 @@ class RangeConfigIterator(ConfigIterator):
         return next(self.generator)
 
 
-class SampleConfigIterator(ConfigIterator):
+class DefaultConfigIterator(ConfigIterator):
     def __init__(
         self,
         configs: Dict[str, Any],
         key: str,
         device: str,
     ):
-        super(SampleConfigIterator, self).__init__(configs, key, device)
+        super(DefaultConfigIterator, self).__init__(configs, key, device)
         self.idx = 0
         self.configs = configs[key]
         self.num_configs = len(self.configs)
@@ -159,7 +261,15 @@ class DummyConfigIterator(ConfigIterator):
             raise StopIteration
 
 
-config_iterator_map: Dict[str, ConfigIterator] = {
-    "SampleConfigIterator": SampleConfigIterator,
-    "RangeConfigIterator": RangeConfigIterator,
-}
+def register_config_iterator(name: str, iterator_class: Type[ConfigIterator]):
+    global config_iterator_map
+    if name not in config_iterator_map:
+        config_iterator_map[name] = iterator_class
+    else:
+        raise ValueError(f'Duplicate iterator registration name: "{name}"')
+
+
+config_iterator_map: Dict[str, Type[ConfigIterator]] = {}
+
+register_config_iterator("DefaultConfigIterator", DefaultConfigIterator)
+register_config_iterator("RangeConfigIterator", RangeConfigIterator)

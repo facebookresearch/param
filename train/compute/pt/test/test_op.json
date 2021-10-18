@@ -1,8 +1,5 @@
 {
   "aten::add": {
-    "build_data_generator": "DefaultDataGenerator",
-    "input_iterator": "SampleConfigIterator",
-    "input_data_generator": "DefaultDataGenerator",
     "configs": [
       {
         "input": [
@@ -31,9 +28,6 @@
     ]
   },
   "aten::mul": {
-    "build_data_generator": "DefaultDataGenerator",
-    "input_iterator": "SampleConfigIterator",
-    "input_data_generator": "DefaultDataGenerator",
     "configs": [
       {
         "input": [

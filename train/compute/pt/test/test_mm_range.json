@@ -1,8 +1,6 @@
 {
   "aten::baddbmm": {
-    "build_data_generator": "DefaultDataGenerator",
     "input_iterator": "RangeConfigIterator",
-    "input_data_generator": "DefaultDataGenerator",
     "configs": [
       {
         "input": [
@@ -128,9 +126,7 @@
     ]
   },
   "aten::bmm": {
-    "build_data_generator": "DefaultDataGenerator",
     "input_iterator": "RangeConfigIterator",
-    "input_data_generator": "DefaultDataGenerator",
     "configs": [
       {
         "input": [

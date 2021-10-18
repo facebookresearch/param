@@ -51,12 +51,12 @@ class ListProduct:
 
     class Iterator:
         def __init__(self, iter_list: List[Any], val_list: List[Any], idx: int):
-            self.generator = self.__generate_next(iter_list, val_list, idx)
+            self.generator = self._generate_next(iter_list, val_list, idx)
 
         def __iter__(self):
             return self
 
-        def __generate_next(self, iter_list: List[Any], val_list: List[Any], idx: int):
+        def _generate_next(self, iter_list: List[Any], val_list: List[Any], idx: int):
             if iter_list:
                 # If current item is iterable, loop through and recursive to next
                 # item in the list
@@ -66,7 +66,7 @@ class ListProduct:
                         if len(iter_list) == 1:
                             yield val_list
                         else:
-                            yield from self.__generate_next(
+                            yield from self._generate_next(
                                 iter_list[1:], val_list, idx + 1
                             )
                 # If current item is not iterable, just assign and recursive to next
@@ -76,9 +76,9 @@ class ListProduct:
                     if len(iter_list) == 1:
                         yield val_list
                     else:
-                        yield from self.__generate_next(
-                            iter_list[1:], val_list, idx + 1
-                        )
+                        yield from self._generate_next(iter_list[1:], val_list, idx + 1)
+            else:
+                yield iter_list
 
         def __next__(self):
             return next(self.generator)
@@ -111,12 +111,12 @@ class TableProduct:
             result: Dict[Any, Any],
             idx: int,
         ):
-            self.generator = self.__generate_next(table, iterable_keys, result, idx)
+            self.generator = self._generate_next(table, iterable_keys, result, idx)
 
         def __iter__(self):
             return self
 
-        def __generate_next(
+        def _generate_next(
             self,
             table: Dict[Any, Any],
             iterable_keys: List[Any],
@@ -124,14 +124,19 @@ class TableProduct:
             idx: int,
         ):
             if table:
-                for val in table[iterable_keys[0]]:
-                    result[iterable_keys[0]] = val
-                    if len(iterable_keys) == 1:
-                        yield result
-                    else:
-                        yield from self.__generate_next(
-                            table, iterable_keys[1:], result, idx + 1
-                        )
+                if not iterable_keys:
+                    yield table
+                else:
+                    for val in table[iterable_keys[0]]:
+                        result[iterable_keys[0]] = val
+                        if len(iterable_keys) == 1:
+                            yield result
+                        else:
+                            yield from self._generate_next(
+                                table, iterable_keys[1:], result, idx + 1
+                            )
+            else:
+                yield table
 
         def __next__(self):
             return next(self.generator)
