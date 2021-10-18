@@ -188,12 +188,7 @@ def run_op(
         # build op
         build_config = []
         build_input_config = {}
-        if op_config.build_iterator:
-            if "build" not in config:
-                logging.error(
-                    f"{op_config.name} has build iterator, but no build configureations defined, skipped."
-                )
-                return
+        if op_config.build_iterator and "build" in config:
             generate_build_config: ConfigIterator = op_config.build_iterator(
                 config, "build", device
             )

@@ -220,14 +220,14 @@ class RangeConfigIterator(ConfigIterator):
         return next(self.generator)
 
 
-class SampleConfigIterator(ConfigIterator):
+class DefaultConfigIterator(ConfigIterator):
     def __init__(
         self,
         configs: Dict[str, Any],
         key: str,
         device: str,
     ):
-        super(SampleConfigIterator, self).__init__(configs, key, device)
+        super(DefaultConfigIterator, self).__init__(configs, key, device)
         self.idx = 0
         self.configs = configs[key]
         self.num_configs = len(self.configs)
@@ -271,5 +271,5 @@ def register_config_iterator(name: str, iterator_class: Type[ConfigIterator]):
 
 config_iterator_map: Dict[str, Type[ConfigIterator]] = {}
 
-register_config_iterator("SampleConfigIterator", SampleConfigIterator)
+register_config_iterator("DefaultConfigIterator", DefaultConfigIterator)
 register_config_iterator("RangeConfigIterator", RangeConfigIterator)

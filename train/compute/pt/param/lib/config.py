@@ -3,7 +3,7 @@ import logging
 from typing import Dict, Set, Tuple, List, Any, Callable, Iterable, Type, TextIO
 
 from .data import DataGenerator, DefaultDataGenerator, data_generator_map
-from .iterator import ConfigIterator, config_iterator_map
+from .iterator import ConfigIterator, config_iterator_map, DefaultConfigIterator
 from .operator import OperatorInterface, op_map
 
 class OperatorConfig:
@@ -86,13 +86,13 @@ class BenchmarkConfig:
         op_config.build_iterator = (
             config_iterator_map[op_info["build_iterator"]]
             if "build_iterator" in op_info
-            else None
+            else DefaultConfigIterator
         )
 
         op_config.input_iterator = (
             config_iterator_map[op_info["input_iterator"]]
             if "input_iterator" in op_info
-            else None
+            else DefaultConfigIterator
         )
         # input_iterator is required
         if not op_config.input_iterator:
