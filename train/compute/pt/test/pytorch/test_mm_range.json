@@ -1,6 +1,7 @@
 {
   "aten::baddbmm": {
     "input_iterator": "RangeConfigIterator",
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
     "configs": [
       {
         "input": [
@@ -127,6 +128,7 @@
   },
   "aten::bmm": {
     "input_iterator": "RangeConfigIterator",
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
     "configs": [
       {
         "input": [

@@ -1,5 +1,6 @@
 {
   "aten::add": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
     "configs": [
       {
         "input": [
@@ -28,6 +29,7 @@
     ]
   },
   "aten::mul": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
     "configs": [
       {
         "input": [

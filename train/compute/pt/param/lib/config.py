@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Dict, Set, Tuple, List, Any, Callable, Iterable, Type, TextIO
 
-from .data import DataGenerator, DefaultDataGenerator, data_generator_map
+from .data import DataGenerator, data_generator_map
 from .iterator import ConfigIterator, config_iterator_map, DefaultConfigIterator
 from .operator import OperatorInterface, op_map
 
@@ -102,12 +102,12 @@ class BenchmarkConfig:
         op_config.build_data_generator = (
             data_generator_map[op_info["build_data_generator"]]
             if "build_data_generator" in op_info
-            else DefaultDataGenerator
+            else None
         )
         op_config.input_data_generator = (
             data_generator_map[op_info["input_data_generator"]]
             if "input_data_generator" in op_info
-            else DefaultDataGenerator
+            else None
         )
         return op_config
 

@@ -8,9 +8,10 @@ from caffe2.python import core
 from torch.autograd.profiler import record_function
 from param.lib.init_helper import init_logging, load_modules
 from param.lib.config import BenchmarkConfig, OperatorConfig
-from param.lib.benchmark import run_op
+from param.lib.pytorch.benchmark import run_op
 
-import param.workloads
+import param.workloads.pytorch
+import param.lib.pytorch
 
 
 def main():
@@ -57,7 +58,8 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    load_modules(param.workloads)
+    load_modules(param.lib.pytorch)
+    load_modules(param.workloads.pytorch)
 
     bench_config = BenchmarkConfig(args.config, args.device)
 

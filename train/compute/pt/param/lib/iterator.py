@@ -3,7 +3,6 @@ import copy
 import logging
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
-import torch
 from .generator import full_range, IterableList, ListProduct, TableProduct
 
 
