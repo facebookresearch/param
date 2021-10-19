@@ -52,9 +52,9 @@ Timer is essential in measuring operator latency. Some devices (GPU) are async a
 * GPU
 * TPU
 
-### Auto Discovery of Workload
-Python pkgutil.iter_modules provides a mechanism for discovering and importing modules dynamically. This allows adding operator benchmarks through the following simple steps:
-* Create or add to an operator benchmark python file in ./benchmark directory
+### Auto Discovery of Workloads
+Python pkgutil.iter_modules provides a mechanism for discovering and importing modules dynamically. This allows adding workloads through the following simple steps:
+* Create or add to an operator workload python file in `param/workloads` directory
 * Implement the OperatorInterface
 * Register the new operator through one of the following
   * `register_operator(name: str, operator: OperatorInterface)`
