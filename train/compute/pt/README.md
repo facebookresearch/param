@@ -1,4 +1,4 @@
-# PARAM benchmark -- compute benchmarks
+# PARAM Compute Benchmark
 
 ## Overview
 The compute benchmarks have gone under development to support new use cases. The previous [standalone](standalone) benchmarks remain unchanged.

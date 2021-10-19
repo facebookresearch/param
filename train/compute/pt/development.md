@@ -31,9 +31,6 @@ The role of the data generator is given a configuration specification, it genera
 ### Configuration Iterator
 Given a list of configurations (build or input), we need some mechanism to iterate over them. The overall logic is simple (for illustration, not actual code):
 
-### Configuration Iterator
-Given a list of configurations (build or input), we need some mechanism to iterate over them. The overall logic is simple (for illustration, not actual code):
-
 ```python
 for build in build_configs:
   op = Op.build(build.args, build.kwargs)
@@ -55,7 +52,7 @@ Timer is essential in measuring operator latency. Some devices (GPU) are async a
 * GPU
 * TPU
 
-### Auto discovery of benchmarks
+### Auto Discovery of Workload
 Python pkgutil.iter_modules provides a mechanism for discovering and importing modules dynamically. This allows adding operator benchmarks through the following simple steps:
 * Create or add to an operator benchmark python file in ./benchmark directory
 * Implement the OperatorInterface
