@@ -580,6 +580,7 @@ class PyTorchDistBackend(backendFunctions):
         self.collectiveFunc["recv"] = self.recv
         self.collectiveFunc["isend"] = self.isend
         self.collectiveFunc["irecv"] = self.irecv
+        self.collectiveFunc["pt2pt"] = self.noop # dummy entry to support pt2pt benchmark
 
         backend = (
             self.commsParams["backend"]

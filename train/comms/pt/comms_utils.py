@@ -23,10 +23,12 @@ random.seed()
 logger = logging.getLogger(__name__)
 
 
-def gracefulExit():
+def gracefulExit(args=0):
     # TODO: Is this the best way to exit?
+    if args != 0:
+        logger.error(args)
     # WARNING: Assuming sys is always used, should find a platform-independent way to gracefully exit.
-    sys.exit()
+    sys.exit(args)
 
 
 def parsesize(ipValue):
@@ -264,10 +266,7 @@ def paramToCommName(name, supported_comms=None):
         new_name = name
 
     if supported_comms is not None and new_name not in supported_comms:
-        logger.error(
-            f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}"
-        )
-        gracefulExit()
+        gracefulExit(f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}")
 
     return new_name
 
