@@ -1,16 +1,16 @@
-# PARAM benchmark -- standalone compute benchmarks
+# PARAM benchmark -- compute benchmarks
 
 Unified compute kernel benchmarks for DLRM and other important AI workloads
 under PyTorch interface.
 
-Currently there are three kernels are identified,
+Currently there are three kernels are identified, 
 * GEMM (or MatMul) : Measure GEMM performance for matrix Z(m,n) = X(m,k) x Y(k, n)
 * MLP (multilayer perceptron) : measure a series of FC layer performance
 * EmbeddingBag : Measure the EmbeddingBag performance for table lookup
 
-The benchmark is developed to measure the performance of individual
-operation or kernel and used to measure the performance across
-different platforms, such as CPU, GPU, or TPU.
+The benchmark is developed to measure the performance of individual 
+operation or kernel and used to measure the performance across 
+different platforms, such as CPU, GPU, or TPU. 
 
 The TPU implementation is through PyTorch/XLA.
 
