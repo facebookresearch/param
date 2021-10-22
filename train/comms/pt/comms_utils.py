@@ -649,7 +649,7 @@ class paramCommsBench(ABC):
             and self.backendFuncs.get_global_rank() != commsParams.srcOrDst
         ) or (
             # Check results of multicast only for dst_ranks
-            commsParams.collective == "multicast"
+            commsParams.collective in ("multicast", "pt2pt")
             and self.backendFuncs.get_global_rank() not in commsParams.dst_ranks
         ):
             return
