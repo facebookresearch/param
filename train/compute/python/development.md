@@ -1,8 +1,7 @@
 # PARAM Compute Benchmark Development
 
-## Main Components
-
-### Configuration
+## Configuration
+------
 Benchmark configurations are defined in a JSON format. It can be stored in a file on disk, or being passed between external callers and the benchmark’s library interface. There are two types of configurations:
 * Build configuration (optional)
   * Defines arguments used to construct and initialize the operator.
@@ -10,7 +9,7 @@ Benchmark configurations are defined in a JSON format. It can be stored in a fil
 * Input configuration
   * Defines arguments used to execute the operator.
 
-An operator may or may not need to have a build configuration, such as torch.matmul. Others will need to create the operator before running it:
+An operator may or may not need to have a build configuration, such as `torch.matmul`, which can be called directly with input arguements. Other operators require creating the operator first before running it:
 
 ```python
 embedding = torch.nn.EmbeddingBag(
@@ -21,14 +20,90 @@ embedding = torch.nn.EmbeddingBag(
             sparse=sparse).to(device=device)
 embedding(input, offset)
 ```
+The library expects the benchmark configuration in the following JSON format (the notes in `<>` are comments):
+```json
+{
+  "operator_name": {
+    "build_iterator": "[optional] build iterator name",
+    "input_iterator": "[optional] input iterator name",
+    "build_data_generator": "[optional] data generator name",
+    "input_data_generator": "[required] data generator name",
+    "config": [
+      <a list of config spec>
+      {
+        "build": [
+          <[optional] a list of build spec>
+        ]
+        "input": [
+          <[required] a list of input spec>
+        ]
+      }
+    ]
+  }
+  <additional dictionary of operator and its spec>
+}
+```
+The **`"operator_name"`** is a key mapped to a concrete workload implementation defined inside [`workloads`](workloads) directory.
+
+### Configuration Customization
+Users are free to impelment custom specs for **`"build"`** and **`"input"`** to support a wide variety of operators. Should there's a need, the specification allows custom implementation of [`ConfigIterator`](lib/config.py) and [`DataGenerator`](lib/data.py) for your specific use case.
+
+### Default PyTorch Config
+```json
+{
+  "torch.add": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "configs": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+}
+```
+Current supported data types are:
+```
+{
+  "type": "int",
+  "name": "attr_name",
+  "value": 1
+},
+
+
+
+
+```
 
 It’s important to note that configuration is a specification for data, not the actual data itself. From a configuration, we need to actually generate the data as the arguments to an operator.
 
-### Data Generator
+## Data Generator
+------
 The role of the data generator is given a configuration specification, it generates actual data (scalar, boolean, string, tensor, etc.) for the building or executing an operator. Current implementations:
 * `DefaultDataGenerator`
 
-### Configuration Iterator
+## Configuration Iterator
+------
 Given a list of configurations (build or input), we need some mechanism to iterate over them. The overall logic is simple (for illustration, not actual code):
 
 ```python
@@ -46,13 +121,15 @@ Current implementations:
 * `RangeConfigIterator`
 * `DummyConfigIterator`
 
-### Timer
+## Timer
+------
 Timer is essential in measuring operator latency. Some devices (GPU) are async and require special steps to run in blocking or synchronized mode. Depending on where the operator will run, the proper timer should be used:
 * CPU
 * GPU
 * TPU
 
-### Auto Discovery of Workloads
+## Auto Discovery of Workloads
+------
 Python pkgutil.iter_modules provides a mechanism for discovering and importing modules dynamically. This allows adding workloads through the following simple steps:
 * Create or add to an operator workload python file in [`param/workloads`](param/workloads) directory
 * Implement the OperatorInterface

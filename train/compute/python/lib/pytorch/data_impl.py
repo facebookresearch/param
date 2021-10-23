@@ -15,8 +15,10 @@ pytorch_dtype_map: Dict[str, torch.dtype] = {
     "long": torch.long,
 }
 
-# Given an arg configuration, generate the test data for that arg.
-def create_arg(arg: Dict[str, Any], device: str):
+def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
+    """
+    Given an arg configuration, materialize the test data for that arg.
+    """
     def create_tensor(attr: Dict[str, Any]):
         shape = attr["shape"]
         if len(shape) > 0:
@@ -73,6 +75,7 @@ def create_arg(arg: Dict[str, Any], device: str):
             result.append(arg_factory[item["type"]](item))
         return result
 
+    # Map of argument types to the create methods.
     arg_factory: Dict[str, Callable] = {
         "tensor": create_tensor,
         "float": create_float,
@@ -87,7 +90,7 @@ def create_arg(arg: Dict[str, Any], device: str):
     }
     return arg_factory[arg["type"]](arg)
 
-
+# DefaultDataGenerator
 class DefaultDataGenerator(DataGenerator):
     def __init__(self, cache: bool = False):
         super(DefaultDataGenerator, self).__init__()
@@ -130,17 +133,17 @@ class DefaultDataGenerator(DataGenerator):
             for i, arg in enumerate(config["args"]):
                 if arg_updates:
                     if i in arg_updates:
-                        self.op_args[i] = create_arg(arg, device)
+                        self.op_args[i] = materialize_arg(arg, device)
                 else:
-                    self.op_args[i] = create_arg(arg, device)
+                    self.op_args[i] = materialize_arg(arg, device)
 
         if "kwargs" in config:
             for key, arg in config["kwargs"].items():
                 if kwarg_updates:
                     if key in kwarg_updates:
-                        self.op_kwargs[key] = create_arg(arg, device)
+                        self.op_kwargs[key] = materialize_arg(arg, device)
                 else:
-                    self.op_kwargs[key] = create_arg(arg, device)
+                    self.op_kwargs[key] = materialize_arg(arg, device)
 
     def get_data(self, config: Dict[str, Any], device: str):
         if self.cache:
