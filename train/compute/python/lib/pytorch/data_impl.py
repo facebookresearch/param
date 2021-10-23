@@ -5,8 +5,8 @@ import random
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 import torch
-from param.lib.data import DataGenerator, register_data_generator
-from param.lib.generator import full_range, IterableList, ListProduct, TableProduct
+from ..data import DataGenerator, register_data_generator
+from ..generator import full_range, IterableList, ListProduct, TableProduct
 
 pytorch_dtype_map: Dict[str, torch.dtype] = {
     "float": torch.float,

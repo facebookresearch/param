@@ -262,6 +262,7 @@ class DummyConfigIterator(ConfigIterator):
 
 def register_config_iterator(name: str, iterator_class: Type[ConfigIterator]):
     global config_iterator_map
+    logging.debug(f"register iterator: {name}")
     if name not in config_iterator_map:
         config_iterator_map[name] = iterator_class
     else:

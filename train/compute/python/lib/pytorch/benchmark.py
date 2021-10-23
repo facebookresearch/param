@@ -4,10 +4,10 @@ from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 import torch
 
-from param.lib.config import OperatorConfig
-from param.lib.iterator import ConfigIterator
-from param.lib.operator import OperatorInterface
-from param.lib.timer import Timer
+from ..config import OperatorConfig
+from ..iterator import ConfigIterator
+from ..operator import OperatorInterface
+from ..timer import Timer
 
 
 def benchmark_op(

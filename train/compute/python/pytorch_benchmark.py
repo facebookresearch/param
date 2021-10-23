@@ -1,21 +1,24 @@
-import argparse
 import logging
 
+from .lib.init_helper import init_logging, load_modules
+
+# Initialize logging format before loading all other modules
+init_logging()
+
+import argparse
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 import torch
 from caffe2.python import core
 from torch.autograd.profiler import record_function
-from param.lib.init_helper import init_logging, load_modules
-from param.lib.config import BenchmarkConfig, OperatorConfig
-from param.lib.pytorch.benchmark import run_op
 
-import param.workloads.pytorch
-import param.lib.pytorch
+from .lib import pytorch as lib_pytorch
+from .lib.config import BenchmarkConfig
+from .lib.pytorch.benchmark import run_op
+from .workloads import pytorch as workloads_pytorch
 
 
 def main():
-    init_logging()
     parser = argparse.ArgumentParser(description="Microbenchmarks")
     parser.add_argument("--config", type=str, required=True, help="The op config file.")
     parser.add_argument(
@@ -38,28 +41,17 @@ def main():
     parser.add_argument(
         "-v", "--verbose", help="increase output verbosity", action="store_true"
     )
-    parser.add_argument(
-        "--execution-graph",
-        help="enable execution graph observer (high perfermance overhead, not for benchmarking)",
-        action="store_true",
-    )
 
     args = parser.parse_args()
-
-    if args.execution_graph:
-        core.GlobalInit(
-            [
-                "python",
-                "--pytorch_enable_execution_graph_observer=true",
-                "--pytorch_execution_graph_observer_iter_label=## BENCHMARK ##",
-            ]
-        )
 
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    load_modules(param.lib.pytorch)
-    load_modules(param.workloads.pytorch)
+    # Load PyTorch implementations for data generator and operators.
+    load_modules(lib_pytorch)
+
+    # Load PyTorch operator workloads.
+    load_modules(workloads_pytorch)
 
     bench_config = BenchmarkConfig(args.config, args.device)
 
@@ -71,19 +63,16 @@ def main():
     torch.set_num_threads(1)
 
     with open(out_file_name, "w") as out_file:
-        with record_function("## BENCHMARK ##"):
-            for op_config in bench_config.op_configs:
-                run_op(
-                    op_config,
-                    args.warmup,
-                    args.iter,
-                    args.device,
-                    out_file,
-                    args.metric,
-                )
-        # TODO lofe: repeating the record_function for execution graph only.
-        with record_function("## BENCHMARK ##"):
-            logging.info(f"Log written to {args.out_file_name}")
+        for op_config in bench_config.op_configs:
+            run_op(
+                op_config,
+                args.warmup,
+                args.iter,
+                args.device,
+                out_file,
+                args.metric,
+            )
+        logging.info(f"Log written to {args.out_file_name}")
 
 
 if __name__ == "__main__":

@@ -27,41 +27,16 @@ class OperatorInterface(metaclass=abc.ABCMeta):
     def forward(self, *args, **kwargs):
         raise NotImplementedError
 
+    def create_grad(self):
+        raise NotImplementedError
+
     def backward(self):
         raise NotImplementedError
 
 
-# Inplace ops is called in the form of tensor.op(args), we convert it
-# to a regular function call with "getattr(tensor, op)(args)"
-class InPlaceOpByName(OperatorInterface):
-    def __init__(
-        self,
-        func_name: str,
-    ):
-        super(InPlaceOpByName, self).__init__()
-        self.func_name: str = func_name
-
-    def forward(self, *args, **kwargs):
-        # The first arg is assume to be the inplace value, pass on the rest of
-        # the args to the callable.
-        getattr(args[0], self.func_name)(*args[1:], **kwargs)
-
-
-# Callable ops are ops can be called in the form of op(*args, **kwargs)
-class CallableOp(OperatorInterface):
-    def __init__(
-        self,
-        func: Callable,
-    ):
-        super(CallableOp, self).__init__()
-        self.func: Callable = func
-
-    def forward(self, *args, **kwargs):
-        self.func(*args, **kwargs)
-
-
 def register_operator(name: str, operator_class: Type[OperatorInterface]):
     global op_map
+    logging.debug(f"register op: {name}")
     if name not in op_map:
         op_map[name] = operator_class
     else:
@@ -71,6 +46,7 @@ def register_operator(name: str, operator_class: Type[OperatorInterface]):
 def register_operators(op_dict: Dict[str, Type[OperatorInterface]]):
     global op_map
     for name, operator_class in op_dict.items():
+        logging.debug(f"register op: {name}")
         if name not in op_map:
             op_map[name] = operator_class
         else:

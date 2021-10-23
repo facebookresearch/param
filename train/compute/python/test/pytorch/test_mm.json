@@ -1,5 +1,5 @@
 {
-  "aten::baddbmm": {
+  "torch.baddbmm": {
     "input_data_generator": "PyTorch::DefaultDataGenerator",
     "configs": [
       {
@@ -90,7 +90,7 @@
       }
     ]
   },
-  "aten::bmm": {
+  "torch.bmm": {
     "input_data_generator": "PyTorch::DefaultDataGenerator",
     "configs": [
       {
@@ -209,7 +209,7 @@
       }
     ]
   },
-  "aten::mm": {
+  "torch.mm": {
     "input_data_generator": "PyTorch::DefaultDataGenerator",
     "configs": [
       {

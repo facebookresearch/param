@@ -1,0 +1,87 @@
+{
+  "split_table_batched_embedding_bags": {
+    "build_iterator": "RangeConfigIterator",
+    "input_iterator": "SplitTableBatchedEmbeddingInputIterator",
+    "build_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "SplitTableBatchedEmbeddingInputDataGenerator",
+    "configs": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "type": "int",
+                "name": "num_tables",
+                "value": 1
+              },
+              {
+                "name": "rows",
+                "type": "int",
+                "value": 22858213
+              },
+              {
+                "name": "dim",
+                "type": "int",
+                "value": 128
+              },
+              {
+                "type": "int",
+                "name": "location",
+                "value": 0
+              },
+              {
+                "type": "int",
+                "name": "device",
+                "value": 1
+              },
+              {
+                "type": "int",
+                "name": "pooling",
+                "value": 0
+              },
+              {
+                "type": "int",
+                "name": "propagation",
+                "value": 1
+              },
+              {
+                "type": "bool",
+                "name": "weighted",
+                "value": false
+              },
+              {
+                "type": "str",
+                "name": "weights_precision",
+                "value": "fp16"
+              }
+            ],
+            "kwargs": {
+              "optimizer": {
+                "type": "str",
+                "value": "exact_row_wise_adagrad"
+              }
+            }
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "type": "int",
+                "name": "batch_size",
+                "value": 65536
+              },
+              {
+                "name": "pooling_factor",
+                "type": "int",
+                "value": 1,
+                "indices_tensor": "/home/lofe/sftp/data/share/embedding_table/yuzhen/dumped_data/2021-10-12/single/116_11_indices.pt",
+                "offsets_tensor": "/home/lofe/sftp/data/share/embedding_table/yuzhen/dumped_data/2021-10-12/single/116_11_offsets.pt"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
