@@ -1,7 +1,6 @@
 # PARAM Compute Benchmark Development
 
 ## Configuration
-------
 Benchmark configurations are defined in a JSON format. It can be stored in a file on disk, or being passed between external callers and the benchmark’s library interface. There are two types of configurations:
 * Build configuration (optional)
   * Defines arguments used to construct and initialize the operator.
@@ -98,12 +97,10 @@ Current supported data types are:
 It’s important to note that configuration is a specification for data, not the actual data itself. From a configuration, we need to actually generate the data as the arguments to an operator.
 
 ## Data Generator
-------
 The role of the data generator is given a configuration specification, it generates actual data (scalar, boolean, string, tensor, etc.) for the building or executing an operator. Current implementations:
 * `DefaultDataGenerator`
 
 ## Configuration Iterator
-------
 Given a list of configurations (build or input), we need some mechanism to iterate over them. The overall logic is simple (for illustration, not actual code):
 
 ```python
@@ -122,14 +119,12 @@ Current implementations:
 * `DummyConfigIterator`
 
 ## Timer
-------
 Timer is essential in measuring operator latency. Some devices (GPU) are async and require special steps to run in blocking or synchronized mode. Depending on where the operator will run, the proper timer should be used:
 * CPU
 * GPU
 * TPU
 
 ## Auto Discovery of Workloads
-------
 Python pkgutil.iter_modules provides a mechanism for discovering and importing modules dynamically. This allows adding workloads through the following simple steps:
 * Create or add to an operator workload python file in [`param/workloads`](param/workloads) directory
 * Implement the OperatorInterface
