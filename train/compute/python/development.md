@@ -23,18 +23,18 @@ The library expects the benchmark configuration in the following JSON format (th
 ```json
 {
   "operator_name": {
-    "build_iterator": "[optional] build iterator name",
-    "input_iterator": "[optional] input iterator name",
-    "build_data_generator": "[optional] data generator name",
-    "input_data_generator": "[required] data generator name",
+    "build_iterator": "(optional) build iterator name",
+    "input_iterator": "(optional) input iterator name",
+    "build_data_generator": "(optional) data generator name",
+    "input_data_generator": "(required) data generator name",
     "config": [
       <a list of config spec>
       {
         "build": [
-          <[optional] a list of build spec>
+          <(optional) a list of build spec>
         ]
         "input": [
-          <[required] a list of input spec>
+          <(required) a list of input spec>
         ]
       }
     ]
