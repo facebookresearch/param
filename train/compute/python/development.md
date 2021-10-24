@@ -1,5 +1,7 @@
 # PARAM Compute Benchmark Development
 
+**For installation and basic usage instructions, please see [READM.md](README.md).**
+
 ## File Structures
 
 Directories
