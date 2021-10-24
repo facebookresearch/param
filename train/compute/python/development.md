@@ -25,25 +25,37 @@ from ..timer import Timer
 ```
 This allows the top level package name to change without affecting the library code itself.
 
-We use `setuptools` to install the `parambench-compute` package. It can be used by the users as any regular Python package.
+## Installation
+We use `setuptools` to install/uninstall the `parambench-train-compute` package.
 
+```shell
+# Inside dir param/train/compute/pytnon
+# Install package
+=> python setup.py install
+
+# Uninstall package
+=> python -m pip uninstall parambench-train-compute
+```
+
+## Usage
+It can be used by the users as any regular Python package.
 ```python
 from param_bench.train.compute.python.lib.config import BenchmarkConfig
 ```
 
-The bundled driver scripts such as `pytorch_benchmark.py` are written using relative import paths as part of the `parambench-compute` python package, so they must be run as a module using the python -m option.
+The bundled driver scripts such as `pytorch_benchmark.py` are written using relative import paths as part of the `parambench-train-compute` python package, so they must be run as a module using the python -m option.
 
-Without installing the package, run in the source directory:
-
+Without installing the package, run driver script as module in the source directory:
 ```python
 # Inside dir param/train/compute
 => python -m python.pytorch_benchmark --config python/test/pytorch/test_op.json
 ```
-After `parambench-compute` installed as packages using the setuptools, it can be run as
+
+After install `parambench-train-compute` a package using the setuptools, it can be run as
 ```python
-# Inside dir param/train/compute/pytnon
-=> python setup.py install
+# Run benchmark driver script
 => python -m param_bench.train.compute.python.pytorch_benchmark --config test/pytorch/test_op.json
+```
 
 ## Configuration
 Benchmark configurations are defined in a JSON format. It can be stored in a file on disk, or being passed between external callers and the benchmark’s library interface. There are two types of configurations:

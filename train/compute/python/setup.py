@@ -13,7 +13,7 @@ package_dir_map = {
 packages = list(package_dir_map)
 
 setup(
-    name='parambench-compute',
+    name='parambench-train-compute',
     version='0.0.1',
     author='Louis Feng',
     author_email='lofe@fb.com',
