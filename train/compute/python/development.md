@@ -173,7 +173,7 @@ for build in build_configs:
 ```
 
 There are some finer details:
-* Often we want to quickly generate many variations of build and input configurations without explicitly specifying each of them. This demands some mechanism for **macros**.
+* Often we want to quickly generate many variations of build and input configurations without explicitly specifying each of them. This demands some mechanism for [**macros**](#macros).
 * The configuration is only a specification, further it may need to be materialized (based on the macros) before generating the data.
 * Current implementations:
   * `DefaultConfigIterator`
