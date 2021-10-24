@@ -155,21 +155,33 @@ Current supported data types and examples are listed here:
 {
   "type": "int",
   "value": 237,
+},
+{
+  "type": "int",
   "value_range": [100, 1000]
 },
 {
   "type": "long",
   "value": 8328,
+},
+{
+  "type": "long",
   "value_range": [1000, 10000]
 },
 {
   "type": "float",
   "value": 1.2,
+},
+{
+  "type": "float",
   "value_range": [0.0, 2.0]
 },
 {
   "type": "double",
   "value": 3.4,
+},
+{
+  "type": "double",
   "value_range": [0.5, 5.5]
 },
 {
