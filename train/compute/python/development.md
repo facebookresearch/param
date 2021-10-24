@@ -188,7 +188,7 @@ Macros are for convenience to reduce the number of configurations to be specifie
 ### `__range__`
 **`__range__`** defines a list of attributes with range specification.
 <pre>
-<b>__range__</b>: ["attr_name_1",...]
+<b>"__range__"</b>: ["attr_name_1",...]
 </pre>
 
 **Example**
@@ -219,15 +219,14 @@ In above example, the first argument is a `tensor` type. It has `"__range__"` ma
 
 In some instances, we need to ensure certain values are consistent between two attributes. For example, the input of a `matmul` operator has two tensors of shapes `A = [m, n]` and `B = [j, k]` where `n == j` for the inputs to be valid. As each of these values can vary between each input configuration, to ensure `j = n`, `__copy__` macro is applied to the data type attributes after tensor shape `A` is specified and copies the value of `n` to the value of `j` in tensor shape `B`.
 <pre>
-<b>__copy__</b>: [{"src_attr_name":[i, [j, k]]},...]`
+<b>"__copy__"</b>: [{"src_attr_name":[i, [j, k]]},...]`
 </pre>
 Defines a list of attributes and where to copy their values from.
 * `"src_attr_name"`: source attribute name
 * `i`: target element index
 * `j`: source **argument** index
 * `k`: source **element** index
-
-Explanation: Copy value from source argument at `j`, element index `k`, to the current argument attribute element at index `i`.
+Copy value from source argument at `j`, element index `k`, to the current argument attribute element at index `i`.
 
 **Example**
 ```json
