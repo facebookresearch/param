@@ -21,9 +21,6 @@ from .workloads import pytorch as workloads_pytorch
 def main():
     parser = argparse.ArgumentParser(description="Microbenchmarks")
     parser.add_argument("--config", type=str, required=True, help="The op config file.")
-    parser.add_argument(
-        "--range", action="store_true", help="The config file has config range."
-    )
     parser.add_argument("--warmup", type=int, default=5, help="number of iterations.")
     parser.add_argument("--iter", type=int, default=1, help="number of iterations.")
     parser.add_argument(

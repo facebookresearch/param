@@ -12,15 +12,26 @@ The general motivation and design philosophy for the new microbenchmarks are:
 
 For design and implementation details, please look at the [development documentation](development.md).
 
+## Installation
+We use `setuptools` to install/uninstall the `parambench-train-compute` package:
+
+```shell
+# Inside dir "param/train/compute/pytnon"
+# Install package
+> python setup.py install
+
+# Uninstall package
+> python -m pip uninstall parambench-train-compute
+```
+
 ## Usage
+After install `parambench-train-compute` a package using the `setuptools`, it can be run as:
+```shell
+# Run benchmark driver script module
+> python -m param_bench.train.compute.python.pytorch_benchmark --config test/pytorch/test_op.json
+```
 
-
-
-### Testing
-
-
-
-In addition, you can run a test config using
-```bash
-python3 run_benchmark.py --config test/test_op.json  --iter 10
+### Options
+```shell
+python -m param_bench.train.compute.python.pytorch_benchmark [-h] --config CONFIG [--warmup WARMUP] [--iter ITER] [--metric] [--device DEVICE] [--out-file-name OUT_FILE_NAME] [-v]
 ```

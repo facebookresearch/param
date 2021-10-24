@@ -105,6 +105,9 @@ The **`"operator_name"`** is a key mapped to a concrete workload implementation 
 Users are free to implement custom specs for **`"build"`** and **`"input"`** to support a wide variety of operators. Should there's a need, the specification allows custom implementation of [`ConfigIterator`](lib/config.py) and [`DataGenerator`](lib/data.py) for your specific use case.
 
 ### Default PyTorch Config Specification
+For each **`"build"`** and **`"input"`** configuration, the __`"args"`__ and __`"kwargs"`__ JSON keys should be specified with a list of argument data specifications (see [PyTorch Data Types](#pyTorch-data-types)). This is synonymous to Python's __`*args`__ and __`**kwargs`__. As expected, **`"args"`** is positional and defined as a list. __`"kwargs"`__ is defined as a dictionary of `"kwarg_name": data_type_dict`.
+
+**Example**
 ```json
 {
   "torch.baddbmm": {
@@ -147,7 +150,6 @@ Users are free to implement custom specs for **`"build"`** and **`"input"`** to 
   }
 }
 ```
-For each **`"build"`** and **`"input"`** configuration, the __`"args"`__ and __`"kwargs"`__ JSON keys should be specified with a list of argument data specifications (see [PyTorch Data Types](#pyTorch-data-types)). This is synonymous to Python's __`*args`__ and __`**kwargs`__. As expected, **`"args"`** is positional and defined as a list. __`"kwargs"`__ is defined as a dictionary of `"kwarg_name": data_type_dict`.
 
 ### PyTorch Data Types
 Current supported data types and examples are listed here:
