@@ -59,6 +59,9 @@ class OperatorConfig:
 
 
 class BenchmarkConfig:
+    '''
+    BenchmarkConfig stores loaded configuration data.
+    '''
     def __init__(self, device: str):
         self.device = device
         self._op_configs = []
