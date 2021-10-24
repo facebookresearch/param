@@ -25,16 +25,35 @@ from ..timer import Timer
 ```
 This allows the top level package name to change without affecting the library code itself.
 
+## Operator Interface
+The [`OperatorInterface`](lib/operator.py) specifies the interface each workload should support. At a minimum it should implement the `forward(*args, **kwargs)` method.
 
+* `build(*args, **kwargs)`: [optional]
+  * initialize and constructs all necessary data and objects to run the operator workload. It takes positional and keyword arguments from the configuration file.
+* `cleanup()`: [optional]
+  * release and delete any data and objects retained by this operator, its state should reset to before `build()` is called. This is called after a benchmark is run, so subsequent benchmarks do not run out of resource.
+* `forward(*args, **kwargs)`: [required]
+  * runs the forward pass of the operator and stores the output for running `backward()`.
+* `create_grad()`: [optional]
+  * create the gradient needed to run the `backward()` pass. This step is explicit to avoid counting this part in the benchmark latency for the backward pass.
+* `backward()`: [optional]
+  * Use the result from `forward()` and gradient generated in `create_grad()` to run the backward pass.
 
-## Data Generator
-The role of the data generator is given a configuration specification, it generates actual data (scalar, boolean, string, tensor, etc.) for building or executing an operator.
+### Auto Discovery of Workloads
+Python `pkgutil.iter_modules` provides a mechanism for discovering and importing modules dynamically. This allows adding workloads through the following simple steps:
+* Create or add to an operator workload python file in [`workloads`](workloads) directory
+* Implement the [`OperatorInterface`](lib/operator.py)
+* Register the new operator through one of the following
+  * [`register_operator(name: str, operator: OperatorInterface)`](lib/operator.py)
+  * [`register_operators(op_dict: Dict[str, OperatorInterface])`](lib/operator.py)
 
-In current implementations we provide a default data generator that supports PyTorch data types (see [PyTorch Data Types](#pyTorch-data-types)):
-* [`PyTorch::DefaultDataGenerator`](lib/pytorch/data_impl.py)
+The benchmark tool script will be able to load configuration files and instantiate corresponding operators for benchmarking. Two categories of of operators:
+* PyTorch native
+  * Operators have no dependencies other than official PyTorch release.
+* External
+  * Operators require additional installation.
 
-If needed, it's possible to implement custom data generators based on the [`DataGenerator`](lib/data.py) interface. They can be registered using
-[`register_data_generator(name: str, data_gen_class: Type[DataGenerator])`](lib/data.py).
+For users who do not have certain external operators in their environment, automatically importing these can cause errors. Auto import will try/catch these errors and skip these operators.
 
 ## Configuration Iterator
 Given a list of configurations (**build** or **input**), we need some mechanism to iterate over them. The overall logic is simple (**for illustration, not actual code**):
@@ -128,35 +147,14 @@ Copy value from source argument at `j`, element index `k`, to the current argume
 ```
 In above example of a tensor argument, its shape's value at element index `0` (with a `-1` value), will get the value of argument a position `1`, and its `"shape"` attribute's value at element index `2` (with value '32'). After the copy macro is applied, the tensor argument at index `0`, will have shape `[32, 64, 128]`.
 
-## Operator Interface
-The [`OperatorInterface`](lib/operator.py) specifies the interface each workload should support. At a minimum it should implement the `forward(*args, **kwargs)` method.
+## Data Generator
+The role of the data generator is given a configuration specification, it generates actual data (scalar, boolean, string, tensor, etc.) for building or executing an operator.
 
-* `build(*args, **kwargs)`: [optional]
-  * initialize and constructs all necessary data and objects to run the operator workload. It takes positional and keyword arguments from the configuration file.
-* `cleanup()`: [optional]
-  * release and delete any data and objects retained by this operator, its state should reset to before `build()` is called. This is called after a benchmark is run, so subsequent benchmarks do not run out of resource.
-* `forward(*args, **kwargs)`: [required]
-  * runs the forward pass of the operator and stores the output for running `backward()`.
-* `create_grad()`: [optional]
-  * create the gradient needed to run the `backward()` pass. This step is explicit to avoid counting this part in the benchmark latency for the backward pass.
-* `backward()`: [optional]
-  * Use the result from `forward()` and gradient generated in `create_grad()` to run the backward pass.
+In current implementations we provide a default data generator that supports PyTorch data types (see [PyTorch Data Types](#pyTorch-data-types)):
+* [`PyTorch::DefaultDataGenerator`](lib/pytorch/data_impl.py)
 
-### Auto Discovery of Workloads
-Python `pkgutil.iter_modules` provides a mechanism for discovering and importing modules dynamically. This allows adding workloads through the following simple steps:
-* Create or add to an operator workload python file in [`workloads`](workloads) directory
-* Implement the [`OperatorInterface`](lib/operator.py)
-* Register the new operator through one of the following
-  * [`register_operator(name: str, operator: OperatorInterface)`](lib/operator.py)
-  * [`register_operators(op_dict: Dict[str, OperatorInterface])`](lib/operator.py)
-
-The benchmark tool script will be able to load configuration files and instantiate corresponding operators for benchmarking. Two categories of of operators:
-* PyTorch native
-  * Operators have no dependencies other than official PyTorch release.
-* External
-  * Operators require additional installation.
-
-For users who do not have certain external operators in their environment, automatically importing these can cause errors. Auto import will try/catch these errors and skip these operators.
+If needed, it's possible to implement custom data generators based on the [`DataGenerator`](lib/data.py) interface. They can be registered using
+[`register_data_generator(name: str, data_gen_class: Type[DataGenerator])`](lib/data.py).
 
 ## Timer
 Timer is essential in measuring operator latency. Some devices (GPU) are async and require special steps to run in blocking or synchronized mode. Depending on where the operator will run, the proper timer should be used:
