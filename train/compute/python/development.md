@@ -264,7 +264,7 @@ The [`OperatorInterface`](lib/operator.py) specifies the interface each workload
 * `backward()`: [optional]
   * Use the result from `forward()` and gradient generated in `create_grad()` to run the backward pass.
 
-## Auto Discovery of Workloads
+### Auto Discovery of Workloads
 Python pkgutil.iter_modules provides a mechanism for discovering and importing modules dynamically. This allows adding workloads through the following simple steps:
 * Create or add to an operator workload python file in [`param/workloads`](param/workloads) directory
 * Implement the [`OperatorInterface`](lib/operator.py)
