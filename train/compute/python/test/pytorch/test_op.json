@@ -1,7 +1,7 @@
 {
   "torch.add": {
     "input_data_generator": "PyTorch::DefaultDataGenerator",
-    "configs": [
+    "config": [
       {
         "input": [
           {
@@ -30,7 +30,7 @@
   },
   "torch.mul": {
     "input_data_generator": "PyTorch::DefaultDataGenerator",
-    "configs": [
+    "config": [
       {
         "input": [
           {

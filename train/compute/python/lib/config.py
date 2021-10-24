@@ -80,7 +80,7 @@ class BenchmarkConfig:
             return None
         op = op_map[op_name]
         op_info = self.bench_config[op_name]
-        configs = op_info["configs"]
+        configs = op_info["config"]
         op_config = OperatorConfig(op_name, configs, op)
 
         op_config.build_iterator = (

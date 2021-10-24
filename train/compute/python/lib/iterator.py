@@ -168,7 +168,7 @@ class RangeConfigIterator(ConfigIterator):
         args = config["args"]
         # TODO lofe: support kwargs too.
         for arg in args:
-            if ATTR_COPY in arg:
+            if ATTR_COPY in arg and arg["type"] == "tensor":
                 copy_list = arg[ATTR_COPY]
                 for attr_map in copy_list:
                     for attr, mapping in attr_map.items():

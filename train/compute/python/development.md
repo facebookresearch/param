@@ -8,7 +8,7 @@ Benchmark configurations are defined in a JSON format. It can be stored in a fil
 * Input configuration
   * Defines arguments used to execute the operator.
 
-An operator may or may not need to have a build configuration, such as `torch.matmul`, which can be called directly with input arguements. Other operators require creating the operator first before running it:
+An operator may or may not need to have a build configuration. For example, `torch.matmul` can be called directly with input arguments, so there's no need to specify a build configuration. Other operators require creating the operator first before running it:
 
 ```python
 embedding = torch.nn.EmbeddingBag(
@@ -39,20 +39,20 @@ The library expects the benchmark configuration in the following JSON format (th
       }
     ]
   }
-  <additional dictionary of operator and its spec>
+  <additional key:value of operator and its spec>
 }
 ```
 The **`"operator_name"`** is a key mapped to a concrete workload implementation defined inside [`workloads`](workloads) directory.
 
 ### Configuration Customization
-Users are free to impelment custom specs for **`"build"`** and **`"input"`** to support a wide variety of operators. Should there's a need, the specification allows custom implementation of [`ConfigIterator`](lib/config.py) and [`DataGenerator`](lib/data.py) for your specific use case.
+Users are free to implement custom specs for **`"build"`** and **`"input"`** to support a wide variety of operators. Should there's a need, the specification allows custom implementation of [`ConfigIterator`](lib/config.py) and [`DataGenerator`](lib/data.py) for your specific use case.
 
-### Default PyTorch Config
+### Default PyTorch Config Specification
 ```json
 {
-  "torch.add": {
+  "torch.baddbmm": {
     "input_data_generator": "PyTorch::DefaultDataGenerator",
-    "configs": [
+    "config": [
       {
         "input": [
           {
@@ -60,69 +60,238 @@ Users are free to impelment custom specs for **`"build"`** and **`"input"`** to 
               {
                 "dtype": "float",
                 "shape": [
-                  256,
-                  256
+                  2,
+                  1,
+                  512
                 ],
                 "type": "tensor"
               },
               {
                 "dtype": "float",
                 "shape": [
-                  256,
-                  256
+                  2,
+                  512,
+                  512
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  2,
+                  512,
+                  512
                 ],
                 "type": "tensor"
               }
-            ]
+            ],
+            "kwargs": {
+              "beta": {
+                "type": "int",
+                "value": 1
+              },
+              "alpha": {
+                "type": "int",
+                "value": 1
+              }
+            }
           }
         ]
       }
     ]
-  },
+  }
 }
 ```
-Current supported data types are:
-```
+For each **`"build"`** and **`"input"`** configuration, the __`"args"`__ and __`"kwargs"`__ JSON keys should be specified with a list of argument data specifications (see [PyTorch Data Types](#pyTorch-data-types)). This is synonymous to Python's __`*args`__ and __`**kwargs`__. As expected, **`"args"`** is positional and defined as a list. __`"kwargs"`__ is defined as a dictionary of `"kwarg_name": data_type_dict`.
+
+### PyTorch Data Types
+Current supported data types and examples are listed here:
+```json
 {
   "type": "int",
-  "name": "attr_name",
-  "value": 1
+  "value": 237,
+  "value_range": [100, 1000]
 },
-
-
-
-
+{
+  "type": "long",
+  "value": 8328,
+  "value_range": [1000, 10000]
+},
+{
+  "type": "float",
+  "value": 1.2,
+  "value_range": [0.0, 2.0]
+},
+{
+  "type": "double",
+  "value": 3.4,
+  "value_range": [0.5, 5.5]
+},
+{
+  "type": "bool",
+  "value": false
+},
+{
+  "type": "device",
+  "value": "cpu"
+},
+{
+  "type": "str",
+  "value": "a string value"
+},
+{
+  "type": "genericlist",
+  "value": [
+    {
+      "type": "int",
+      "value": 237,
+    },
+    {
+      "type": "tensor",
+      "dtype": "float",
+      "shape": [16, 32],
+    }]
+},
+{
+  "type": "tensor",
+  "dtype": "float",
+  "shape": [128, 256]
+}
 ```
+**Notes**
+* `"value_range"` specifies a random value in the `[min, max]` range to be generated for the argument.
 
-It’s important to note that configuration is a specification for data, not the actual data itself. From a configuration, we need to actually generate the data as the arguments to an operator.
+It’s important to note that **the configuration is a specification for data**, not the actual data itself. From a configuration, we need to actually materialize and generate the data as the arguments for an operator.
 
 ## Data Generator
-The role of the data generator is given a configuration specification, it generates actual data (scalar, boolean, string, tensor, etc.) for the building or executing an operator. Current implementations:
-* `DefaultDataGenerator`
+The role of the data generator is given a configuration specification, it generates actual data (scalar, boolean, string, tensor, etc.) for the building or executing an operator.
+
+In current implementations we provide a default data generator that supports PyTorch data types (see [PyTorch Data Types](#pyTorch-data-types)):
+* `PyTorch::DefaultDataGenerator`
+
+New implementation of that supports the `DataGenerator` interface can be registered using
+`register_data_generator(name: str, data_gen_class: Type[DataGenerator])`
 
 ## Configuration Iterator
-Given a list of configurations (build or input), we need some mechanism to iterate over them. The overall logic is simple (for illustration, not actual code):
+Given a list of configurations (**build** or **input**), we need some mechanism to iterate over them. The overall logic is simple (for illustration, not actual code):
 
 ```python
 for build in build_configs:
-  op = Op.build(build.args, build.kwargs)
+  build_args, build_kwargs = materialize_config(build)
+  op = Op.build(build_args, build_kwargs)
   for input in input_configs:
-    op.forward(input.args, input.kwargs)
+    input_args, input_kwargs = materialize_config(input)
+    op.forward(input_args, input_kwargs)
 ```
 
 There are some finer details:
-Often we want to quickly generate many variations of build and input configurations without explicitly specifying each of them.
-The configuration is only a specification, further it may need to be materialized (based on the macros) before generating the data.
-Current implementations:
-* `DefaultConfigIterator`
-* `RangeConfigIterator`
-* `DummyConfigIterator`
+* Often we want to quickly generate many variations of build and input configurations without explicitly specifying each of them. This demands some mechanism for **macros**.
+* The configuration is only a specification, further it may need to be materialized (based on the macros) before generating the data.
+* Current implementations:
+  * `DefaultConfigIterator`
+  * `RangeConfigIterator`
+
+New implementation of that supports the `ConfigIterator` interface can be registered using
+`register_config_iterator(name: str, iterator_class: Type[ConfigIterator])`
+
+## Macros
+Macros are for convenience to reduce the number of configurations to be specified manually.
+
+### `__range__`
+**`__range__`** defines a list of attributes with range specification.
+<pre>
+<b>__range__</b>: ["attr_name_1",...]
+</pre>
+
+**Example**
+```json
+"args": [
+  {
+    "dtype": "float",
+    "shape": [
+      512,
+      [
+        512,
+        514,
+        1
+      ],
+      30
+    ],
+    "type": "tensor",
+    "__range__": [
+      "shape"
+    ]
+  },
+  {
+    "dtype": "float",
+    "shape": [
+      512,
+      30,
+      64
+    ],
+    "type": "tensor"
+  }
+]
+```
+In above example, the first argument is a `tensor` type. It has `"__range__"` macro specifies the `"shape"` attribute has range values: `[512, [512, 514, 1], 30]`. The second value the shape is a list `[512, 514, 1]`, it's represents `[min, max, step]`. During configuration iteration, multiple configurations will be generated, each with a different `"shape"` attribute after expansion:
+* `[512, 512, 30]`
+* `[512, 513, 30]`
+* `[512, 514, 30]`
+
+### `__copy__`
+**Only `tensor` data type in `"args"` is supported.**
+
+In some instances, we need to ensure certain values are consistent between two attributes. For example, the input of a `matmul` operator has two tensors of shapes `A = [m, n]` and `B = [j, k]` where `n == j` for the inputs to be valid. As each of these values can vary between each input configuration, to ensure `j = n`, `__copy__` macro is applied to the data type attributes after tensor shape `A`'s is specified and copies the value of `n` to tensor shape `B`'s value of `j`.
+<pre>
+<b>__copy__</b>: [{"src_attr_name":[i, [j, k]]},...]`
+</pre>
+Defines a list of attributes and where to copy their values from.
+* `"src_attr_name"`: source attribute name
+* `i`: target element index
+* `j`: source **argument** index
+* `k`: source **element** index
+
+Explanation: Copy value from source argument at `j`, element index `k`, to the current argument attribute element at index `i`.
+
+**Example**
+```json
+"input" = [
+  {
+    "type": "tensor",
+    "dtype": "float",
+    "shape": [
+      -1,
+      64,
+      128
+    ],
+    "__copy__": [
+      {
+        "shape": [
+          0,
+          [
+            1,
+            2
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "type": "tensor",
+    "dtype": "float",
+    "shape": [8, 16, 32]
+  }
+]
+```
+In above example of a tensor argument, its shape's value at element index `0` (with a `-1` value), will get the value of argument a position `1`, and its `"shape"` attribute's value at element index `2` (with value '32'). After the copy macro is applied, the tensor argument at index `0`, will have shape `[32, 64, 128]`.
+
 
 ## Timer
 Timer is essential in measuring operator latency. Some devices (GPU) are async and require special steps to run in blocking or synchronized mode. Depending on where the operator will run, the proper timer should be used:
 * CPU
-* GPU
-* TPU
+* GPU (PyTorch)
+
+In the future, we may support timers for other device types.
 
 ## Auto Discovery of Workloads
 Python pkgutil.iter_modules provides a mechanism for discovering and importing modules dynamically. This allows adding workloads through the following simple steps:

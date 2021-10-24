@@ -4,7 +4,7 @@
     "input_iterator": "SplitTableBatchedEmbeddingInputIterator",
     "build_data_generator": "PyTorch::DefaultDataGenerator",
     "input_data_generator": "SplitTableBatchedEmbeddingInputDataGenerator",
-    "configs": [
+    "config": [
       {
         "build": [
           {

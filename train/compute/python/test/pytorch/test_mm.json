@@ -1,7 +1,7 @@
 {
   "torch.baddbmm": {
     "input_data_generator": "PyTorch::DefaultDataGenerator",
-    "configs": [
+    "config": [
       {
         "input": [
           {
@@ -92,7 +92,7 @@
   },
   "torch.bmm": {
     "input_data_generator": "PyTorch::DefaultDataGenerator",
-    "configs": [
+    "config": [
       {
         "input": [
           {
@@ -211,7 +211,7 @@
   },
   "torch.mm": {
     "input_data_generator": "PyTorch::DefaultDataGenerator",
-    "configs": [
+    "config": [
       {
         "input": [
           {
