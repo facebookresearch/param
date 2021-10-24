@@ -59,29 +59,17 @@ Users are free to implement custom specs for **`"build"`** and **`"input"`** to 
             "args": [
               {
                 "dtype": "float",
-                "shape": [
-                  2,
-                  1,
-                  512
-                ],
+                "shape": [2, 1, 512],
                 "type": "tensor"
               },
               {
                 "dtype": "float",
-                "shape": [
-                  2,
-                  512,
-                  512
-                ],
+                "shape": [2, 512, 512],
                 "type": "tensor"
               },
               {
                 "dtype": "float",
-                "shape": [
-                  2,
-                  512,
-                  512
-                ],
+                "shape": [2, 512, 512],
                 "type": "tensor"
               }
             ],
@@ -208,15 +196,7 @@ Macros are for convenience to reduce the number of configurations to be specifie
 "args": [
   {
     "dtype": "float",
-    "shape": [
-      512,
-      [
-        512,
-        514,
-        1
-      ],
-      30
-    ],
+    "shape": [512, [512, 514, 1], 30],
     "type": "tensor",
     "__range__": [
       "shape"
@@ -224,11 +204,7 @@ Macros are for convenience to reduce the number of configurations to be specifie
   },
   {
     "dtype": "float",
-    "shape": [
-      512,
-      30,
-      64
-    ],
+    "shape": [512, 30, 64],
     "type": "tensor"
   }
 ]
@@ -241,7 +217,7 @@ In above example, the first argument is a `tensor` type. It has `"__range__"` ma
 ### `__copy__`
 **Only `tensor` data type in `"args"` is supported.**
 
-In some instances, we need to ensure certain values are consistent between two attributes. For example, the input of a `matmul` operator has two tensors of shapes `A = [m, n]` and `B = [j, k]` where `n == j` for the inputs to be valid. As each of these values can vary between each input configuration, to ensure `j = n`, `__copy__` macro is applied to the data type attributes after tensor shape `A`'s is specified and copies the value of `n` to tensor shape `B`'s value of `j`.
+In some instances, we need to ensure certain values are consistent between two attributes. For example, the input of a `matmul` operator has two tensors of shapes `A = [m, n]` and `B = [j, k]` where `n == j` for the inputs to be valid. As each of these values can vary between each input configuration, to ensure `j = n`, `__copy__` macro is applied to the data type attributes after tensor shape `A` is specified and copies the value of `n` to the value of `j` in tensor shape `B`.
 <pre>
 <b>__copy__</b>: [{"src_attr_name":[i, [j, k]]},...]`
 </pre>
@@ -255,24 +231,14 @@ Explanation: Copy value from source argument at `j`, element index `k`, to the c
 
 **Example**
 ```json
-"input" = [
+"input": [
   {
     "type": "tensor",
     "dtype": "float",
-    "shape": [
-      -1,
-      64,
-      128
-    ],
+    "shape": [-1, 64, 128],
     "__copy__": [
       {
-        "shape": [
-          0,
-          [
-            1,
-            2
-          ]
-        ]
+        "shape": [0, [1, 2]]
       }
     ]
   },
