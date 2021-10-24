@@ -77,10 +77,10 @@ There are some finer details:
 If existing configuration iterators do not satisfy your use case, new iterator implementation that supports the [`ConfigIterator`](lib/iterator.py) interface can be registered using
 [`register_config_iterator(name: str, iterator_class: Type[ConfigIterator])`](lib/iterator.py).
 
-## Macros
+### Macros
 Macros are for convenience to reduce the number of configurations to be specified manually.
 
-### `__range__`
+#### `__range__`
 **`__range__`** defines a list of attributes with range specification.
 <pre>
 <b>"__range__"</b>: ["attr_name_1",...]
@@ -111,7 +111,7 @@ In above example, the argument is a `tensor` type. It has `"__range__"` macro sp
   }
 ```
 
-### `__copy__`
+#### `__copy__`
 **Only `tensor` data type in positional `"args"` is supported.**
 
 In some instances, we need to ensure certain values are consistent between two attributes. For example, the input of a `matmul` operator has two tensors of shapes `A = [m, n]` and `B = [j, k]` where `n == j` for the inputs to be valid. As each of these values can vary between each input configuration, to ensure `j = n`, `__copy__` macro is applied to the data type attributes after tensor shape `A` is specified and copies the value of `n` to the value of `j` in tensor shape `B`.
