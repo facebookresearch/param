@@ -265,12 +265,12 @@ The [`OperatorInterface`](lib/operator.py) specifies the interface each workload
   * Use the result from `forward()` and gradient generated in `create_grad()` to run the backward pass.
 
 ### Auto Discovery of Workloads
-Python pkgutil.iter_modules provides a mechanism for discovering and importing modules dynamically. This allows adding workloads through the following simple steps:
-* Create or add to an operator workload python file in [`param/workloads`](param/workloads) directory
+Python `pkgutil.iter_modules` provides a mechanism for discovering and importing modules dynamically. This allows adding workloads through the following simple steps:
+* Create or add to an operator workload python file in [`workloads`](workloads) directory
 * Implement the [`OperatorInterface`](lib/operator.py)
 * Register the new operator through one of the following
   * [`register_operator(name: str, operator: OperatorInterface)`](lib/operator.py)
-  * [`register_operators(op_dict: Dict[str, OperatorInterface])`]lib/operator.py)
+  * [`register_operators(op_dict: Dict[str, OperatorInterface])`](lib/operator.py)
 
 The benchmark driver will be able to load configuration files and instantiate corresponding operators for benchmarking. Two categories of of operators:
 * PyTorch native
