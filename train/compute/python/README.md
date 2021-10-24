@@ -10,7 +10,7 @@ The general motivation and design philosophy for the new microbenchmarks are:
 * A library interface allowing external tools to run and collect data results from the microbenchmarks.
 * Support replay of workload through PyTorch execution graph.
 
-For design and implementation details, please look at the [development documentation](development.md).
+For design and implementation details or make a contribution to the project, please look at the [development documentation](development.md).
 
 ## Installation
 We use `setuptools` to install/uninstall the `parambench-train-compute` package:
