@@ -1,5 +1,50 @@
 # PARAM Compute Benchmark Development
 
+## File Structures
+
+Directories
+
+* [`python`](.)
+  * Base dir for Python benchmarks, including driver scripts.
+* [`python/lib`](./lib)
+  * Benchmark library modules and utilities.
+* [`python/workloads`](./workloads)
+  * Implementation of workloads (operators).
+* [`python/test`](./test)
+  * Unit tests and test config files.
+
+ML framework specific modules and files are in separate directories (e.g. `pytorch`) under these top level directories.
+
+Because the benchmark library and workloads are intended to be used both inside and outside of Facebook, we need to make sure that they work consistently in both scenarios. **Within the benchmark library package itself, we prefer to use relative imports**.
+
+```python
+from ..config import OperatorConfig
+from ..iterator import ConfigIterator
+from ..operator import OperatorInterface
+from ..timer import Timer
+```
+This allows the top level package name to change without affecting the library code itself.
+
+We use `setuptools` to install the `parambench-compute` package. It can be used by the users as any regular Python package.
+
+```python
+from param_bench.train.compute.python.lib.config import BenchmarkConfig
+```
+
+The bundled driver scripts such as `pytorch_benchmark.py` are written using relative import paths as part of the `parambench-compute` python package, so they must be run as a module using the python -m option.
+
+Without installing the package, run in the source directory:
+
+```python
+# Inside dir param/train/compute
+=> python -m python.pytorch_benchmark --config python/test/pytorch/test_op.json
+```
+After `parambench-compute` installed as packages using the setuptools, it can be run as
+```python
+# Inside dir param/train/compute/pytnon
+=> python setup.py install
+=> python -m param_bench.train.compute.python.pytorch_benchmark --config test/pytorch/test_op.json
+
 ## Configuration
 Benchmark configurations are defined in a JSON format. It can be stored in a file on disk, or being passed between external callers and the benchmark’s library interface. There are two types of configurations:
 * Build configuration (optional)
@@ -215,11 +260,11 @@ In above example, the first argument is a `tensor` type. It has `"__range__"` ma
 * `[512, 514, 30]`
 
 ### `__copy__`
-**Only `tensor` data type in `"args"` is supported.**
+**Only `tensor` data type in positional `"args"` is supported.**
 
 In some instances, we need to ensure certain values are consistent between two attributes. For example, the input of a `matmul` operator has two tensors of shapes `A = [m, n]` and `B = [j, k]` where `n == j` for the inputs to be valid. As each of these values can vary between each input configuration, to ensure `j = n`, `__copy__` macro is applied to the data type attributes after tensor shape `A` is specified and copies the value of `n` to the value of `j` in tensor shape `B`.
 <pre>
-<b>"__copy__"</b>: [{"src_attr_name":[i, [j, k]]},...]`
+<b>"__copy__"</b>: [{"src_attr_name":[i, [j, k]]},...]
 </pre>
 Defines a list of attributes and where to copy their values from.
 * `"src_attr_name"`: source attribute name
@@ -256,7 +301,7 @@ The [`OperatorInterface`](lib/operator.py) specifies the interface each workload
 * `build(*args, **kwargs)`: [optional]
   * initialize and constructs all necessary data and objects to run the operator workload. It takes positional and keyword arguments from the configuration file.
 * `cleanup()`: [optional]
-  * release and delete any data and objects retained by this operator, its state should reset to before `build()` is called. This is called after a benchmark is run, benchmarks does not run out of resource.
+  * release and delete any data and objects retained by this operator, its state should reset to before `build()` is called. This is called after a benchmark is run, so subsequent benchmarks do not run out of resource.
 * `forward(*args, **kwargs)`: [required]
   * runs the forward pass of the operator and stores the output for running `backward()`.
 * `create_grad()`: [optional]
