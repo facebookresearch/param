@@ -253,11 +253,16 @@ In above example of a tensor argument, its shape's value at element index `0` (w
 ## Operator Interface
 The [`OperatorInterface`](lib/operator.py) specifies the interface each workload should support. At a minimum it should implement the `forward(*args, **kwargs)` method.
 
-* `build(*args, **kwargs)`: (optional) initialize and constructs all necessary data and objects to run the operator workload. It takes positional and keyword arguments from the configuration file.
-* `cleanup()`: (optional) release and delete any data and objects retained by this operator, its state should reset to before `build()` is called. This is called after a benchmark is run, benchmarks does not run out of resource.
-* `forward()`: Runs the forward pass of the operator and stores the output for running `backward()`.
-* `create_grad()`: create the gradient needed to run the `backward()` pass. This step is explicit to avoid counting this part in the benchmark latency for the backward pass.
-* `backward()`: Use the result from `forward()` and gradient generated in `create_grad()` to run the backward pass.
+* `build(*args, **kwargs)`: [optional]
+  * initialize and constructs all necessary data and objects to run the operator workload. It takes positional and keyword arguments from the configuration file.
+* `cleanup()`: [optional]
+  * release and delete any data and objects retained by this operator, its state should reset to before `build()` is called. This is called after a benchmark is run, benchmarks does not run out of resource.
+* `forward()`: [required]
+  * runs the forward pass of the operator and stores the output for running `backward()`.
+* `create_grad()`: [optional]
+  * create the gradient needed to run the `backward()` pass. This step is explicit to avoid counting this part in the benchmark latency for the backward pass.
+* `backward()`: [optional]
+  * Use the result from `forward()` and gradient generated in `create_grad()` to run the backward pass.
 
 ## Auto Discovery of Workloads
 Python pkgutil.iter_modules provides a mechanism for discovering and importing modules dynamically. This allows adding workloads through the following simple steps:
