@@ -154,7 +154,7 @@ Current supported data types and examples are listed here:
 ```json
 {
   "type": "int",
-  "value": 237,
+  "value": 237
 },
 {
   "type": "int",
@@ -162,7 +162,7 @@ Current supported data types and examples are listed here:
 },
 {
   "type": "long",
-  "value": 8328,
+  "value": 8328
 },
 {
   "type": "long",
@@ -170,7 +170,7 @@ Current supported data types and examples are listed here:
 },
 {
   "type": "float",
-  "value": 1.2,
+  "value": 1.2
 },
 {
   "type": "float",
@@ -178,7 +178,7 @@ Current supported data types and examples are listed here:
 },
 {
   "type": "double",
-  "value": 3.4,
+  "value": 3.4
 },
 {
   "type": "double",
