@@ -264,24 +264,26 @@ Macros are for convenience to reduce the number of configurations to be specifie
 ```json
 "args": [
   {
+    "type": "tensor",
     "dtype": "float",
     "shape": [512, [512, 514, 1], 30],
-    "type": "tensor",
-    "__range__": [
-      "shape"
-    ]
-  },
-  {
-    "dtype": "float",
-    "shape": [512, 30, 64],
-    "type": "tensor"
+    "__range__": ["shape"]
   }
 ]
 ```
-In above example, the first argument is a `tensor` type. It has `"__range__"` macro specifies the `"shape"` attribute has range values: `[512, [512, 514, 1], 30]`. The second value the shape is a list `[512, 514, 1]`, it's represents `[min, max, step]`. During configuration iteration, multiple configurations will be generated, each with a different `"shape"` attribute after expansion:
+In above example, the argument is a `tensor` type. It has `"__range__"` macro specifies the `"shape"` attribute has range values: `[512, [512, 514, 1], 30]`. The second value the shape is a list `[512, 514, 1]`, it's represents `[min, max, step]`. During configuration iteration, multiple configurations will be generated, each with a different `"shape"` attribute after expansion:
 * `[512, 512, 30]`
 * `[512, 513, 30]`
 * `[512, 514, 30]`
+
+`"__range__"` macro also works for non-numeric values like `bool`, `str`, etc. These values can be specified in a list, i.e.,
+```json
+  {
+    "type": "bool",
+    "value": [true, false],
+    "__range__": ["value"]
+  }
+```
 
 ### `__copy__`
 **Only `tensor` data type in positional `"args"` is supported.**

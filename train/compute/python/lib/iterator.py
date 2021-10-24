@@ -105,12 +105,14 @@ def create_range_iter(arg: Dict[str, Any]):
     def create_none(attr: Dict[str, Any]):
         return copy.copy(attr)
 
+    # Called for a list of data types to be iterated
     def create_dtype(values: List[str]):
         return IterableList(values)
 
     def create_shape(values: List[Any]):
         shape = []
         for val in values:
+            # TODO lofe: should also check for ATTR_RANGE
             if type(val) is list:
                 shape.append(full_range(*val))
             else:
