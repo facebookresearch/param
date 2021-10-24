@@ -15,7 +15,7 @@ Directories
 
 ML framework specific modules and files are in separate directories (e.g. `pytorch`) under these top level directories.
 
-Because the benchmark library and workloads are intended to be used both inside and outside of Facebook, we need to make sure that they work consistently in both scenarios. **Within the benchmark library package itself, we prefer to use relative imports**.
+Because the benchmark library and workloads are intended to be used both inside and outside of Facebook, we need to make sure that they work consistently in both scenarios. **Within the benchmark library package itself, we prefer to use relative imports**, for example:
 
 ```python
 from ..config import OperatorConfig
@@ -26,7 +26,7 @@ from ..timer import Timer
 This allows the top level package name to change without affecting the library code itself.
 
 ## Installation
-We use `setuptools` to install/uninstall the `parambench-train-compute` package.
+We use `setuptools` to install/uninstall the `parambench-train-compute` package:
 
 ```shell
 # Inside dir "param/train/compute/pytnon"
@@ -38,12 +38,12 @@ We use `setuptools` to install/uninstall the `parambench-train-compute` package.
 ```
 
 ## Usage
-It can be used by the users as any regular Python package.
+It can be used by the users as any regular Python package:
 ```python
 from param_bench.train.compute.python.lib.config import BenchmarkConfig
 ```
 
-The bundled driver scripts such as `pytorch_benchmark.py` are written using relative import paths as part of the `parambench-train-compute` python package, so they must be run as a module using the python -m option.
+The bundled driver scripts such as `pytorch_benchmark.py` are written using relative import paths as part of the `parambench-train-compute` package, so they must be run as a module using the `python -m` option.
 
 Without installing the package, run driver script as module in the source directory:
 ```shell
@@ -51,7 +51,7 @@ Without installing the package, run driver script as module in the source direct
 => python -m python.pytorch_benchmark --config python/test/pytorch/test_op.json
 ```
 
-After install `parambench-train-compute` a package using the `setuptools`, it can be run as
+After install `parambench-train-compute` a package using the `setuptools`, it can be run as:
 ```shell
 # Run benchmark driver script module
 => python -m param_bench.train.compute.python.pytorch_benchmark --config test/pytorch/test_op.json
