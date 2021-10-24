@@ -50,7 +50,8 @@ def main():
     # Load PyTorch operator workloads.
     load_modules(workloads_pytorch)
 
-    bench_config = BenchmarkConfig(args.config, args.device)
+    bench_config = BenchmarkConfig(args.device)
+    bench_config.load_json_file(args.config)
 
     out_file_name = args.out_file_name
     if args.metric:

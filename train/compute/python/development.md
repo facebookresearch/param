@@ -230,11 +230,11 @@ The role of the data generator is given a configuration specification, it genera
 In current implementations we provide a default data generator that supports PyTorch data types (see [PyTorch Data Types](#pyTorch-data-types)):
 * [`PyTorch::DefaultDataGenerator`](lib/pytorch/data_impl.py)
 
-New implementation of that supports the [`DataGenerator`](lib/data.py) interface can be registered using
+If needed, it's possible to implement custom data generators based on the [`DataGenerator`](lib/data.py) interface. They can be registered using
 [`register_data_generator(name: str, data_gen_class: Type[DataGenerator])`](lib/data.py).
 
 ## Configuration Iterator
-Given a list of configurations (**build** or **input**), we need some mechanism to iterate over them. The overall logic is simple (for illustration, not actual code):
+Given a list of configurations (**build** or **input**), we need some mechanism to iterate over them. The overall logic is simple (**for illustration, not actual code**):
 
 ```python
 for build in build_configs:
@@ -247,13 +247,13 @@ for build in build_configs:
 
 There are some finer details:
 * Often we want to quickly generate many variations of build and input configurations without explicitly specifying each of them. This demands some mechanism for [**macros**](#macros).
-* The configuration is only a specification, further it may need to be materialized (based on the macros) before generating the data.
+* The configuration is only a specification, further it may need to be expanded (if using macro) before materializing or generating the data.
 * Current implementations:
   * `DefaultConfigIterator`
   * `RangeConfigIterator`
 
-New implementation of that supports the [`ConfigIterator`](lib/iterator.py) interface can be registered using
-[`register_config_iterator(name: str, iterator_class: Type[ConfigIterator])`](lib/iterator.py)
+If existing configuration iterators do not satisfy your use case, new iterator implementation that supports the [`ConfigIterator`](lib/iterator.py) interface can be registered using
+[`register_config_iterator(name: str, iterator_class: Type[ConfigIterator])`](lib/iterator.py).
 
 ## Macros
 Macros are for convenience to reduce the number of configurations to be specified manually.

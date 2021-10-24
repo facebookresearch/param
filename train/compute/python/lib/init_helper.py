@@ -10,7 +10,10 @@ def init_logging():
 
 
 def load_modules(package):
-    # See https://packaging.python.org/guides/creating-and-discovering-plugins/
+    '''
+    Given a package, load/import all the modules in that package.
+    See https://packaging.python.org/guides/creating-and-discovering-plugins/
+    '''
     modules = pkgutil.iter_modules(package.__path__, package.__name__ + ".")
     for _, name, _ in modules:
         logging.debug(f"Loading module: {name}")

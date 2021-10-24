@@ -55,6 +55,7 @@ def remove_meta_attr(config: Dict[str, Any]):
             arg.pop(attr, None)
     return result_config
 
+
 def create_range_iter(arg: Dict[str, Any]):
     def create_tensor(attr: Dict[str, Any]):
         logging.debug(f"{attr}")
@@ -155,6 +156,7 @@ def create_range_iter(arg: Dict[str, Any]):
         "genericlist": create_genericlist,
     }
     return arg_factory_iter[arg["type"]](arg)
+
 
 class RangeConfigIterator(ConfigIterator):
     def __init__(

@@ -6,6 +6,7 @@ from .data import DataGenerator, data_generator_map
 from .iterator import ConfigIterator, config_iterator_map, DefaultConfigIterator
 from .operator import OperatorInterface, op_map
 
+
 class OperatorConfig:
     def __init__(self, name, config, op):
         self._name = name
@@ -58,23 +59,33 @@ class OperatorConfig:
 
 
 class BenchmarkConfig:
-    def __init__(self, config_file_name: str, device: str):
+    def __init__(self, device: str):
         self.device = device
+        self._op_configs = []
+        self.bench_config = None
+
+    def _process_bench_config(self):
+        for op_name in self.bench_config:
+            op_config = self._make_op_config(op_name)
+            if op_config is not None:
+                self._op_configs.append(op_config)
+
+    def load_json_file(self, config_file_name: str):
         with open(config_file_name) as config_file:
             ops_data: TextIO
             self.bench_config = json.load(config_file)
+            self._process_bench_config()
 
-            self._op_configs = []
-            for op_name in self.bench_config:
-                op_config = self._make_op_config(op_name)
-                if op_config is not None:
-                    self._op_configs.append(op_config)
+    def load_json(self, config_json: str):
+        self.bench_config = json.loads(config_json)
+        self._process_bench_config()
 
     @property
     def op_configs(self) -> List[OperatorConfig]:
         return self._op_configs
 
     def _make_op_config(self, op_name: str):
+        global op_map
         if (op_name not in op_map) or (not op_map[op_name]):
             logging.warning(f"{op_name} has no valid callable defined, skipped.")
             return None

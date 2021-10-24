@@ -1,8 +1,10 @@
 import copy
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
-# Returns inclusive range: a <= x <= b, by step of s
 def full_range(a: int, b: int, s: int):
+    '''
+    Returns inclusive range: a <= x <= b, by step of s
+    '''
     return range(a, b + 1, s)
 
 
@@ -25,24 +27,23 @@ class IterableList:
             return next(self.iter)
 
 
-"""
-ListProduct takes a list of repeatable iterables (like range()), and
-generates the Cartesian product of the iterables. This interface wraps the
-Iterator so that a new iterator is created once the generator is
-exhausted. This allows repeatable iterations, i.e.
-
-iter_list_1 = [range(2, 6, 2), range(1, 3, 1), range(2, 4, 1)]
-iter_list_2 = [range(2, 6, 2), range(1, 3, 1)]
-prod = ListProduct([ListProduct(iter_list_1), ListProduct(iter_list_2)])
-for i in prod:
-    print("i",i)
-
-for i in prod:
-    print("i",i)
-"""
-
-
 class ListProduct:
+    '''
+    ListProduct takes a list of repeatable iterables (like range()), and
+    generates the Cartesian product of the iterables. This interface wraps the
+    Iterator so that a new iterator is created once the generator is
+    exhausted. This allows repeatable iterations, i.e.
+
+    iter_list_1 = [range(2, 6, 2), range(1, 3, 1), range(2, 4, 1)]
+    iter_list_2 = [range(2, 6, 2), range(1, 3, 1)]
+    prod = ListProduct([ListProduct(iter_list_1), ListProduct(iter_list_2)])
+    for i in prod:
+        print("i",i)
+
+    for i in prod:
+        print("i",i)
+    '''
+
     def __init__(self, iter_list: List[Any]):
         self.iter_list: List[Any] = iter_list
 

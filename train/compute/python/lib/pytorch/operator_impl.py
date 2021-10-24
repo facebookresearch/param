@@ -1,11 +1,16 @@
 from typing import Dict, Set, Tuple, List, Any, Callable, Iterable, Type
 
 import torch
+
 from ..operator import OperatorInterface
 
-# Inplace ops is called in the form of tensor.op(args), we convert it
-# to a regular function call with "getattr(tensor, op)(args)"
+
 class InPlaceOpByName(OperatorInterface):
+    """
+    Inplace ops is called in the form of tensor.op(args), we convert it
+    to a regular function call with "getattr(tensor, op)(args)"
+    """
+
     def __init__(
         self,
         func_name: str,
@@ -27,8 +32,11 @@ class InPlaceOpByName(OperatorInterface):
         self.fwd_result.backward(self.grad)
 
 
-# Callable ops are ops can be called in the form of op(*args, **kwargs)
 class CallableOp(OperatorInterface):
+    """
+    Callable ops are ops can be called in the form of op(*args, **kwargs)
+    """
+
     def __init__(
         self,
         func: Callable,

@@ -108,7 +108,7 @@ def measure_latency(
 def run_op_for_inputs(
     config: Dict[str, Any],
     op_config,
-    device,
+    device: str,
     config_id,
     build_id,
     warmup_iter,

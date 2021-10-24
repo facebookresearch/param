@@ -9,10 +9,10 @@ from ..data import DataGenerator, register_data_generator
 from ..generator import full_range, IterableList, ListProduct, TableProduct
 
 pytorch_dtype_map: Dict[str, torch.dtype] = {
-    "float": torch.float,
-    "double": torch.double,
-    "int": torch.int,
-    "long": torch.long,
+    "float": torch.float32,
+    "double": torch.float64,
+    "int": torch.int32,
+    "long": torch.int64,
 }
 
 def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
@@ -24,14 +24,14 @@ def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
         if len(shape) > 0:
             if attr["dtype"] == "float" or attr["dtype"] == "double":
                 return torch.rand(
-                    *shape, requires_grad=False, device=torch.device(device)
+                    *shape, requires_grad=True, device=torch.device(device)
                 )
             elif attr["dtype"] == "int" or attr["dtype"] == "long":
                 return torch.randint(
                     -10,
                     10,
                     tuple(shape),
-                    requires_grad=False,
+                    requires_grad=True,
                     device=torch.device(device),
                 )
         # Single value
@@ -39,7 +39,7 @@ def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
             return torch.tensor(
                 random.uniform(-10.0, 10.0),
                 dtype=pytorch_dtype_map[attr["dtype"]],
-                requires_grad=False,
+                requires_grad=True,
                 device=torch.device(device),
             )
 
