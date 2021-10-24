@@ -221,10 +221,10 @@ Current supported data types and examples are listed here:
 It’s important to note that **the configuration is a specification for data**, not the actual data itself. From a configuration, we need to actually materialize and generate the data as the arguments for an operator.
 
 ## Data Generator
-The role of the data generator is given a configuration specification, it generates actual data (scalar, boolean, string, tensor, etc.) for the building or executing an operator.
+The role of the data generator is given a configuration specification, it generates actual data (scalar, boolean, string, tensor, etc.) for building or executing an operator.
 
 In current implementations we provide a default data generator that supports PyTorch data types (see [PyTorch Data Types](#pyTorch-data-types)):
-* `PyTorch::DefaultDataGenerator`
+* [`PyTorch::DefaultDataGenerator`](lib/pytorch/data_impl.py)
 
 New implementation of that supports the [`DataGenerator`](lib/data.py) interface can be registered using
 [`register_data_generator(name: str, data_gen_class: Type[DataGenerator])`](lib/data.py).
