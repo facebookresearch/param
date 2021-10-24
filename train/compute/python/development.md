@@ -5,7 +5,7 @@
 Directories
 
 * [`python`](.)
-  * Base dir for Python benchmarks, including driver scripts.
+  * Base dir for Python benchmarks, including tool scripts.
 * [`python/lib`](./lib)
   * Benchmark library modules and utilities.
 * [`python/workloads`](./workloads)
@@ -37,15 +37,17 @@ We use `setuptools` to install/uninstall the `parambench-train-compute` package:
 > python -m pip uninstall parambench-train-compute
 ```
 
+The installed package is under **`param_bench.train.compute.python`**.
+
 ## Usage
-It can be used by the users as any regular Python package:
+As a library, it can be used as any regular Python package:
 ```python
 from param_bench.train.compute.python.lib.config import BenchmarkConfig
 ```
 
-The bundled driver scripts such as `pytorch_benchmark.py` are written using relative import paths as part of the `parambench-train-compute` package, so they must be run as a module using the `python -m` option.
+The bundled tool scripts such as `pytorch_benchmark.py` are written using relative import paths as part of the `parambench-train-compute` package, so they must be run as a module using the `python -m` option.
 
-Without installing the package, run driver script as module in the source directory:
+Without installing the package, you can run a tool script as a module in the source directory:
 ```shell
 # Inside dir "param/train/compute"
 > python -m python.pytorch_benchmark --config python/test/pytorch/test_op.json
@@ -53,7 +55,7 @@ Without installing the package, run driver script as module in the source direct
 
 After install `parambench-train-compute` a package using the `setuptools`, it can be run as:
 ```shell
-# Run benchmark driver script module
+# Run benchmark tool script module
 > python -m param_bench.train.compute.python.pytorch_benchmark --config test/pytorch/test_op.json
 ```
 
@@ -345,7 +347,7 @@ Python `pkgutil.iter_modules` provides a mechanism for discovering and importing
   * [`register_operator(name: str, operator: OperatorInterface)`](lib/operator.py)
   * [`register_operators(op_dict: Dict[str, OperatorInterface])`](lib/operator.py)
 
-The benchmark driver will be able to load configuration files and instantiate corresponding operators for benchmarking. Two categories of of operators:
+The benchmark tool script will be able to load configuration files and instantiate corresponding operators for benchmarking. Two categories of of operators:
 * PyTorch native
   * Operators have no dependencies other than official PyTorch release.
 * External

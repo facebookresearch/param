@@ -27,7 +27,7 @@ We use `setuptools` to install/uninstall the `parambench-train-compute` package:
 ## Usage
 After install `parambench-train-compute` a package using the `setuptools`, it can be run as:
 ```shell
-# Run benchmark driver script module
+# Run benchmark tool script module
 > python -m param_bench.train.compute.python.pytorch_benchmark --config test/pytorch/test_op.json
 ```
 
