@@ -29,7 +29,7 @@ This allows the top level package name to change without affecting the library c
 We use `setuptools` to install/uninstall the `parambench-train-compute` package.
 
 ```shell
-# Inside dir param/train/compute/pytnon
+# Inside dir "param/train/compute/pytnon"
 # Install package
 => python setup.py install
 
@@ -46,14 +46,14 @@ from param_bench.train.compute.python.lib.config import BenchmarkConfig
 The bundled driver scripts such as `pytorch_benchmark.py` are written using relative import paths as part of the `parambench-train-compute` python package, so they must be run as a module using the python -m option.
 
 Without installing the package, run driver script as module in the source directory:
-```python
-# Inside dir param/train/compute
+```shell
+# Inside dir "param/train/compute"
 => python -m python.pytorch_benchmark --config python/test/pytorch/test_op.json
 ```
 
-After install `parambench-train-compute` a package using the setuptools, it can be run as
-```python
-# Run benchmark driver script
+After install `parambench-train-compute` a package using the `setuptools`, it can be run as
+```shell
+# Run benchmark driver script module
 => python -m param_bench.train.compute.python.pytorch_benchmark --config test/pytorch/test_op.json
 ```
 
