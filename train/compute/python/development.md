@@ -257,7 +257,7 @@ The [`OperatorInterface`](lib/operator.py) specifies the interface each workload
   * initialize and constructs all necessary data and objects to run the operator workload. It takes positional and keyword arguments from the configuration file.
 * `cleanup()`: [optional]
   * release and delete any data and objects retained by this operator, its state should reset to before `build()` is called. This is called after a benchmark is run, benchmarks does not run out of resource.
-* `forward()`: [required]
+* `forward(*args, **kwargs)`: [required]
   * runs the forward pass of the operator and stores the output for running `backward()`.
 * `create_grad()`: [optional]
   * create the gradient needed to run the `backward()` pass. This step is explicit to avoid counting this part in the benchmark latency for the backward pass.
