@@ -157,8 +157,8 @@ The role of the data generator is given a configuration specification, it genera
 In current implementations we provide a default data generator that supports PyTorch data types (see [PyTorch Data Types](#pyTorch-data-types)):
 * `PyTorch::DefaultDataGenerator`
 
-New implementation of that supports the `DataGenerator` interface can be registered using
-`register_data_generator(name: str, data_gen_class: Type[DataGenerator])`
+New implementation of that supports the [`DataGenerator`](lib/data.py) interface can be registered using
+[`register_data_generator(name: str, data_gen_class: Type[DataGenerator])`](lib/data.py).
 
 ## Configuration Iterator
 Given a list of configurations (**build** or **input**), we need some mechanism to iterate over them. The overall logic is simple (for illustration, not actual code):
@@ -179,8 +179,8 @@ There are some finer details:
   * `DefaultConfigIterator`
   * `RangeConfigIterator`
 
-New implementation of that supports the `ConfigIterator` interface can be registered using
-`register_config_iterator(name: str, iterator_class: Type[ConfigIterator])`
+New implementation of that supports the [`ConfigIterator`](lib/iterator.py) interface can be registered using
+[`register_config_iterator(name: str, iterator_class: Type[ConfigIterator])`](lib/iterator.py)
 
 ## Macros
 Macros are for convenience to reduce the number of configurations to be specified manually.
@@ -250,21 +250,22 @@ Copy value from source argument at `j`, element index `k`, to the current argume
 ```
 In above example of a tensor argument, its shape's value at element index `0` (with a `-1` value), will get the value of argument a position `1`, and its `"shape"` attribute's value at element index `2` (with value '32'). After the copy macro is applied, the tensor argument at index `0`, will have shape `[32, 64, 128]`.
 
+## Operator Interface
+The [`OperatorInterface`](lib/operator.py) specifies the interface each workload should support. At a minimum it should implement the `forward(*args, **kwargs)` method.
 
-## Timer
-Timer is essential in measuring operator latency. Some devices (GPU) are async and require special steps to run in blocking or synchronized mode. Depending on where the operator will run, the proper timer should be used:
-* CPU
-* GPU (PyTorch)
-
-In the future, we may support timers for other device types.
+* `build(*args, **kwargs)`: (optional) initialize and constructs all necessary data and objects to run the operator workload. It takes positional and keyword arguments from the configuration file.
+* `cleanup()`: (optional) release and delete any data and objects retained by this operator, its state should reset to before `build()` is called. This is called after a benchmark is run, benchmarks does not run out of resource.
+* `forward()`: Runs the forward pass of the operator and stores the output for running `backward()`.
+* `create_grad()`: create the gradient needed to run the `backward()` pass. This step is explicit to avoid counting this part in the benchmark latency for the backward pass.
+* `backward()`: Use the result from `forward()` and gradient generated in `create_grad()` to run the backward pass.
 
 ## Auto Discovery of Workloads
 Python pkgutil.iter_modules provides a mechanism for discovering and importing modules dynamically. This allows adding workloads through the following simple steps:
 * Create or add to an operator workload python file in [`param/workloads`](param/workloads) directory
-* Implement the OperatorInterface
+* Implement the [`OperatorInterface`](lib/operator.py)
 * Register the new operator through one of the following
-  * `register_operator(name: str, operator: OperatorInterface)`
-  * `register_operators(op_dict: Dict[str, OperatorInterface])`
+  * [`register_operator(name: str, operator: OperatorInterface)`](lib/operator.py)
+  * [`register_operators(op_dict: Dict[str, OperatorInterface])`]lib/operator.py)
 
 The benchmark driver will be able to load configuration files and instantiate corresponding operators for benchmarking. Two categories of of operators:
 * PyTorch native
@@ -273,3 +274,10 @@ The benchmark driver will be able to load configuration files and instantiate co
   * Operators require additional installation.
 
 For users who do not have certain external operators in their environment, automatically importing these can cause errors. Auto import will try/catch these errors and skip these operators.
+
+## Timer
+Timer is essential in measuring operator latency. Some devices (GPU) are async and require special steps to run in blocking or synchronized mode. Depending on where the operator will run, the proper timer should be used:
+* CPU
+* GPU (PyTorch)
+
+In the future, we may support timers for other device types.
