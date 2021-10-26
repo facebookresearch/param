@@ -613,8 +613,10 @@ class PyTorchDistBackend(backendFunctions):
         else:
             os.environ["MASTER_ADDR"] = str(master_ip)  # '127.0.0.1'
         os.environ["MASTER_PORT"] = str(master_port)
-        os.environ["WORLD_SIZE"] = str(world_size)
-        os.environ["RANK"] = str(global_rank)
+        if world_size > 0:
+            os.environ["WORLD_SIZE"] = str(world_size)
+        if global_rank >= 0:
+            os.environ["RANK"] = str(global_rank)
 
         # default group
         dist.init_process_group(backend, rank=global_rank, world_size=world_size)

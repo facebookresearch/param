@@ -654,13 +654,13 @@ class commsTraceReplayBench(paramCommsBench):
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
 
-    def setTraceFile(self, args, mpi_env_params):
+    def setTraceFile(self, args, comms_env_params):
         # TODO: file name may get changed later
         if args.use_one_trace:
             self.trace_file = args.trace_path
         else:
             self.trace_file = (
-                f"{args.trace_path}/rank{mpi_env_params['global_rank']}.json"
+                f"{args.trace_path}/rank{comms_env_params['global_rank']}.json"
             )
         # assume the prefix is always "xxx://" when reading remote trace, e.g., http://xxx
         if "://" in args.trace_path:
@@ -704,7 +704,7 @@ class commsTraceReplayBench(paramCommsBench):
 
 def main():
 
-    mpi_env_params = comms_utils.read_mpi_env_vars()
+    comms_env_params = comms_utils.read_comms_env_vars()
 
     traceBench = commsTraceReplayBench()
     parser = argparse.ArgumentParser(
@@ -713,12 +713,12 @@ def main():
     )
 
     args = traceBench.readArgs(parser)
-    traceBench.setTraceFile(args, mpi_env_params)
+    traceBench.setTraceFile(args, comms_env_params)
     traceBench.checkArgs(args)
 
     time.sleep(1)
     comms_world_info = comms_utils.comms_world_info_holder(
-        args.master_ip, args.master_port, args.num_tpu_cores, mpi_env_params
+        args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
     )
     commsParams = comms_utils.commsParamsHolderBase(args)
     traceBench.initBench(comms_world_info, commsParams, args)
