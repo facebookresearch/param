@@ -712,7 +712,7 @@ class paramCommsBench(ABC):
             return ([], [])
 
         numElementsIn = curComm["in_msg_size"]
-        numElementsOut = curComm["out_msg_size"]
+        numElementsOut = curComm["out_msg_size"] # only meaningful for out-of-place collectives and pt2pt
         world_size = self.collectiveArgs.world_size
         dtype = commsParams.dtype
         curDevice = commsParams.device
@@ -747,13 +747,13 @@ class paramCommsBench(ABC):
             for _ in range(world_size):
                 opTensor.append(
                     self.backendFuncs.alloc_random(
-                        [numElementsOut], curDevice, dtype, scaleFactor
+                        [numElementsIn], curDevice, dtype, scaleFactor
                     )
                 )
         elif commOp == "all_gather_base":
             # this is a single all gather with flat output tensor
             opTensor = self.backendFuncs.alloc_random(
-                numElementsOut * world_size,
+                numElementsIn * world_size,
                 curDevice,
                 dtype,
                 scaleFactor,
