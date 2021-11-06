@@ -31,18 +31,8 @@
               },
               {
                 "type": "int",
-                "name": "device",
-                "value": 1
-              },
-              {
-                "type": "int",
                 "name": "pooling",
                 "value": 0
-              },
-              {
-                "type": "int",
-                "name": "propagation",
-                "value": 1
               },
               {
                 "type": "bool",

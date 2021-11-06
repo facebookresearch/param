@@ -1,61 +1,84 @@
+import enum
 import json
 import logging
-from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import TextIO
 
 import torch
 
 from ..config import OperatorConfig
 from ..iterator import ConfigIterator
 from ..operator import OperatorInterface
-from ..timer import Timer
+from .timer import Timer
+
+
+@enum.unique
+class ExecutionPass(enum.Enum):
+    FORWARD = 0
+    BACKWARD = 1
+
+
+def _clear_cache():
+    # TODO lofe: update L2 cache size depending on GPU
+    _ = torch.zeros(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
+    torch.cuda.empty_cache()
 
 
 def benchmark_op(
-    op_id: str, op: Callable, args: Any, kwargs: Any, device: str, num_iter: int
+    op_id: str, op: Callable, args: Any, kwargs: Any, device: str, iterations: int
 ):
     time_records = []
-    for _ in range(num_iter):
+    for _ in range(iterations):
         # flush cache
+        # TODO lofe: update cache size depending on GPU
         if device.startswith("cuda"):
-            _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
-            torch.cuda.empty_cache()
+            _clear_cache()
 
         logging.debug(f"running {op_id}")
         with Timer(device) as timer:
-            op.forward(*args, **kwargs)
+            op(*args, **kwargs)
+
         time_records.append(timer.elapsed_time())
     return time_records
 
 
 def collect_metric(
     op_name: str,
+    pass_name: str,
     id: str,
     op: Callable,
     args: Any,
     kwargs: Any,
     device: str,
-    num_iter: int,
+    iterations: int,
     config: Dict[str, Any],
-    out_file: TextIO,
+    out_stream: TextIO,
 ):
     if device.startswith("cuda"):
         # use nvtx allows us to collect only this part of kernel executions
         # and match op and arg variants to metrics.
-        logging.info(f"Running {op_name}[{id}] for {num_iter} CUDA metric iterations")
+        logging.info(f"Running {op_name}[{id}] for {iterations} CUDA metric iterations")
         torch.cuda.nvtx.range_push("op_bench")
-        for _ in range(num_iter):
+        for _ in range(iterations):
             # flush cache
-            _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
-            torch.cuda.empty_cache()
+            _clear_cache()
 
             torch.cuda.nvtx.range_push(f"{op_name}[{id}]")
             op(*args, **kwargs)
             torch.cuda.nvtx.range_pop()
 
         torch.cuda.nvtx.range_pop()
-        stats = {"name": op_name, "id": id, "iter": num_iter, "config": config}
-        out_file.write(json.dumps(stats) + "\n")
-        out_file.flush()
+        stats = {
+            "name": op_name,
+            "pass": pass_name,
+            "id": id,
+            "iter": iterations,
+            "config": config,
+        }
+        out_stream.write(json.dumps(stats) + "\n")
+        out_stream.flush()
     else:
         raise Exception("Non-GPU metric mode is not supported.")
 
@@ -63,106 +86,125 @@ def collect_metric(
 def warmup(
     op_name: str,
     id: str,
-    op: OperatorInterface,
+    op: Callable,
     args: Any,
     kwargs: Any,
     device: str,
-    num_iter: int,
+    warmup_count: int,
 ):
-    logging.debug(f"Running {op_name}[{id}] for {num_iter} warm up iterations")
+    logging.debug(f"Running {op_name}[{id}] for {warmup_count} warm up iterations")
     # warm up
-    time_records = benchmark_op(f"{op_name}[{id}]", op, args, kwargs, device, num_iter)
+    time_records = benchmark_op(
+        f"{op_name}[{id}]", op, args, kwargs, device, warmup_count
+    )
     logging.info(f"    warm: {time_records}")
 
 
 def measure_latency(
     op_name: str,
+    pass_name: str,
     id: str,
     op: OperatorInterface,
     args: Any,
     kwargs: Any,
     device: str,
-    num_iter: int,
+    iterations: int,
     config: Dict[str, Any],
-    out_file: TextIO,
+    out_stream: TextIO,
 ):
-    logging.debug(f"Running {op_name}[{id}] for {num_iter} measured iterations")
+    logging.debug(f"Running {op_name}[{id}] for {iterations} measured iterations")
     torch.cuda.nvtx.range_push("op_bench")
-    time_records = benchmark_op(f"{op_name}[{id}]", op, args, kwargs, device, num_iter)
+    time_records = benchmark_op(
+        f"{op_name}[{id}]", op, args, kwargs, device, iterations
+    )
     torch.cuda.nvtx.range_pop()
-    tot = sum(time_records)
+    total = sum(time_records)
+    logging.info(f"    pass: {pass_name}")
     logging.info(f"    time: {time_records}")
-    logging.info(f"    avg: {tot/num_iter:.6f} sec")
-    logging.info(f"    tot: {tot:.6f} sec")
+    logging.info(f"    avg: {total/iterations:.6f} sec")
+    logging.info(f"    tot: {total:.6f} sec")
     stats = {
         "name": op_name,
+        "pass": pass_name,
         "id": id,
         "time": time_records,
-        "iter": num_iter,
+        "iter": iterations,
         "config": config,
     }
-    out_file.write(json.dumps(stats) + "\n")
-    out_file.flush()
+    out_stream.write(json.dumps(stats) + "\n")
+    out_stream.flush()
 
 
 def run_op_for_inputs(
     config: Dict[str, Any],
     op_config,
     device: str,
-    config_id,
-    build_id,
-    warmup_iter,
-    run_iter,
-    metric_mode,
-    out_file,
+    config_id: str,
+    build_id: str,
+    warmup_count: int,
+    iterations: int,
+    pass_type: ExecutionPass,
+    metric_mode: bool,
+    out_stream: TextIO,
 ):
     generate_input_config: ConfigIterator = op_config.input_iterator(
         config, "input", device
     )
 
     for (input_id, input_config) in generate_input_config:
-        logging.info(f"    input_config [{config_id}:{build_id}:{input_id}]: {input_config}")
+        logging.info(
+            f"    input_config [{config_id}:{build_id}:{input_id}]: {input_config}"
+        )
         # generate data
 
         input_data_gen = op_config.input_data_generator()
         (input_args, input_kwargs) = input_data_gen.get_data(input_config, device)
         id = f"{config_id}:{build_id}:{input_id}"
+
         warmup(
             op_config.name,
             id,
-            op_config.op,
+            op_config.op.forward,
             input_args,
             input_kwargs,
             device,
-            warmup_iter,
+            warmup_count,
         )
 
         final_config = {"build": config["build"], "input": input_config}
 
-        # collect CUDA metrics
         if metric_mode:
-            collect_metric(
-                op_config.name,
-                id,
-                op_config.op,
-                input_args,
-                input_kwargs,
-                device,
-                run_iter,
-                final_config,
-                out_file,
-            )
+            # collect CUDA metrics
+            benchmark_func = collect_metric
         else:
-            measure_latency(
+            benchmark_func = measure_latency
+
+        benchmark_func(
+            op_config.name,
+            str(ExecutionPass.FORWARD),
+            id,
+            op_config.op.forward,
+            input_args,
+            input_kwargs,
+            device,
+            iterations,
+            final_config,
+            out_stream,
+        )
+
+        if pass_type == ExecutionPass.BACKWARD:
+            op_config.op.create_grad()
+            benchmark_func(
                 op_config.name,
+                str(ExecutionPass.BACKWARD),
                 id,
-                op_config.op,
-                input_args,
-                input_kwargs,
+                op_config.op.backward,
+                [],
+                {},
                 device,
-                run_iter,
+                iterations,
                 final_config,
-                out_file,
+                out_stream,
             )
 
         logging.debug(f"Finished running {op_config.name}[{id}].")
@@ -170,12 +212,18 @@ def run_op_for_inputs(
 
 def run_op(
     op_config: OperatorConfig,
-    warmup_iter: int,
-    run_iter: int,
+    warmup_count: int,
+    iterations: int,
     device: str,
-    out_file: TextIO,
+    pass_type: ExecutionPass,
     metric_mode: bool,
+    out_stream: TextIO,
 ):
+    """
+    Run an operator based on its op_config.
+
+    """
+
     config_id = 0
     for config in op_config.config:
         if "input" not in config:
@@ -204,6 +252,7 @@ def run_op(
                 op_config.op.cleanup()
                 if device.startswith("cuda"):
                     torch.cuda.empty_cache()
+                print(build_args)
                 op_config.op.build(*build_args, **build_kwargs)
                 build_input_config["build"] = build_config
                 build_input_config["input"] = config["input"]
@@ -213,10 +262,11 @@ def run_op(
                     device,
                     config_id,
                     build_id,
-                    warmup_iter,
-                    run_iter,
+                    warmup_count,
+                    iterations,
+                    pass_type,
                     metric_mode,
-                    out_file,
+                    out_stream,
                 )
         else:
             logging.info(f"  build_config [{config_id}:{0}]: {build_config}")
@@ -228,10 +278,11 @@ def run_op(
                 device,
                 config_id,
                 0,
-                warmup_iter,
-                run_iter,
+                warmup_count,
+                iterations,
+                pass_type,
                 metric_mode,
-                out_file,
+                out_stream,
             )
 
         config_id += 1

@@ -1,6 +1,8 @@
 import json
 import logging
-from typing import Dict, Set, Tuple, List, Any, Callable, Iterable, Type, TextIO
+from typing import Dict, List, Any
+from typing import TextIO
+from typing import Type
 
 from .data import DataGenerator, data_generator_map
 from .iterator import ConfigIterator, config_iterator_map, DefaultConfigIterator
@@ -93,6 +95,7 @@ class BenchmarkConfig:
             logging.warning(f"{op_name} has no valid callable defined, skipped.")
             return None
         op = op_map[op_name]
+        op.device = self.device
         op_info = self.bench_config[op_name]
         configs = op_info["config"]
         op_config = OperatorConfig(op_name, configs, op)

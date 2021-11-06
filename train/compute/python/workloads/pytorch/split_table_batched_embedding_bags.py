@@ -1,17 +1,12 @@
+from typing import Any
+from typing import Tuple
+from typing import List
 import copy
 import gc
 import logging
 import os
 from typing import (
     Dict,
-    Set,
-    List,
-    Tuple,
-    Any,
-    Callable,
-    Iterable,
-    Type,
-    TextIO,
     Optional,
 )
 
@@ -26,15 +21,11 @@ from fbgemm_gpu.split_table_batched_embeddings_ops import (
     EmbeddingLocation,
     ComputeDevice,
 )
-from torch import Tensor
 
-from ...lib.data import data_generator_map, register_data_generator
+from ...lib.data import register_data_generator
 from ...lib.generator import full_range, TableProduct, IterableList, ListProduct
 from ...lib.iterator import (
     ConfigIterator,
-    RangeConfigIterator,
-    DefaultConfigIterator,
-    config_iterator_map,
     remove_meta_attr,
     register_config_iterator,
     genericList_to_list,
@@ -63,9 +54,8 @@ class SplitTableBatchedEmbeddingInputIterator(ConfigIterator):
         self.num_tables = build_configs["args"][0]
         self.rows = build_configs["args"][1]
         self.dim = build_configs["args"][2]
-        self.propagation = build_configs["args"][6]
-        self.weighted = build_configs["args"][7]
-        self.weights_precision = build_configs["args"][8]
+        self.weighted = build_configs["args"][5]
+        self.weights_precision = build_configs["args"][6]
         self.generator = self._generator()
 
     def _generator(self):
@@ -93,7 +83,6 @@ class SplitTableBatchedEmbeddingInputIterator(ConfigIterator):
                         self.dim,
                         batch_size,
                         pooling_factor,
-                        self.propagation,
                         self.weighted,
                         self.weights_precision,
                     ],
@@ -173,8 +162,7 @@ class SplitTableBatchedEmbeddingInputDataGenerator:
             dims = [config["args"][2]["value"]]
             pooling_factors = [config["args"][4]["value"]]
         batch_size = config["args"][3]["value"]
-        propagation = config["args"][5]["value"]
-        weighted = config["args"][6]["value"]
+        weighted = config["args"][5]["value"]
 
         indices_list = []
         offsets_list = []
@@ -187,27 +175,29 @@ class SplitTableBatchedEmbeddingInputDataGenerator:
 
         target_device = torch.device(device)
 
+        indices_file = None
+        offsets_file = None
+        weights_file = None
         if ("indices_tensor" in config["args"][4]) and (
             "offsets_tensor" in config["args"][4]
         ):
             indices_file = config["args"][4]["indices_tensor"]
             offsets_file = config["args"][4]["offsets_tensor"]
-            if "weights_tensor" in config["args"][4]:
+            if weighted and "weights_tensor" in config["args"][4]:
                 weights_file = config["args"][4]["weights_tensor"]
         else:
             indices_file = os.getenv("split_embedding_indices")
             offsets_file = os.getenv("split_embedding_offsets")
-            weights_file = os.getenv("split_embedding_weights")
+            if weighted:
+                weights_file = os.getenv("split_embedding_weights")
 
         logging.debug(f"indices_file: {indices_file}, offsets_file: {offsets_file}")
         if indices_file is not None and offsets_file is not None:
             indices_tensor = torch.load(indices_file, map_location=target_device)
             offsets_tensor = torch.load(offsets_file, map_location=target_device)
-            per_sample_weights_tensor = (
-                torch.load(weights_file, map_location=target_device)
-                if weighted
-                else None
-            )
+            per_sample_weights_tensor = None
+            if weights_file:
+                per_sample_weights_tensor = torch.load(weights_file, map_location=target_device)
         else:
             for i in range(num_tables):
                 indices, offsets, per_sample_weights = generate_requests(
@@ -233,25 +223,18 @@ class SplitTableBatchedEmbeddingInputDataGenerator:
                 torch.cat([t for t in per_sample_weights_list]) if weighted else None
             )
 
-        # check for backward
-        grads_tensor = (
-            torch.randn(batch_size, sum(dims)) if (propagation == 1) else None
-        )
         logging.debug(f"indices: {indices_tensor.shape}, {indices_tensor}")
         logging.debug(f"offsets: {offsets_tensor.shape}, {offsets_tensor}")
         if per_sample_weights_tensor is not None:
             logging.debug(
                 f"per_sample_weights: {per_sample_weights_tensor.shape}, {per_sample_weights_tensor}"
             )
-        if grads_tensor is not None:
-            logging.debug(f"grads: {grads_tensor.shape}, {grads_tensor}")
 
         return (
             [
                 indices_tensor.to(target_device),
                 offsets_tensor.to(target_device),
                 per_sample_weights_tensor.to(target_device) if weighted else None,
-                grads_tensor.to(target_device) if (propagation == 1) else None,
             ],
             {},
         )
@@ -269,22 +252,22 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
     ):
         super(SplitTableBatchedEmbeddingOp, self).__init__()
         self.cleanup()
+        self.fwd_out: torch.tensor = None
+        self.grad_in: torch.tensor = None
 
     def build(
         self,
-        num_tables,
-        rows,
-        dims,
-        location,
-        device,
-        pooling,
-        propagation,
-        weighted,
-        weights_precision,
-        optimizer,
+        num_tables: int,
+        rows: int,
+        dims: int,
+        location: int,
+        pooling: int,
+        weighted: bool,
+        weights_precision: str,
+        optimizer: str
     ):
         logging.debug(
-            f"Op build {num_tables}, {rows}, {dims}, {location}, {device}, {pooling}, {propagation}, {weighted}, {weights_precision}, {optimizer}"
+            f"Op build {num_tables}, {rows}, {dims}, {location}, {pooling}, {weighted}, {weights_precision}, {optimizer}"
         )
         if num_tables == 1:
             rows_list = [rows]
@@ -292,8 +275,13 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
         else:
             rows_list = rows
             dims_list = dims
+        if self.device.startswith("cpu"):
+            compute_device = ComputeDevice.CPU
+        elif self.device.startswith("cuda"):
+            compute_device = ComputeDevice.CUDA
+        else:
+            raise ValueError(f"Unknown compute device {self.device}")
 
-        self.propagation = propagation
         # split_table op options from actual runs of
         # caffe2/torch/fb/module_factory/proxy_module/grouped_sharded_embedding_bag.py
         self.op = (
@@ -303,7 +291,7 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
                         rows_list[i],
                         dims_list[i],
                         EmbeddingLocation(location),
-                        ComputeDevice(device),
+                        compute_device,
                     )
                     for i in range(num_tables)
                 ],
@@ -316,9 +304,6 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
                 cache_reserved_memory=12.0,
             )
         )
-        if device == 1:
-            logging.debug("Op using CUDA")
-            self.op = self.op.cuda()
         logging.debug(
             f"Op built: {self.op.weights_precision} {self.op.embedding_specs}"
         )
@@ -326,18 +311,21 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
     def cleanup(self):
         logging.debug("Op cleanup")
         self.op = None
-        self.propagation = None
+        self.grad_in = None
+        self.fwd_out = None
         gc.collect()
 
     def forward(self, *args, **kwargs):
-        if self.propagation == 0:
-            logging.debug("Op Forward")
-            self.op.forward(args[0], args[1], args[2])
-        elif self.propagation == 1:
-            logging.debug("Op Forward + Backward")
-            self.op(args[0], args[1], args[2]).backward(args[3])
-        else:
-            raise ValueError(f"Invalid propagation value: {self.propagation}")
+        logging.debug("Op Forward")
+        self.fwd_out = self.op.forward(args[0], args[1], args[2])
+
+    def create_grad(self):
+        # check for backward
+        self.grad_in = torch.ones_like(self.fwd_out).to(torch.device(self.device))
+
+    def backward(self):
+        logging.debug("Op Forward + Backward")
+        self.fwd_out.backward(self.grad_in)
 
 
 register_operator("split_table_batched_embedding_bags", SplitTableBatchedEmbeddingOp())

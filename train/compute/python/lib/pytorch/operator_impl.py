@@ -18,7 +18,7 @@ class InPlaceOpByName(OperatorInterface):
         super(InPlaceOpByName, self).__init__()
         self.func_name: str = func_name
         self.fwd_out: torch.tensor = None
-        self.grad = None
+        self.grad_in: torch.tensor = None
 
     def forward(self, *args, **kwargs):
         # The first arg is assume to be the inplace value, pass on the rest of
@@ -26,10 +26,10 @@ class InPlaceOpByName(OperatorInterface):
         self.fwd_out = getattr(args[0], self.func_name)(*args[1:], **kwargs)
 
     def create_grad(self):
-        self.grad = torch.ones_like(self.fwd_out)
+        self.grad_in = torch.ones_like(self.fwd_out)
 
     def backward(self):
-        self.fwd_result.backward(self.grad)
+        self.fwd_out.backward(self.grad_in)
 
 
 class CallableOp(OperatorInterface):
@@ -44,14 +44,14 @@ class CallableOp(OperatorInterface):
         super(CallableOp, self).__init__()
         self.func: Callable = func
         self.fwd_out: torch.tensor = None
-        self.grad = None
+        self.grad_in = None
 
     def forward(self, *args, **kwargs):
-        self.fwd_result = self.func(*args, **kwargs)
+        self.fwd_out = self.func(*args, **kwargs)
         return self.fwd_out
 
     def create_grad(self):
-        self.grad = torch.ones_like(self.fwd_out)
+        self.grad_in = torch.ones_like(self.fwd_out)
 
-    def backward(self, grad):
-        self.fwd_result.backward(self.grad)
+    def backward(self):
+        self.fwd_out.backward(self.grad_in)

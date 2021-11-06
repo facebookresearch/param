@@ -13,7 +13,7 @@ class OperatorInterface(metaclass=abc.ABCMeta):
         )
 
     def __init__(self):
-        pass
+        self.device = None
 
     # Construct and initialize the operator.
     def build(self, *args, **kwargs):

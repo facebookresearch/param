@@ -7,16 +7,17 @@ package_base = "param_bench.train.compute.python"
 package_dir_map = {
   f"{package_base}": ".",
   f"{package_base}.lib": "lib",
-  f"{package_base}.workloads": "workloads",
+  f"{package_base}.lib.pytorch": "lib/pytorch",
+  f"{package_base}.workloads.pytorch": "workloads/pytorch",
 }
 
 packages = list(package_dir_map)
 
 setup(
-    name='parambench-train-compute',
-    version='0.0.1',
-    author='Louis Feng',
-    author_email='lofe@fb.com',
+    name="parambench-train-compute",
+    version="0.0.1",
+    author="Louis Feng",
+    author_email="lofe@fb.com",
     packages=packages,
     package_dir=package_dir_map
 )

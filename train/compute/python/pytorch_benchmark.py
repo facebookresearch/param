@@ -6,15 +6,12 @@ from .lib.init_helper import init_logging, load_modules
 init_logging()
 
 import argparse
-from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 import torch
-from caffe2.python import core
-from torch.autograd.profiler import record_function
 
 from .lib import pytorch as lib_pytorch
 from .lib.config import BenchmarkConfig
-from .lib.pytorch.benchmark import run_op
+from .lib.pytorch.benchmark import run_op, ExecutionPass
 from .workloads import pytorch as workloads_pytorch
 
 
@@ -27,6 +24,9 @@ def main():
         "--metric", action="store_true", help="The metric collection mode."
     )
     parser.add_argument(
+        "--backward", action="store_true", help="The include backward pass."
+    )
+    parser.add_argument(
         "--device", type=str, default="cpu", help="device of execution."
     )
     parser.add_argument(
@@ -36,7 +36,7 @@ def main():
         help="json file to write log info.",
     )
     parser.add_argument(
-        "-v", "--verbose", help="increase output verbosity", action="store_true"
+        "-v", "--verbose", action="store_true", help="increase output verbosity"
     )
 
     args = parser.parse_args()
@@ -53,12 +53,24 @@ def main():
     bench_config = BenchmarkConfig(args.device)
     bench_config.load_json_file(args.config)
 
-    out_file_name = args.out_file_name
     if args.metric:
-        out_file_name = args.out_file_name + ".metric_config"
+        out_file_name = args.out_file_name + ".metric"
+        logging.info(f"Benchmark mode: metric collection")
+    else:
+        out_file_name = args.out_file_name
+        logging.info(f"Benchmark mode: latency collection")
+
 
     # We don't want too many threads for stable benchmarks
     torch.set_num_threads(1)
+
+    if args.backward:
+        pass_type = ExecutionPass.BACKWARD
+        logging.info(f"Pass: FORWARD and BACKWARD")
+    else:
+        pass_type = ExecutionPass.FORWARD
+        logging.info(f"Pass: FORWARD")
+
 
     with open(out_file_name, "w") as out_file:
         for op_config in bench_config.op_configs:
@@ -67,8 +79,9 @@ def main():
                 args.warmup,
                 args.iter,
                 args.device,
-                out_file,
+                pass_type,
                 args.metric,
+                out_file
             )
         logging.info(f"Log written to {args.out_file_name}")
 
