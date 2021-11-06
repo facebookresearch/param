@@ -72,8 +72,9 @@ def collect_metric(
         torch.cuda.nvtx.range_pop()
         stats = {
             "name": op_name,
-            "pass": pass_name,
             "id": id,
+            "pass": pass_name,
+            "device": device,
             "iter": iterations,
             "config": config,
         }
@@ -125,8 +126,9 @@ def measure_latency(
     logging.info(f"    tot: {total:.6f} sec")
     stats = {
         "name": op_name,
-        "pass": pass_name,
         "id": id,
+        "pass": pass_name,
+        "device": device,
         "time": time_records,
         "iter": iterations,
         "config": config,
