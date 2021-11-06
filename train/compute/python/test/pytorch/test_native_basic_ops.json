@@ -250,7 +250,7 @@
       }
     ]
   },
-  "torch.relu": {
+  "torch.nn.functional.relu": {
     "input_data_generator": "PyTorch::DefaultDataGenerator",
     "config": [
       {

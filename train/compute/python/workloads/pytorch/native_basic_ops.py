@@ -26,7 +26,7 @@ callable_ops: Dict[str, OperatorInterface] = {
     "torch.mean": CallableOp(torch.mean),
     "torch.mm": CallableOp(torch.mm),
     "torch.mul": CallableOp(torch.mul),
-    "torch.relu": CallableOp(torch.nn.functional.relu),
+    "torch.nn.functional.relu": CallableOp(torch.nn.functional.relu),
     "torch.reshape": CallableOp(torch.reshape),
 }
 register_operators(callable_ops)
