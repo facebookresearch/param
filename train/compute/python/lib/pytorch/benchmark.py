@@ -14,15 +14,24 @@ from ..operator import OperatorInterface
 from .timer import Timer
 
 
+
 @enum.unique
 class ExecutionPass(enum.Enum):
     FORWARD = 0
     BACKWARD = 1
 
 
+
 def _clear_cache():
     # TODO lofe: update L2 cache size depending on GPU
-    _ = torch.zeros(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
+    L2_cache_size = {
+        70: 6*1024*1024,   # V100 6 MB L2 cache
+        80: 40*1024*1024   # A100 40 MB L2 cache
+    }
+    capability = torch.cuda.get_device_capability()
+    device_type = capability[0]*10 + capability[1]
+    _ = torch.zeros(L2_cache_size[device_type] // 4).float() * 2
+    del _
     torch.cuda.empty_cache()
 
 
