@@ -14,22 +14,20 @@ from ..operator import OperatorInterface
 from .timer import Timer
 
 
-
 @enum.unique
 class ExecutionPass(enum.Enum):
     FORWARD = 0
     BACKWARD = 1
 
 
-
 def _clear_cache():
     # TODO lofe: update L2 cache size depending on GPU
     L2_cache_size = {
-        70: 6*1024*1024,   # V100 6 MB L2 cache
-        80: 40*1024*1024   # A100 40 MB L2 cache
+        70: 6 * 1024 * 1024,  # V100 6 MB L2 cache
+        80: 40 * 1024 * 1024,  # A100 40 MB L2 cache
     }
     capability = torch.cuda.get_device_capability()
-    device_type = capability[0]*10 + capability[1]
+    device_type = capability[0] * 10 + capability[1]
     _ = torch.zeros(L2_cache_size[device_type] // 4).float() * 2
     del _
     torch.cuda.empty_cache()
@@ -68,7 +66,7 @@ def collect_metric(
     if device.startswith("cuda"):
         # use nvtx allows us to collect only this part of kernel executions
         # and match op and arg variants to metrics.
-        logging.info(f"Running {op_name}[{id}] for {iterations} CUDA metric iterations")
+        logging.info(f"Running {op_name}[{id}] ({pass_name}) for {iterations} metric collection iterations")
         torch.cuda.nvtx.range_push("op_bench")
         for _ in range(iterations):
             # flush cache
@@ -102,7 +100,7 @@ def warmup(
     device: str,
     warmup_count: int,
 ):
-    logging.debug(f"Running {op_name}[{id}] for {warmup_count} warm up iterations")
+    logging.info(f"Running {op_name}[{id}] for {warmup_count} warm up iterations")
     # warm up
     time_records = benchmark_op(
         f"{op_name}[{id}]", op, args, kwargs, device, warmup_count
@@ -122,7 +120,7 @@ def measure_latency(
     config: Dict[str, Any],
     out_stream: TextIO,
 ):
-    logging.debug(f"Running {op_name}[{id}] for {iterations} measured iterations")
+    logging.info(f"Running {op_name}[{id}] ({pass_name}) for {iterations} measured iterations")
     torch.cuda.nvtx.range_push("op_bench")
     time_records = benchmark_op(
         f"{op_name}[{id}]", op, args, kwargs, device, iterations
