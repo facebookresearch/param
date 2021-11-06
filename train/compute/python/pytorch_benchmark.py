@@ -30,10 +30,10 @@ def main():
         "--device", type=str, default="cpu", help="device of execution."
     )
     parser.add_argument(
-        "--out-file-name",
+        "--output-prefix",
         type=str,
-        default="op_bench_log.json",
-        help="json file to write log info.",
+        default="benchmark_result",
+        help="file name prefix to write log info.",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="increase output verbosity"
@@ -54,10 +54,10 @@ def main():
     bench_config.load_json_file(args.config)
 
     if args.metric:
-        out_file_name = args.out_file_name + ".metric"
+        out_file_name = f"{args.output_prefix}.metric.json"
         logging.info(f"Benchmark mode: metric collection")
     else:
-        out_file_name = args.out_file_name
+        out_file_name = f"{args.output_prefix}.json"
         logging.info(f"Benchmark mode: latency collection")
 
 
@@ -83,7 +83,7 @@ def main():
                 args.metric,
                 out_file
             )
-        logging.info(f"Log written to {args.out_file_name}")
+        logging.info(f"Log written to {out_file_name}")
 
 
 if __name__ == "__main__":

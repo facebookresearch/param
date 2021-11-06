@@ -64,9 +64,7 @@
               {
                 "name": "pooling_factor",
                 "type": "int",
-                "value": 1,
-                "indices_tensor": "/home/lofe/sftp/data/share/embedding_table/yuzhen/dumped_data/2021-10-12/single/116_11_indices.pt",
-                "offsets_tensor": "/home/lofe/sftp/data/share/embedding_table/yuzhen/dumped_data/2021-10-12/single/116_11_offsets.pt"
+                "value": 50
               }
             ]
           }
