@@ -66,7 +66,7 @@ def collect_metric(
     if device.startswith("cuda"):
         # use nvtx allows us to collect only this part of kernel executions
         # and match op and arg variants to metrics.
-        logging.info(f"Running {op_name}[{id}] ({pass_name}) for {iterations} metric collection iterations")
+        logging.info(f"  Running {op_name}[{id}] ({pass_name}) for {iterations} metric collection iterations")
         torch.cuda.nvtx.range_push("op_bench")
         for _ in range(iterations):
             # flush cache
@@ -100,7 +100,7 @@ def warmup(
     device: str,
     warmup_count: int,
 ):
-    logging.info(f"Running {op_name}[{id}] for {warmup_count} warm up iterations")
+    logging.info(f"  Running {op_name}[{id}] for {warmup_count} warm up iterations")
     # warm up
     time_records = benchmark_op(
         f"{op_name}[{id}]", op, args, kwargs, device, warmup_count
@@ -120,7 +120,7 @@ def measure_latency(
     config: Dict[str, Any],
     out_stream: TextIO,
 ):
-    logging.info(f"Running {op_name}[{id}] ({pass_name}) for {iterations} measured iterations")
+    logging.info(f"  Running {op_name}[{id}] ({pass_name}) for {iterations} measured iterations")
     torch.cuda.nvtx.range_push("op_bench")
     time_records = benchmark_op(
         f"{op_name}[{id}]", op, args, kwargs, device, iterations

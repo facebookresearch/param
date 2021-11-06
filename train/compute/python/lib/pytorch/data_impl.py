@@ -75,6 +75,10 @@ def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
             result.append(arg_factory[item["type"]](item))
         return result
 
+    def create_tuple(attr: List[Any]):
+        result = create_genericlist(attr)
+        return tuple(result)
+
     # Map of argument types to the create methods.
     arg_factory: Dict[str, Callable] = {
         "tensor": create_tensor,
@@ -87,6 +91,7 @@ def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
         "device": create_device,
         "str": create_str,
         "genericlist": create_genericlist,
+        "tuple": create_tuple,
     }
     return arg_factory[arg["type"]](arg)
 

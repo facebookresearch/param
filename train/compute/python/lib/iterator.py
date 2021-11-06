@@ -141,6 +141,18 @@ def create_range_iter(arg: Dict[str, Any]):
                 return TableProduct(result)
         return result
 
+    def create_tuple(attr: List[Any]):
+        result = copy.copy(attr)
+        if ATTR_RANGE in attr:
+            ranges = set(attr[ATTR_RANGE])
+            if "value" in ranges:
+                values = []
+                for item in attr["value"]:
+                    values.append(arg_factory_iter[item["type"]](item))
+                result["value"] = ListProduct(values)
+                return TableProduct(result)
+        return result
+
     arg_factory_iter: Dict[str, Callable] = {
         "tensor": create_tensor,
         "float": create_float,
@@ -154,6 +166,7 @@ def create_range_iter(arg: Dict[str, Any]):
         "shape": create_shape,
         "device": create_device,
         "genericlist": create_genericlist,
+        "tuple": create_tuple,
     }
     return arg_factory_iter[arg["type"]](arg)
 
