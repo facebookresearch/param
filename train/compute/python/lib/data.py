@@ -1,6 +1,6 @@
 import abc
 import logging
-from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
+from typing import Dict, Type
 
 
 class DataGenerator(metaclass=abc.ABCMeta):

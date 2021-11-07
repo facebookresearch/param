@@ -1,7 +1,6 @@
-import copy
-from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
+from typing import Dict, Set, List, Any
 
-def full_range(a: int, b: int, s: int):
+def full_range(a: int, b: int, s: int = 1):
     '''
     Returns inclusive range: a <= x <= b, by step of s
     '''
@@ -30,9 +29,21 @@ class IterableList:
 class ListProduct:
     '''
     ListProduct takes a list of repeatable iterables (like range()), and
-    generates the Cartesian product of the iterables. This interface wraps the
-    Iterator so that a new iterator is created once the generator is
-    exhausted. This allows repeatable iterations, i.e.
+    generates the Cartesian product of the iterables.
+
+    Important:
+    The list returned will be mutated in place for each iteration. If the
+    user code wants to keep a copy or modify the generated list, it should
+    make a copy of the returned result using `copy.deepcopy(generated_list)`.
+    Example:
+    ```
+    result = []
+    for gen_list in ListProduct(iter_list):
+        result.append(copy.deepcopy(gen_list))
+    ```
+
+    This interface wraps the Iterator so that a new iterator is created once
+    the generator is exhausted. This allows repeatable iterations, i.e.
 
     iter_list_1 = [range(2, 6, 2), range(1, 3, 1), range(2, 4, 1)]
     iter_list_2 = [range(2, 6, 2), range(1, 3, 1)]

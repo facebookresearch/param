@@ -1,8 +1,6 @@
-import argparse, json, os, sys
+import argparse, os
 import logging
 import subprocess
-import time
-from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 FORMAT = "[%(asctime)s] %(filename)s [%(levelname)s]: %(message)s"
 logging.basicConfig(format=FORMAT)

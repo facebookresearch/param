@@ -4,7 +4,6 @@ import torch
 
 from ...lib.operator import (
     OperatorInterface,
-    register_operator,
     register_operators,
 )
 from ...lib.pytorch.operator_impl import CallableOp, InPlaceOpByName

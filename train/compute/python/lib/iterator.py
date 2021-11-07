@@ -1,7 +1,7 @@
 import abc
 import copy
 import logging
-from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
+from typing import Dict, List, Any, Callable, Type
 
 from .generator import full_range, IterableList, ListProduct, TableProduct
 

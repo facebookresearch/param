@@ -5,6 +5,7 @@ import random
 from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
 
 import torch
+
 from ..data import DataGenerator, register_data_generator
 from ..generator import full_range, IterableList, ListProduct, TableProduct
 
@@ -15,10 +16,12 @@ pytorch_dtype_map: Dict[str, torch.dtype] = {
     "long": torch.int64,
 }
 
+
 def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
     """
     Given an arg configuration, materialize the test data for that arg.
     """
+
     def create_tensor(attr: Dict[str, Any]):
         shape = attr["shape"]
         if len(shape) > 0:
@@ -94,6 +97,7 @@ def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
         "tuple": create_tuple,
     }
     return arg_factory[arg["type"]](arg)
+
 
 # DefaultDataGenerator
 class DefaultDataGenerator(DataGenerator):

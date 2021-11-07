@@ -60,7 +60,6 @@ def main():
         out_file_name = f"{args.output_prefix}.json"
         logging.info(f"Benchmark mode: latency collection")
 
-
     # We don't want too many threads for stable benchmarks
     torch.set_num_threads(1)
 
@@ -71,7 +70,6 @@ def main():
         pass_type = ExecutionPass.FORWARD
         logging.info(f"Pass: FORWARD")
 
-
     with open(out_file_name, "w") as out_file:
         for op_config in bench_config.op_configs:
             run_op(
@@ -81,7 +79,7 @@ def main():
                 args.device,
                 pass_type,
                 args.metric,
-                out_file
+                out_file,
             )
         logging.info(f"Log written to {out_file_name}")
 
