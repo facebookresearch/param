@@ -221,7 +221,7 @@ def run_op(
     for config in op_config.config:
         if "input" not in config:
             logging.error(
-                f"{op_config.name} has no input configureations defined, skipped."
+                f"{op_config.name} has no input configurations defined, skipped."
             )
             return
 
@@ -248,7 +248,6 @@ def run_op(
                 op_config.op.cleanup()
                 if device.startswith("cuda"):
                     torch.cuda.empty_cache()
-                print(build_args)
                 op_config.op.build(*build_args, **build_kwargs)
                 build_input_config["build"] = build_config
                 build_input_config["input"] = config["input"]

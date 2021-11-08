@@ -17,17 +17,12 @@
               {
                 "name": "rows",
                 "type": "int",
-                "value": 22858213
+                "value": 22858
               },
               {
                 "name": "dim",
                 "type": "int",
                 "value": 128
-              },
-              {
-                "type": "int",
-                "name": "location",
-                "value": 0
               },
               {
                 "type": "int",
@@ -59,7 +54,7 @@
               {
                 "type": "int",
                 "name": "batch_size",
-                "value": 65536
+                "value": 512
               },
               {
                 "name": "pooling_factor",

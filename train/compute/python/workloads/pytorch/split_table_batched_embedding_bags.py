@@ -54,8 +54,8 @@ class SplitTableBatchedEmbeddingInputIterator(ConfigIterator):
         self.num_tables = build_configs["args"][0]
         self.rows = build_configs["args"][1]
         self.dim = build_configs["args"][2]
-        self.weighted = build_configs["args"][5]
-        self.weights_precision = build_configs["args"][6]
+        self.weighted = build_configs["args"][4]
+        self.weights_precision = build_configs["args"][5]
         self.generator = self._generator()
 
     def _generator(self):
@@ -260,14 +260,13 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
         num_tables: int,
         rows: int,
         dims: int,
-        location: int,
         pooling: int,
         weighted: bool,
         weights_precision: str,
         optimizer: str
     ):
         logging.debug(
-            f"Op build {num_tables}, {rows}, {dims}, {location}, {pooling}, {weighted}, {weights_precision}, {optimizer}"
+            f"Op build {num_tables}, {rows}, {dims}, {pooling}, {weighted}, {weights_precision}, {optimizer}"
         )
         if num_tables == 1:
             rows_list = [rows]
@@ -277,10 +276,13 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
             dims_list = dims
         if self.device.startswith("cpu"):
             compute_device = ComputeDevice.CPU
+            location = EmbeddingLocation.HOST
         elif self.device.startswith("cuda"):
             compute_device = ComputeDevice.CUDA
+            location = EmbeddingLocation.DEVICE
         else:
             raise ValueError(f"Unknown compute device {self.device}")
+
 
         # split_table op options from actual runs of
         # caffe2/torch/fb/module_factory/proxy_module/grouped_sharded_embedding_bag.py
@@ -290,7 +292,7 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
                     (
                         rows_list[i],
                         dims_list[i],
-                        EmbeddingLocation(location),
+                        location,
                         compute_device,
                     )
                     for i in range(num_tables)
