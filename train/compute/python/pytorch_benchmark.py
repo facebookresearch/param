@@ -21,9 +21,6 @@ def main():
     parser.add_argument("--warmup", type=int, default=5, help="number of iterations.")
     parser.add_argument("--iter", type=int, default=1, help="number of iterations.")
     parser.add_argument(
-        "--metric", action="store_true", help="The metric collection mode."
-    )
-    parser.add_argument(
         "--backward", action="store_true", help="The include backward pass."
     )
     parser.add_argument(
@@ -53,12 +50,7 @@ def main():
     bench_config = BenchmarkConfig(args.device)
     bench_config.load_json_file(args.config)
 
-    if args.metric:
-        out_file_name = f"{args.output_prefix}.metric.json"
-        logging.info(f"Benchmark mode: metric collection")
-    else:
-        out_file_name = f"{args.output_prefix}.json"
-        logging.info(f"Benchmark mode: latency collection")
+    out_file_name = f"{args.output_prefix}.json"
 
     # We don't want too many threads for stable benchmarks
     torch.set_num_threads(1)
@@ -78,7 +70,6 @@ def main():
                 args.iter,
                 args.device,
                 pass_type,
-                args.metric,
                 out_file,
             )
         logging.info(f"Log written to {out_file_name}")

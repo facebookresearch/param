@@ -6,6 +6,8 @@ package_base = "param_bench.train.compute.python"
 # "install_destination_package_path": "source_dir_path"
 package_dir_map = {
     f"{package_base}": ".",
+    f"{package_base}.examples": "examples",
+    f"{package_base}.examples.pytorch": "examples/pytorch",
     f"{package_base}.lib": "lib",
     f"{package_base}.lib.pytorch": "lib/pytorch",
     f"{package_base}.test": "test",

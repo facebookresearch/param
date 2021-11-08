@@ -1,3 +1,4 @@
+from typing import List
 import time
 
 import torch
@@ -33,3 +34,8 @@ class Timer:
     # returns time in seconds
     def elapsed_time(self):
         return self.end_time - self.start_time
+
+
+def format_time_list(time_records: List[float], decimals: int = 6):
+    format_str = f'{{0:.{decimals}f}}'
+    return f"[{', '.join([format_str.format(i) for i in time_records])}]"

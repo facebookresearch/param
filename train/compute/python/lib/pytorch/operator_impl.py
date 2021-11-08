@@ -1,4 +1,4 @@
-from typing import Dict, Set, Tuple, List, Any, Callable, Iterable, Type
+from typing import Callable
 
 import torch
 
@@ -26,7 +26,7 @@ class InPlaceOpByName(OperatorInterface):
         self.fwd_out = getattr(args[0], self.func_name)(*args[1:], **kwargs)
 
     def create_grad(self):
-        self.grad_in = torch.ones_like(self.fwd_out)
+        self.grad_in = torch.ones_like(self.fwd_out, device=torch.device(self.device))
 
     def backward(self):
         self.fwd_out.backward(self.grad_in)
@@ -51,7 +51,7 @@ class CallableOp(OperatorInterface):
         return self.fwd_out
 
     def create_grad(self):
-        self.grad_in = torch.ones_like(self.fwd_out)
+        self.grad_in = torch.ones_like(self.fwd_out, device=torch.device(self.device))
 
     def backward(self):
         self.fwd_out.backward(self.grad_in)
