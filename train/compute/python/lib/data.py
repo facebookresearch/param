@@ -1,7 +1,9 @@
 import abc
-import logging
 from typing import Dict, Type
 
+from .init_helper import get_logger
+
+logger = get_logger()
 
 class DataGenerator(metaclass=abc.ABCMeta):
     @classmethod
@@ -23,7 +25,7 @@ class DataGenerator(metaclass=abc.ABCMeta):
 
 def register_data_generator(name: str, data_gen_class: Type[DataGenerator]):
     global data_generator_map
-    logging.debug(f"register data generator: {name}")
+    logger.debug(f"register data generator: {name}")
     if name not in data_generator_map:
         data_generator_map[name] = data_gen_class
     else:

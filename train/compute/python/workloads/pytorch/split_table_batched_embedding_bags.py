@@ -1,6 +1,5 @@
 import copy
 import gc
-import logging
 import os
 from typing import Any
 from typing import (
@@ -24,6 +23,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops import (
 
 from ...lib.data import register_data_generator
 from ...lib.generator import full_range, TableProduct, IterableList, ListProduct
+from ...lib.init_helper import get_logger
 from ...lib.iterator import (
     ConfigIterator,
     remove_meta_attr,
@@ -32,10 +32,7 @@ from ...lib.iterator import (
 )
 from ...lib.operator import OperatorInterface, register_operator
 
-FORMAT = "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
-logging.basicConfig(format=FORMAT)
-logging.getLogger().setLevel(logging.INFO)
-# torch.ops.load_library("//caffe2/torch/fb/sparsenn:sparsenn_operators")
+logger = get_logger()
 
 
 class SplitTableBatchedEmbeddingInputIterator(ConfigIterator):
@@ -48,9 +45,9 @@ class SplitTableBatchedEmbeddingInputIterator(ConfigIterator):
         super(SplitTableBatchedEmbeddingInputIterator, self).__init__(
             configs, key, device
         )
-        logging.debug(configs)
+        logger.debug(configs)
         build_configs = configs["build"]
-        logging.debug(build_configs)
+        logger.debug(build_configs)
         self.num_tables = build_configs["args"][0]
         self.rows = build_configs["args"][1]
         self.dim = build_configs["args"][2]
@@ -73,7 +70,7 @@ class SplitTableBatchedEmbeddingInputIterator(ConfigIterator):
 
             config_id = 0
             for arg_config in ListProduct(args):
-                logging.debug(arg_config)
+                logger.debug(arg_config)
                 batch_size = arg_config[0]
                 pooling_factor = arg_config[1]
                 result = {
@@ -142,15 +139,15 @@ def generate_requests(
         torch.randn(indices_size, dtype=torch.float32) if weighted else None
     )
 
-    logging.debug(indices)
-    logging.debug(offsets)
-    logging.debug(weights_tensor)
+    logger.debug(indices)
+    logger.debug(offsets)
+    logger.debug(weights_tensor)
     return (indices, offsets, weights_tensor)
 
 
 class SplitTableBatchedEmbeddingInputDataGenerator:
     def get_data(self, config, device):
-        logging.debug(config)
+        logger.debug(config)
         # batch size * pooling_factor
         num_tables = config["args"][0]["value"]
         if num_tables > 1:
@@ -171,7 +168,7 @@ class SplitTableBatchedEmbeddingInputDataGenerator:
         distribution = os.getenv("split_embedding_distribution")
         if distribution is None:
             distribution = 1
-        logging.debug(f"distribution = {distribution}")
+        logger.debug(f"distribution = {distribution}")
 
         target_device = torch.device(device)
 
@@ -191,13 +188,15 @@ class SplitTableBatchedEmbeddingInputDataGenerator:
             if weighted:
                 weights_file = os.getenv("split_embedding_weights")
 
-        logging.debug(f"indices_file: {indices_file}, offsets_file: {offsets_file}")
+        logger.debug(f"indices_file: {indices_file}, offsets_file: {offsets_file}")
         if indices_file is not None and offsets_file is not None:
             indices_tensor = torch.load(indices_file, map_location=target_device)
             offsets_tensor = torch.load(offsets_file, map_location=target_device)
             per_sample_weights_tensor = None
             if weights_file:
-                per_sample_weights_tensor = torch.load(weights_file, map_location=target_device)
+                per_sample_weights_tensor = torch.load(
+                    weights_file, map_location=target_device
+                )
         else:
             for i in range(num_tables):
                 indices, offsets, per_sample_weights = generate_requests(
@@ -223,10 +222,10 @@ class SplitTableBatchedEmbeddingInputDataGenerator:
                 torch.cat([t for t in per_sample_weights_list]) if weighted else None
             )
 
-        logging.debug(f"indices: {indices_tensor.shape}, {indices_tensor}")
-        logging.debug(f"offsets: {offsets_tensor.shape}, {offsets_tensor}")
+        logger.debug(f"indices: {indices_tensor.shape}, {indices_tensor}")
+        logger.debug(f"offsets: {offsets_tensor.shape}, {offsets_tensor}")
         if per_sample_weights_tensor is not None:
-            logging.debug(
+            logger.debug(
                 f"per_sample_weights: {per_sample_weights_tensor.shape}, {per_sample_weights_tensor}"
             )
 
@@ -263,9 +262,9 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
         pooling: int,
         weighted: bool,
         weights_precision: str,
-        optimizer: str
+        optimizer: str,
     ):
-        logging.debug(
+        logger.debug(
             f"Op build {num_tables}, {rows}, {dims}, {pooling}, {weighted}, {weights_precision}, {optimizer}"
         )
         if num_tables == 1:
@@ -282,7 +281,6 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
             location = EmbeddingLocation.DEVICE
         else:
             raise ValueError(f"Unknown compute device {self.device}")
-
 
         # split_table op options from actual runs of
         # caffe2/torch/fb/module_factory/proxy_module/grouped_sharded_embedding_bag.py
@@ -306,27 +304,22 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
                 cache_reserved_memory=12.0,
             )
         )
-        logging.debug(
-            f"Op built: {self.op.weights_precision} {self.op.embedding_specs}"
-        )
+        logger.debug(f"Op built: {self.op.weights_precision} {self.op.embedding_specs}")
 
     def cleanup(self):
-        logging.debug("Op cleanup")
+        logger.debug("Op cleanup")
         self.op = None
         self.grad_in = None
         self.fwd_out = None
         gc.collect()
 
     def forward(self, *args, **kwargs):
-        logging.debug("Op Forward")
         self.fwd_out = self.op.forward(args[0], args[1], args[2])
 
     def create_grad(self):
-        # check for backward
-        self.grad_in = torch.ones_like(self.fwd_out).to(torch.device(self.device))
+        self.grad_in = torch.ones_like(self.fwd_out, device=torch.device(self.device))
 
     def backward(self):
-        logging.debug("Op Forward + Backward")
         self.fwd_out.backward(self.grad_in)
 
 

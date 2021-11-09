@@ -3,10 +3,23 @@ import logging
 import pkgutil
 
 
-def init_logging():
+logger = None
+
+def get_logger():
+    global logger
+    if logger:
+        return logger
+    else:
+        init_logging(logging.INFO)
+
+
+def init_logging(log_level):
+    global logger
     FORMAT = "[%(asctime)s] %(filename)s:%(lineno)-4d [%(levelname)s]: %(message)s"
     logging.basicConfig(format=FORMAT)
-    logging.getLogger().setLevel(logging.INFO)
+    logger = logging.getLogger("param_bench")
+    logger.setLevel(log_level)
+    return logger
 
 
 def load_modules(package):
@@ -16,8 +29,8 @@ def load_modules(package):
     '''
     modules = pkgutil.iter_modules(package.__path__, package.__name__ + ".")
     for _, name, _ in modules:
-        logging.debug(f"Loading module: {name}")
+        logger.debug(f"Loading module: {name}")
         try:
             importlib.import_module(name)
         except ModuleNotFoundError as error:
-            logging.error(f"Failed to import module: {name}")
+            logger.error(f"Failed to import module: {name}")

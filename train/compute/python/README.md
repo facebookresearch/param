@@ -32,23 +32,41 @@ The bundled tool scripts such as [`pytorch_benchmark.py`](pytorch_benchmark.py) 
 Without installing the package, you can run a tool script as a module in the source directory:
 ```shell
 # Inside dir "param/train/compute"
-> python -m python.pytorch_benchmark --config python/test/pytorch/test_op.json
+> python -m python.pytorch_benchmark -c python/examples/pytorch/configs/simple_add.json
 ```
-
-After install `parambench-train-compute` as a package using the `setuptools`, it can be run as:
+However, this method may conflict with other packages (such as `fbgemm_gpu.split_table_batched_embeddings_ops`) under `python` path. A more reliable ways to run the benchmarks is install `parambench-train-compute` as a package using the `setuptools`, it can be run as:
 ```shell
 # Run benchmark tool script module
-> python -m param_bench.train.compute.python.pytorch_benchmark --config test/pytorch/test_op.json
+> python -m param_bench.train.compute.python.pytorch_benchmark -c examples/pytorch/configs/simple_add.json
 ```
 ### Benchmark Library
 As a library, it can be used as any regular Python package:
 ```python
 from param_bench.train.compute.python.lib.config import BenchmarkConfig
 ```
+A complete example to generate benchmark config, run the benchmark, then get the results can be found in [`run_op.py`](examples/pytorch/run_op.py)
 
 ## PyTorch Benchmark Options
 ```shell
-python -m param_bench.train.compute.python.pytorch_benchmark [-h] --config CONFIG [--warmup WARMUP] [--iter ITER] [--metric] [--device DEVICE] [--out-file-name OUT_FILE_NAME] [-v]
+> python -m param_bench.train.compute.python.pytorch_benchmark -h
+usage: pytorch_benchmark.py [-h] -c CONFIG [-w WARMUP] [-i ITERATION] [-b] [-d DEVICE] [-o OUTPUT_PREFIX] [-v]
+
+Microbenchmarks
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -c CONFIG, --config CONFIG
+                        The benchmark config file.
+  -w WARMUP, --warmup WARMUP
+                        Number of warm up iterations.
+  -i ITERATION, --iteration ITERATION
+                        Number of benchmark iterations.
+  -b, --backward        Include backward pass.
+  -d DEVICE, --device DEVICE
+                        Target device for benchmark.
+  -o OUTPUT_PREFIX, --output-prefix OUTPUT_PREFIX
+                        File name prefix to write benchmark results.
+  -v, --verbose         Increase log output verbosity.
 ```
 
 ## Benchmark Configuration File

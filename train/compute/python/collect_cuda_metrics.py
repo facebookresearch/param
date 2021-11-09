@@ -2,9 +2,11 @@ import argparse, os
 import logging
 import subprocess
 
-FORMAT = "[%(asctime)s] %(filename)s [%(levelname)s]: %(message)s"
-logging.basicConfig(format=FORMAT)
-logging.getLogger().setLevel(logging.INFO)
+from .lib.init_helper import init_logging
+
+# Initialize logging format before loading all other modules
+logger = init_logging(logging.INFO)
+
 
 # default ncu path
 NCU_BIN: str = "/usr/local/NVIDIA-Nsight-Compute-2021.2/ncu"
@@ -20,7 +22,7 @@ def run_ncu(args: str, metrics: str, out_prefix: str):
     )
 
     cmd = [ncu_bin] + ncu_options.split(" ") + args.split(" ")
-    logging.info("Running: " + " ".join(cmd))
+    logger.info("Running: " + " ".join(cmd))
     with subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,

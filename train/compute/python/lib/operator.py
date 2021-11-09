@@ -2,6 +2,10 @@ import abc
 import logging
 from typing import Dict, Type
 
+from .init_helper import get_logger
+
+logger = get_logger()
+
 
 class OperatorInterface(metaclass=abc.ABCMeta):
     @classmethod
@@ -36,7 +40,7 @@ class OperatorInterface(metaclass=abc.ABCMeta):
 
 def register_operator(name: str, operator_class: Type[OperatorInterface]):
     global op_map
-    logging.debug(f"register op: {name}")
+    logger.debug(f"register op: {name}")
     if name not in op_map:
         op_map[name] = operator_class
     else:
@@ -46,7 +50,7 @@ def register_operator(name: str, operator_class: Type[OperatorInterface]):
 def register_operators(op_dict: Dict[str, Type[OperatorInterface]]):
     global op_map
     for name, operator_class in op_dict.items():
-        logging.debug(f"register op: {name}")
+        logger.debug(f"register op: {name}")
         if name not in op_map:
             op_map[name] = operator_class
         else:

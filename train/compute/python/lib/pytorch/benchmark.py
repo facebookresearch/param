@@ -1,6 +1,5 @@
 import enum
 import json
-import logging
 from typing import Any
 from typing import Callable
 from typing import Dict
@@ -9,9 +8,12 @@ from typing import TextIO
 import torch
 
 from ..config import OperatorConfig
+from ..init_helper import get_logger
 from ..iterator import ConfigIterator
 from ..operator import OperatorInterface
 from .timer import Timer, format_time_list
+
+logger = get_logger()
 
 try:
     import nvtx
@@ -19,7 +21,7 @@ try:
     HAS_NVTX = True
 except ModuleNotFoundError as error:
     HAS_NVTX = False
-    logging.warn(f"Failed to import NVTX, will not emit NVTX range info.")
+    logger.warn(f"Failed to import NVTX, will not emit NVTX range info.")
 
 
 @enum.unique
@@ -43,7 +45,7 @@ def _clear_cache():
 
 
 def benchmark_op(tag: str, id: str, op: Callable, args: Any, kwargs: Any, device: str):
-    logging.debug(f"running {tag}")
+    logger.debug(f"running {tag}")
 
     # flush cache
     if device.startswith("cuda"):
@@ -92,15 +94,16 @@ def warmup(
     warmup_count: int,
 ):
     op_id = f"[{op_name}][{id}]"
-    logging.info(f"  Running {op_id} for {warmup_count} warm up iterations")
+    logger.info(f"  Running {op_id} for {warmup_count} warm up iterations")
 
     # warm up
     fw_time_records, bw_time_records = benchmark_loop(
         "warmup", warmup_count, op_id, pass_type, op, args, kwargs, device
     )
 
-    logging.info(f"    fw_warm: {format_time_list(fw_time_records, 6)}")
-    logging.info(f"    bw_warm: {format_time_list(bw_time_records, 6)}")
+    logger.info(f"    fw_warm: {format_time_list(fw_time_records, 6)}")
+    if pass_type == ExecutionPass.BACKWARD:
+        logger.info(f"    bw_warm: {format_time_list(bw_time_records, 6)}")
 
 
 def collect_metric(
@@ -118,9 +121,9 @@ def collect_metric(
     def output_stats(time_records, pass_name):
         nonlocal op_name, id, device, iterations, config, out_stream
         total = sum(time_records)
-        logging.info(f"    time: {format_time_list(time_records, 6)}")
-        logging.info(f"    avg: {total/iterations:.6f} sec")
-        logging.info(f"    tot: {total:.6f} sec")
+        logger.info(f"    time: {format_time_list(time_records, 6)}")
+        logger.info(f"    avg: {total/iterations:.6f} sec")
+        logger.info(f"    tot: {total:.6f} sec")
         stats = {
             "name": op_name,
             "id": id,
@@ -134,18 +137,18 @@ def collect_metric(
         out_stream.flush()
 
     op_id = f"[{op_name}][{id}]"
-    logging.info(f"  Running {op_id} for {iterations} measured iterations")
+    logger.info(f"  Running {op_id} for {iterations} measured iterations")
 
     fw_time_records, bw_time_records = benchmark_loop(
         "metric", iterations, op_id, pass_type, op, args, kwargs, device
     )
 
     pass_name = str(ExecutionPass.FORWARD)
-    logging.info(f"    pass: {pass_name}")
+    logger.info(f"    pass: {pass_name}")
     output_stats(fw_time_records, pass_name)
     if pass_type == ExecutionPass.BACKWARD:
         pass_name = str(ExecutionPass.BACKWARD)
-        logging.info(f"    pass: {pass_name}")
+        logger.info(f"    pass: {pass_name}")
         output_stats(bw_time_records, pass_name)
 
 
@@ -165,9 +168,8 @@ def run_op_for_inputs(
     )
 
     for (input_id, input_config) in generate_input_config:
-        logging.info(
-            f"    input_config [{config_id}:{build_id}:{input_id}]: {input_config}"
-        )
+        logger.info(f"  input_id: [{input_id}]")
+        logger.debug(f"  input_config: {input_config}")
         # generate data
 
         input_data_gen = op_config.input_data_generator()
@@ -201,7 +203,7 @@ def run_op_for_inputs(
             out_stream,
         )
 
-        logging.debug(f"Finished running {op_config.name}[{id}].")
+        logger.debug(f"Finished running {op_config.name}[{id}].")
 
 
 def run_op(
@@ -220,12 +222,12 @@ def run_op(
     config_id = 0
     for config in op_config.config:
         if "input" not in config:
-            logging.error(
+            logger.error(
                 f"{op_config.name} has no input configurations defined, skipped."
             )
             return
 
-        logging.info(f"{op_config.name}:")
+        logger.info(f"{op_config.name}:")
         # build op
         build_config = []
         build_input_config = {}
@@ -238,12 +240,13 @@ def run_op(
 
         if generate_build_config:
             for (build_id, build_config) in generate_build_config:
-                logging.info(f"  build_config [{config_id}:{build_id}]: {build_config}")
+                logger.info(f"  build_id [{config_id}:{build_id}]")
+                logger.debug(f"  build_config: {build_config}")
                 build_data_gen = op_config.build_data_generator()
                 (build_args, build_kwargs) = build_data_gen.get_data(
                     build_config, device
                 )
-                logging.debug(f"{build_args} {build_kwargs}")
+                logger.debug(f"{build_args} {build_kwargs}")
                 # reset operator to clear memory before new build
                 op_config.op.cleanup()
                 if device.startswith("cuda"):
@@ -263,7 +266,8 @@ def run_op(
                     out_stream,
                 )
         else:
-            logging.info(f"  build_config [{config_id}:{0}]: {build_config}")
+            logger.info(f"  build_id: [{config_id}:{0}]")
+            logger.debug(f"  build_config: {build_config}")
             build_input_config["build"] = build_config
             build_input_config["input"] = config["input"]
             run_op_for_inputs(

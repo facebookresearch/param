@@ -2,7 +2,7 @@ from setuptools import setup
 
 package_base = "param_bench.train.compute.python"
 
-# Only list the top level packages and their dir mapping:
+# List the packages and their dir mapping:
 # "install_destination_package_path": "source_dir_path"
 package_dir_map = {
     f"{package_base}": ".",

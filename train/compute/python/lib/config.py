@@ -1,14 +1,15 @@
 import copy
 import json
-import logging
 from typing import Dict, List, Any
 from typing import TextIO
 from typing import Type
 
 from .data import DataGenerator, data_generator_map
+from .init_helper import get_logger
 from .iterator import ConfigIterator, config_iterator_map, DefaultConfigIterator
 from .operator import OperatorInterface, op_map
 
+logger = get_logger()
 
 class OperatorConfig:
     def __init__(self, name, config, op):
@@ -98,7 +99,7 @@ class BenchmarkConfig:
     def _make_op_config(self, op_name: str):
         global op_map
         if (op_name not in op_map) or (not op_map[op_name]):
-            logging.warning(f"{op_name} has no valid callable defined, skipped.")
+            logger.warning(f"{op_name} has no valid callable defined, skipped.")
             return None
         op = op_map[op_name]
         op.device = self.device

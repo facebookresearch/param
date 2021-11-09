@@ -1,10 +1,11 @@
 import abc
 import copy
-import logging
 from typing import Dict, List, Any, Callable, Type
 
 from .generator import full_range, IterableList, ListProduct, TableProduct
+from .init_helper import get_logger
 
+logger = get_logger()
 
 # Special meta attributes in range based configs
 ATTR_COPY = "__copy__"
@@ -58,7 +59,7 @@ def remove_meta_attr(config: Dict[str, Any]):
 
 def create_range_iter(arg: Dict[str, Any]):
     def create_tensor(attr: Dict[str, Any]):
-        logging.debug(f"{attr}")
+        logger.debug(f"{attr}")
         result = copy.copy(attr)
         # if ranges exists, create iterator
         if ATTR_RANGE in attr:
@@ -218,7 +219,7 @@ class RangeConfigIterator(ConfigIterator):
             # start generating combinations
             config_id = 0
             for arg_config in TableProduct(config_generator):
-                logging.debug(arg_config)
+                logger.debug(arg_config)
                 # apply __copy__
                 self._apply_copy(arg_config)
 
@@ -279,7 +280,7 @@ class DummyConfigIterator(ConfigIterator):
 
 def register_config_iterator(name: str, iterator_class: Type[ConfigIterator]):
     global config_iterator_map
-    logging.debug(f"register iterator: {name}")
+    logger.debug(f"register iterator: {name}")
     if name not in config_iterator_map:
         config_iterator_map[name] = iterator_class
     else:

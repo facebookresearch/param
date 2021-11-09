@@ -1,13 +1,13 @@
-import abc
 import copy
-import logging
 import random
-from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
+from typing import Dict, Set, List, Any, Callable
 
 import torch
 
 from ..data import DataGenerator, register_data_generator
-from ..generator import full_range, IterableList, ListProduct, TableProduct
+from ..init_helper import get_logger
+
+logger = get_logger()
 
 pytorch_dtype_map: Dict[str, torch.dtype] = {
     "float": torch.float32,
@@ -124,9 +124,9 @@ class DefaultDataGenerator(DataGenerator):
                 if self.prev_config["kwargs"][key] != config["kwargs"][key]:
                     kwarg_updates.add(key)
 
-        logging.debug(f"  prev: {self.prev_config}")
-        logging.debug(f"  curr: {config}")
-        logging.debug(f"  updt: {arg_updates} {kwarg_updates}")
+        logger.debug(f"  prev: {self.prev_config}")
+        logger.debug(f"  curr: {config}")
+        logger.debug(f"  updt: {arg_updates} {kwarg_updates}")
         return (arg_updates, kwarg_updates)
 
     def _generate_data(
