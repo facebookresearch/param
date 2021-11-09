@@ -8,12 +8,14 @@ Directories
 
 * [`python`](.)
   * Base dir for Python benchmarks, including tool scripts.
+* [`python/examples`](./examples)
+  * Example scripts and configuration files.
 * [`python/lib`](./lib)
   * Benchmark library modules and utilities.
-* [`python/workloads`](./workloads)
-  * Implementation of workloads (operators).
 * [`python/test`](./test)
   * Unit tests and test config files.
+* [`python/workloads`](./workloads)
+  * Implementation of workloads (operators).
 
 ML framework specific modules and files are in separate directories (e.g. `pytorch`) under these top level directories.
 
@@ -23,7 +25,6 @@ Because the benchmark library and workloads are intended to be used both inside 
 from ..config import OperatorConfig
 from ..iterator import ConfigIterator
 from ..operator import OperatorInterface
-from ..timer import Timer
 ```
 This allows the top level package name to change without affecting the library code itself.
 

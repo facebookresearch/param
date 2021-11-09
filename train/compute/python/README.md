@@ -34,11 +34,13 @@ Without installing the package, you can run a tool script as a module in the sou
 # Inside dir "param/train/compute"
 > python -m python.pytorch_benchmark -c python/examples/pytorch/configs/simple_add.json
 ```
-However, this method may conflict with other packages (such as `fbgemm_gpu.split_table_batched_embeddings_ops`) under `python` path. A more reliable ways to run the benchmarks is install `parambench-train-compute` as a package using the `setuptools`, it can be run as:
+However, this method may conflict with other packages (such as `fbgemm_gpu.split_table_batched_embeddings_ops`) under `python` path. A more reliable ways to run the benchmarks is install `parambench-train-compute` as a package using the `setuptools`, it can be ran as:
 ```shell
 # Run benchmark tool script module
 > python -m param_bench.train.compute.python.pytorch_benchmark -c examples/pytorch/configs/simple_add.json
 ```
+Additional example configs can be found in [`examples/pytorch/configs/`](examples/pytorch/configs/).
+
 ### Benchmark Library
 As a library, it can be used as any regular Python package:
 ```python
@@ -111,7 +113,7 @@ The library expects the benchmark configuration in the following JSON format (th
   <additional key:value of operator and its spec>
 }
 ```
-The **`"operator_name"`** is a key mapped to a concrete workload implementation defined inside [`workloads`](workloads) directory.
+The **`"operator_name"`** is a key mapped to a concrete workload implementation defined inside [`workloads`](workloads) directory, for example [`workloads/pytorch/native_basic_ops.py`](workloads/pytorch/native_basic_ops.py).
 
 ## Default PyTorch Config Specification
 For each **`"build"`** and **`"input"`** configuration, the __`"args"`__ and __`"kwargs"`__ JSON keys should be specified with a list of argument data specifications (see [PyTorch Data Types](#pyTorch-data-types)). This is synonymous to Python's __`*args`__ and __`**kwargs`__. As expected, **`"args"`** is positional and defined as a list. __`"kwargs"`__ is defined as a dictionary of `"kwarg_name": <data_type_dict>`.
@@ -221,6 +223,20 @@ Current supported data types and examples are listed here:
     }]
 },
 {
+  "type": "tuple",
+  "value": [
+    {
+      "type": "tensor",
+      "dtype": "float",
+      "shape": [16, 32],
+    },
+    {
+      "type": "tensor",
+      "dtype": "float",
+      "shape": [16, 32],
+    }]
+},
+{
   "type": "tensor",
   "dtype": "float",
   "shape": [128, 256]
@@ -229,8 +245,10 @@ Current supported data types and examples are listed here:
 **Notes**
 * `"value_range"` specifies a random value in the `[min, max]` range to be generated for the argument.
 
+To help construct benchmark configs, some utility functions are available in [examples/pytorch/run_op.py](examples/pytorch/run_op.py).
+
 ### Configuration Customization
-Users are free to implement custom specs for **`"build"`** and **`"input"`** to support a wide variety of operators. Should there's a need, the specification allows custom implementation of [`ConfigIterator`](lib/config.py) and [`DataGenerator`](lib/data.py) for your specific use case.
+Users are able to implement custom specs for **`"build"`** and **`"input"`** to support a wide variety of operators. Should there's a need, the benchmark specification allows implementing new [`ConfigIterator`](lib/config.py) and [`DataGenerator`](lib/data.py) for your specific use case.
 
 ## Development Contributions
 For more details, please take a look at the [development document](development.md).
