@@ -1,3 +1,2 @@
 nvtx==0.2.3
 torch
-fbgemm-gpu

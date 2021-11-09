@@ -1,9 +1,9 @@
 {
-  "split_table_batched_embedding_bags": {
+  "SplitTableBatchedEmbeddingBagsCodegen": {
     "build_iterator": "RangeConfigIterator",
-    "input_iterator": "SplitTableBatchedEmbeddingInputIterator",
+    "input_iterator": "SplitTableBatchedEmbeddingBagsCodegenInputIterator",
     "build_data_generator": "PyTorch::DefaultDataGenerator",
-    "input_data_generator": "SplitTableBatchedEmbeddingInputDataGenerator",
+    "input_data_generator": "SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator",
     "config": [
       {
         "build": [
@@ -17,7 +17,7 @@
               {
                 "name": "rows",
                 "type": "int",
-                "value": 22858
+                "value": 228582
               },
               {
                 "name": "dim",

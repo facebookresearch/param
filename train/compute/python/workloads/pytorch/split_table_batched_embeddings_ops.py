@@ -11,7 +11,6 @@ from typing import Tuple
 
 import numpy as np
 import torch
-from fbgemm_gpu import split_table_batched_embeddings_ops
 from fbgemm_gpu.split_table_batched_embeddings_ops import (
     CacheAlgorithm,
     OptimType,
@@ -19,6 +18,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops import (
     PoolingMode,
     EmbeddingLocation,
     ComputeDevice,
+    SplitTableBatchedEmbeddingBagsCodegen,
 )
 
 from ...lib.data import register_data_generator
@@ -35,14 +35,14 @@ from ...lib.operator import OperatorInterface, register_operator
 logger = get_logger()
 
 
-class SplitTableBatchedEmbeddingInputIterator(ConfigIterator):
+class SplitTableBatchedEmbeddingBagsCodegenInputIterator(ConfigIterator):
     def __init__(
         self,
         configs: Dict[str, Any],
         key: str,
         device: str,
     ):
-        super(SplitTableBatchedEmbeddingInputIterator, self).__init__(
+        super(SplitTableBatchedEmbeddingBagsCodegenInputIterator, self).__init__(
             configs, key, device
         )
         logger.debug(configs)
@@ -93,7 +93,8 @@ class SplitTableBatchedEmbeddingInputIterator(ConfigIterator):
 
 
 register_config_iterator(
-    "SplitTableBatchedEmbeddingInputIterator", SplitTableBatchedEmbeddingInputIterator
+    "SplitTableBatchedEmbeddingBagsCodegenInputIterator",
+    SplitTableBatchedEmbeddingBagsCodegenInputIterator,
 )
 
 
@@ -145,7 +146,7 @@ def generate_requests(
     return (indices, offsets, weights_tensor)
 
 
-class SplitTableBatchedEmbeddingInputDataGenerator:
+class SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator:
     def get_data(self, config, device):
         logger.debug(config)
         # batch size * pooling_factor
@@ -240,16 +241,16 @@ class SplitTableBatchedEmbeddingInputDataGenerator:
 
 
 register_data_generator(
-    "SplitTableBatchedEmbeddingInputDataGenerator",
-    SplitTableBatchedEmbeddingInputDataGenerator,
+    "SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator",
+    SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator,
 )
 
 # Callable ops are ops can be called in the form of op(*args, **kwargs)
-class SplitTableBatchedEmbeddingOp(OperatorInterface):
+class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
     def __init__(
         self,
     ):
-        super(SplitTableBatchedEmbeddingOp, self).__init__()
+        super(SplitTableBatchedEmbeddingBagsCodegenOp, self).__init__()
         self.cleanup()
         self.fwd_out: torch.tensor = None
         self.grad_in: torch.tensor = None
@@ -284,25 +285,23 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
 
         # split_table op options from actual runs of
         # caffe2/torch/fb/module_factory/proxy_module/grouped_sharded_embedding_bag.py
-        self.op = (
-            split_table_batched_embeddings_ops.SplitTableBatchedEmbeddingBagsCodegen(
-                [
-                    (
-                        rows_list[i],
-                        dims_list[i],
-                        location,
-                        compute_device,
-                    )
-                    for i in range(num_tables)
-                ],
-                optimizer=OptimType(optimizer),
-                pooling_mode=PoolingMode(pooling),
-                weights_precision=SparseType(weights_precision),
-                stochastic_rounding=True,
-                cache_algorithm=CacheAlgorithm.LFU,
-                cache_load_factor=0.0,
-                cache_reserved_memory=12.0,
-            )
+        self.op = SplitTableBatchedEmbeddingBagsCodegen(
+            [
+                (
+                    rows_list[i],
+                    dims_list[i],
+                    location,
+                    compute_device,
+                )
+                for i in range(num_tables)
+            ],
+            optimizer=OptimType(optimizer),
+            pooling_mode=PoolingMode(pooling),
+            weights_precision=SparseType(weights_precision),
+            stochastic_rounding=True,
+            cache_algorithm=CacheAlgorithm.LFU,
+            cache_load_factor=0.0,
+            cache_reserved_memory=12.0,
         )
         logger.debug(f"Op built: {self.op.weights_precision} {self.op.embedding_specs}")
 
@@ -323,4 +322,6 @@ class SplitTableBatchedEmbeddingOp(OperatorInterface):
         self.fwd_out.backward(self.grad_in)
 
 
-register_operator("split_table_batched_embedding_bags", SplitTableBatchedEmbeddingOp())
+register_operator(
+    "SplitTableBatchedEmbeddingBagsCodegen", SplitTableBatchedEmbeddingBagsCodegenOp()
+)
