@@ -284,7 +284,7 @@ def register_config_iterator(name: str, iterator_class: Type[ConfigIterator]):
     if name not in config_iterator_map:
         config_iterator_map[name] = iterator_class
     else:
-        raise ValueError(f'Duplicate iterator registration name: "{name}"')
+        raise ValueError(f'Duplicate iterator registration name: {name}')
 
 
 config_iterator_map: Dict[str, Type[ConfigIterator]] = {}

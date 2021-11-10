@@ -1,6 +1,7 @@
 
-build
-dist
+/build
+/dist
 *.so
 *.egg-info
-*.json
+/*.json
+/*.log

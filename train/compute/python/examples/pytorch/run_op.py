@@ -1,8 +1,3 @@
-from ...lib.init_helper import init_logging, load_modules
-
-# Initialize logging format before loading all other modules
-init_logging()
-
 import io
 import json
 
@@ -10,6 +5,7 @@ import torch
 
 from ...lib import pytorch as lib_pytorch
 from ...lib.config import BenchmarkConfig
+from ...lib.init_helper import load_modules
 from ...lib.pytorch.benchmark import run_op, ExecutionPass
 from ...lib.pytorch.config_util import create_operator_config, create_data
 from ...workloads import pytorch as workloads_pytorch
@@ -34,7 +30,7 @@ def main():
     op_config[op_name]["config"][0]["input"][0]["args"] = [tensor_1, tensor_2]
     print(op_config)
 
-    device = "cuda"
+    device = "cpu"
     # Set the target device where this benchmark will run
     bench_config = BenchmarkConfig(device)
 

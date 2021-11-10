@@ -10,7 +10,7 @@ def get_logger():
     if logger:
         return logger
     else:
-        init_logging(logging.INFO)
+        return init_logging(logging.INFO)
 
 
 def init_logging(log_level):
