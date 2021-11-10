@@ -1,5 +1,4 @@
 import abc
-import logging
 from typing import Dict, Type
 
 from .init_helper import get_logger
@@ -44,7 +43,7 @@ def register_operator(name: str, operator_class: Type[OperatorInterface]):
     if name not in op_map:
         op_map[name] = operator_class
     else:
-        raise ValueError(f'Duplicate operator registration name: "{name}"')
+        raise ValueError(f'Duplicate operator registration name: {name}')
 
 
 def register_operators(op_dict: Dict[str, Type[OperatorInterface]]):
@@ -54,7 +53,7 @@ def register_operators(op_dict: Dict[str, Type[OperatorInterface]]):
         if name not in op_map:
             op_map[name] = operator_class
         else:
-            raise ValueError(f'Duplicate operator registration name: "{name}"')
+            raise ValueError(f'Duplicate operator registration name: {name}')
 
 
 # Global operator registry, a mapping of name to operator object

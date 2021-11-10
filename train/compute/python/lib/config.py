@@ -11,6 +11,7 @@ from .operator import OperatorInterface, op_map
 
 logger = get_logger()
 
+
 class OperatorConfig:
     def __init__(self, name, config, op):
         self._name = name

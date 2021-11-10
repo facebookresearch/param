@@ -21,7 +21,7 @@ try:
     USE_NVTX = True
 except ModuleNotFoundError as error:
     USE_NVTX = False
-    logger.warn(f"Failed to import NVTX, will not emit NVTX range info.")
+    logger.warning(f"Failed to import NVTX, will not emit NVTX range info.")
 
 
 @enum.unique

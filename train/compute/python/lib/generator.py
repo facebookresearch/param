@@ -1,9 +1,10 @@
 from typing import Dict, Set, List, Any
 
+
 def full_range(a: int, b: int, s: int = 1):
-    '''
+    """
     Returns inclusive range: a <= x <= b, by step of s
-    '''
+    """
     return range(a, b + 1, s)
 
 
@@ -27,7 +28,7 @@ class IterableList:
 
 
 class ListProduct:
-    '''
+    """
     ListProduct takes a list of repeatable iterables (like range()), and
     generates the Cartesian product of the iterables.
 
@@ -53,7 +54,7 @@ class ListProduct:
 
     for i in prod:
         print("i",i)
-    '''
+    """
 
     def __init__(self, iter_list: List[Any]):
         self.iter_list: List[Any] = iter_list
