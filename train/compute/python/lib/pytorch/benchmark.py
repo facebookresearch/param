@@ -18,9 +18,9 @@ logger = get_logger()
 try:
     import nvtx
 
-    HAS_NVTX = True
+    USE_NVTX = True
 except ModuleNotFoundError as error:
-    HAS_NVTX = False
+    USE_NVTX = False
     logger.warn(f"Failed to import NVTX, will not emit NVTX range info.")
 
 
@@ -50,14 +50,14 @@ def benchmark_op(tag: str, id: str, op: Callable, args: Any, kwargs: Any, device
     # flush cache
     if device.startswith("cuda"):
         _clear_cache()
-        if HAS_NVTX:
+        if USE_NVTX:
             tag_rng = nvtx.start_range(domain="param_bench", message=tag)
             id_rng = nvtx.start_range(domain="param_bench", message=id)
 
     with Timer(device) as timer:
         op(*args, **kwargs)
 
-    if device.startswith("cuda") and HAS_NVTX:
+    if device.startswith("cuda") and USE_NVTX:
         nvtx.end_range(id_rng)
         nvtx.end_range(tag_rng)
 
