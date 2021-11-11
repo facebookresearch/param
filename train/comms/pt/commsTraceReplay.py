@@ -521,6 +521,12 @@ class commsTraceReplayBench(paramCommsBench):
                     coll_in_batch_num = 0
                     self.batchLat.append(batch_latency)
 
+            # perfom data validation check on the final opTensor
+            if self.is_blocking and commsParams.dcheck == 1 and collName not in ("wait","barrier"):
+                commsParams.collective = collName
+                commsParams.srcOrDst = curComm["root"] if "root" in curComm else 0
+                self.dcheck(commsParams, curComm["out_msg_size"], self.collectiveArgs.opTensor)
+
             self.collLat[collName].append(latency)
 
             curComm["seqnum"] = cnt

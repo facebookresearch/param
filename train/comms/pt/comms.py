@@ -27,6 +27,7 @@ supportedCollectives = [
     "all_gather",
     "broadcast",
     "reduce_scatter",
+    "reduce_scatter_base",
     "all_gather_base",
     "incast",
     "multicast",

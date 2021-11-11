@@ -252,6 +252,20 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    def reduce_scatter_base(self, collectiveArgs, retFlag=False, pair=False):
+        retObj = dist._reduce_scatter_base(
+            output=collectiveArgs.opTensor,
+            input=collectiveArgs.ipTensor,
+            group=collectiveArgs.group,
+            async_op=collectiveArgs.asyncOp,
+        )  # synchronicity is maintained in runColl
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
     def all_gather_base(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist._all_gather_base(
             output_tensor=collectiveArgs.opTensor,
