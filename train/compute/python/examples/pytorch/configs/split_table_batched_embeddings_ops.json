@@ -1,0 +1,70 @@
+{
+  "SplitTableBatchedEmbeddingBagsCodegen": {
+    "build_iterator": "RangeConfigIterator",
+    "input_iterator": "SplitTableBatchedEmbeddingBagsCodegenInputIterator",
+    "build_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "type": "int",
+                "name": "num_tables",
+                "value": 1
+              },
+              {
+                "name": "rows",
+                "type": "int",
+                "value": 228582
+              },
+              {
+                "name": "dim",
+                "type": "int",
+                "value": 128
+              },
+              {
+                "type": "int",
+                "name": "pooling",
+                "value": 0
+              },
+              {
+                "type": "bool",
+                "name": "weighted",
+                "value": false
+              },
+              {
+                "type": "str",
+                "name": "weights_precision",
+                "value": "fp16"
+              }
+            ],
+            "kwargs": {
+              "optimizer": {
+                "type": "str",
+                "value": "exact_row_wise_adagrad"
+              }
+            }
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "type": "int",
+                "name": "batch_size",
+                "value": 512
+              },
+              {
+                "name": "pooling_factor",
+                "type": "int",
+                "value": 50
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
