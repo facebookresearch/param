@@ -251,7 +251,6 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
         self,
     ):
         super(SplitTableBatchedEmbeddingBagsCodegenOp, self).__init__()
-        self.cleanup()
         self.fwd_out: torch.tensor = None
         self.grad_in: torch.tensor = None
 

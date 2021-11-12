@@ -40,14 +40,14 @@ def main():
     run_options["pass_type"] = ExecutionPass.BACKWARD
 
     # Generate the actual data for inputs. For operators that require a build
-    # step, a similar step is needed for build config.
+    # step, a similar data generation is needed for build config.
     input_config = op_info["config"][0]["input"][0]
     input_data_gen = op_config.input_data_generator()
     (input_args, input_kwargs) = input_data_gen.get_data(
         input_config, run_options["device"]
     )
 
-    # Create an OpExecutor.
+    # Create an OpExecutor to run the actual workload.
     op_exe = OpExecutor(op_name, op_config.op, run_options)
 
     # Run and collect the result metrics.
