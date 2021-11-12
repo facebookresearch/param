@@ -22,6 +22,9 @@ random.seed()
 
 logger = logging.getLogger(__name__)
 
+default_master_ip = "127.0.0.1"
+default_master_port = "29500"
+
 
 def gracefulExit(args=0):
     # TODO: Is this the best way to exit?
@@ -842,13 +845,13 @@ class paramCommsBench(ABC):
         parser.add_argument(
             "--master-ip",
             type=str,
-            default="127.0.0.1",
+            default=default_master_ip,
             help="The master-IP to coordinate",
         )  # The master-IP to coordinate.
         parser.add_argument(
             "--master-port",
             type=str,
-            default="29500",
+            default=default_master_port,
             help="The master-port to coordinate",
         )  # The master-port to coordinate.
         parser.add_argument(
@@ -958,3 +961,36 @@ class paramCommsBench(ABC):
                 comms_env_params["global_rank"]
             ),
         )
+        # check master-ip and master-port with the following logic
+        #   1) prefer the values passed to PARAM, i.e., through --master-ip and --master-port
+        #   2) check and use the env. variable, i.e., MASTER_ADDR and MASTER_PORT
+        #   3) if both #1 and #2 are not set, pre-defined default values will be used
+        if "MASTER_ADDR" in os.environ:
+            if args.master_ip not in (default_master_ip, os.environ["MASTER_ADDR"]):
+                logger.warning(
+                    f"--master-ip={args.master_ip} while MASTER_ADDR={os.environ['MASTER_ADDR']}, "
+                    f"use --master-ip={args.master_ip} and continue..."
+                )
+                os.environ["MASTER_ADDR"] = args.master_ip
+            else:
+                logger.info(
+                    "From environment variables, using MASTER_ADDR="
+                    + os.environ["MASTER_ADDR"]
+                )
+        else:
+            os.environ["MASTER_ADDR"] = default_master_ip
+
+        if "MASTER_PORT" in os.environ:
+            if args.master_port not in (default_master_port, os.environ["MASTER_PORT"]):
+                logger.warning(
+                    f"--master-port={args.master_port} while MASTER_PORT={os.environ['MASTER_PORT']}, "
+                    f"use --master-port={args.master_port} and continue..."
+                )
+                os.environ["MASTER_PORT"] = args.master_port
+            else:
+                logger.info(
+                    "From environment variables, using MASTER_PORT="
+                    + os.environ["MASTER_PORT"]
+                )
+        else:
+            os.environ["MASTER_PORT"] = default_master_port
