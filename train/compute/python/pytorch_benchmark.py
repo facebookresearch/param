@@ -7,11 +7,9 @@ logger = init_logging(logging.INFO)
 
 import argparse
 
-import torch
-
 from .lib import pytorch as lib_pytorch
 from .lib.config import BenchmarkConfig
-from .lib.pytorch.benchmark import run_op, ExecutionPass
+from .lib.pytorch.benchmark import make_default_benchmark, ExecutionPass, get_benchmark_options
 from .workloads import pytorch as workloads_pytorch
 
 
@@ -54,33 +52,25 @@ def main():
     # Load PyTorch operator workloads.
     load_modules(workloads_pytorch)
 
-    bench_config = BenchmarkConfig(args.device)
-    bench_config.load_json_file(args.config)
+    run_options = get_benchmark_options()
 
     out_file_name = f"{args.output_prefix}.json"
 
-    # We don't want too many threads for stable benchmarks
-    torch.set_num_threads(1)
-
     if args.backward:
-        pass_type = ExecutionPass.BACKWARD
+        run_options["pass_type"] = ExecutionPass.BACKWARD
         logger.info(f"Pass: FORWARD and BACKWARD")
     else:
-        pass_type = ExecutionPass.FORWARD
+        run_options["pass_type"] = ExecutionPass.FORWARD
         logger.info(f"Pass: FORWARD")
 
+    bench_config = BenchmarkConfig(run_options)
+    bench_config.load_json_file(args.config)
+    benchmark = make_default_benchmark(bench_config)
+    benchmark.run()
+
     with open(out_file_name, "w") as out_file:
-        for op_config in bench_config.op_configs:
-            run_op(
-                op_config,
-                args.warmup,
-                args.iteration,
-                args.device,
-                pass_type,
-                out_file,
-            )
-        logger.info(f"Log written to {out_file_name}")
+        pass
 
-
+    logger.info(f"Log written to {out_file_name}")
 if __name__ == "__main__":
     main()

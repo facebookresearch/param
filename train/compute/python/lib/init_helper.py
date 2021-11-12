@@ -35,3 +35,20 @@ def load_modules(package):
             importlib.import_module(name)
         except ModuleNotFoundError as error:
             logger.error(f"Failed to import module: {name}")
+            logger.error(f"ModuleNotFoundError: {error}")
+            return False
+    return True
+
+
+def load_package(package):
+    """
+    Try to load third-party modules, return false if failed.
+    """
+    logger.debug(f"Loading package: {package}")
+    try:
+        globals()[package] = importlib.import_module(package)
+    except ModuleNotFoundError as error:
+        logger.error(f"Failed to import package: {package}")
+        logger.error(f"ModuleNotFoundError: {error}")
+        return False
+    return True

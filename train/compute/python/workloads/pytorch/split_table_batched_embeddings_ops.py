@@ -311,6 +311,8 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
         self.grad_in = None
         self.fwd_out = None
         gc.collect()
+        if self.device.startswith("cuda"):
+            torch.cuda.empty_cache()
 
     def forward(self, *args, **kwargs):
         self.fwd_out = self.op.forward(args[0], args[1], args[2])
