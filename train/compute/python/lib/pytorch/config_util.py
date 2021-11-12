@@ -3,8 +3,8 @@ from typing import Any
 from typing import Dict
 
 
-def create_operator_config(name: str):
-    op_config = {
+def create_bench_config(name: str):
+    bench_config = {
         name: {
             "build_iterator": None,
             "input_iterator": None,
@@ -13,7 +13,7 @@ def create_operator_config(name: str):
             "config": [{"build": [], "input": [{"args": [], "kwargs": {}}]}],
         }
     }
-    return op_config
+    return bench_config
 
 
 _pytorch_data: Dict[str, Any] = {

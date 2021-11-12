@@ -16,7 +16,7 @@ def get_logger():
 
 def init_logging(log_level):
     global logger
-    FORMAT = "[%(asctime)s] %(filename)s:%(lineno)-4d [%(levelname)s]: %(message)s"
+    FORMAT = "[%(asctime)s] %(filename)s:%(lineno)-3d [%(levelname)s]: %(message)s"
     logging.basicConfig(format=FORMAT)
     logger = logging.getLogger("param_bench")
     logger.setLevel(log_level)
@@ -34,21 +34,17 @@ def load_modules(package):
         try:
             importlib.import_module(name)
         except ModuleNotFoundError as error:
-            logger.error(f"Failed to import module: {name}")
-            logger.error(f"ModuleNotFoundError: {error}")
-            return False
-    return True
+            logger.warning(f"Failed to import module: {name}. ModuleNotFoundError: {error}")
 
 
-def load_package(package):
+def load_package(package) -> bool:
     """
     Try to load third-party modules, return false if failed.
     """
     logger.debug(f"Loading package: {package}")
     try:
-        globals()[package] = importlib.import_module(package)
+        importlib.import_module(package)
     except ModuleNotFoundError as error:
-        logger.error(f"Failed to import package: {package}")
-        logger.error(f"ModuleNotFoundError: {error}")
+        logger.warning(f"Failed to import package: {package}. ModuleNotFoundError: {error}")
         return False
     return True

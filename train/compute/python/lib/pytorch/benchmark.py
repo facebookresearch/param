@@ -10,22 +10,19 @@ from typing import Type
 import torch
 
 from ..config import OperatorConfig, BenchmarkConfig
-from ..init_helper import get_logger
+from ..init_helper import get_logger, load_package
 from ..iterator import ConfigIterator
 from ..operator import OperatorInterface
 from .timer import Timer, format_float_val_list
 
 logger = get_logger()
 
-try:
+# NVTX is used to mark ranges for benchmark GPU kernels.
+# It's use to correlate operator configurations and metrics collected from
+# NSight tools.
+USE_NVTX = load_package("nvtx")
+if USE_NVTX:
     import nvtx
-
-    USE_NVTX = True
-except ModuleNotFoundError as error:
-    USE_NVTX = False
-    logger.warning(f"Failed to import NVTX, will not emit NVTX range info.")
-
-# USE_NVTX = load_package("nvtx")
 
 
 @enum.unique

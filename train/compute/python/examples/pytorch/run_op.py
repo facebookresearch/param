@@ -1,13 +1,8 @@
-import io
-import json
-
-import torch
-
 from ...lib import pytorch as lib_pytorch
-from ...lib.config import BenchmarkConfig
+from ...lib.config import make_op_config
 from ...lib.init_helper import load_modules
-from ...lib.pytorch.benchmark import run_op, ExecutionPass
-from ...lib.pytorch.config_util import create_operator_config, create_data
+from ...lib.pytorch.benchmark import OpExecutor, ExecutionPass, get_benchmark_options
+from ...lib.pytorch.config_util import create_bench_config, create_data
 from ...workloads import pytorch as workloads_pytorch
 
 
@@ -20,50 +15,51 @@ def main():
     load_modules(workloads_pytorch)
 
     op_name = "torch.mm"
-    op_config = create_operator_config(op_name)
+    bench_config = create_bench_config(op_name)
     tensor_1 = create_data("tensor")
     tensor_1["shape"] = [128, 128]
     tensor_2 = create_data("tensor")
     tensor_2["shape"] = [128, 128]
 
+    op_info = bench_config[op_name]
+
     # Add the two tensors as first and second positional args for the operator.
-    op_config[op_name]["config"][0]["input"][0]["args"] = [tensor_1, tensor_2]
-    print(op_config)
+    op_info["config"][0]["input"][0]["args"] = [tensor_1, tensor_2]
+    print(op_info)
 
-    device = "cpu"
-    # Set the target device where this benchmark will run
-    bench_config = BenchmarkConfig(device)
+    # Get the default benchmark options
+    run_options = get_benchmark_options()
 
-    # Load and initialize the operator configuration.
-    bench_config.load(op_config)
-
-    # We don't want too many threads for stable benchmarks
-    torch.set_num_threads(1)
+    # Create OperatorConfig that initialize the actual operator workload and
+    # various generators to create inputs for the operator.
+    op_config = make_op_config(op_name, op_info, run_options["device"])
 
     # By default, benchmark will run the forward pass.
     # By setting backward (which requires running forward pass), the benchmark
     # will run both forward and backward pass.
-    pass_type = ExecutionPass.BACKWARD
+    run_options["pass_type"] = ExecutionPass.BACKWARD
 
-    # Store result in this in-memory string buffer
-    out_stream = io.StringIO()
+    # Generate the actual data for inputs. For operators that require a build
+    # step, a similar step is needed for build config.
+    input_config = op_info["config"][0]["input"][0]
+    input_data_gen = op_config.input_data_generator()
+    (input_args, input_kwargs) = input_data_gen.get_data(
+        input_config, run_options["device"]
+    )
 
-    # Iterate through the operator configs, and run each operator benchmark.
-    for config in bench_config.op_configs:
-        run_op(
-            config,
-            1,
-            3,
-            device,
-            pass_type,
-            out_stream,
-        )
+    # Create an OpExecutor.
+    op_exe = OpExecutor(op_name, op_config.op, run_options)
 
-    # Parse the benchmark result string in JSON format and print out.
+    # Run and collect the result metrics.
+    result = op_exe.run(input_args, input_kwargs, "0:0:0")
+
+    # Loop through and print the metrics.
     print("### Benchmark Results ###")
-    for line in out_stream.getvalue().splitlines():
-        result = json.loads(line)
-        print(result)
+    for pass_name, pass_data in result.items():
+        print(f"pass: {pass_name}")
+        for metric_name, metrics in pass_data.items():
+            print(metric_name)
+            print(metrics)
 
 
 if __name__ == "__main__":
