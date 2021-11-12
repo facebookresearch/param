@@ -1,0 +1,7 @@
+/build
+/dist
+*.so
+*.egg-info
+/*.json
+/*.log
+__pycache__
