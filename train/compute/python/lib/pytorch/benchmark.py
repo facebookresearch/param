@@ -41,7 +41,7 @@ def get_benchmark_options():
         "device": "cpu",
         "pass_type": ExecutionPass.FORWARD,
         "warmup": 5,
-        "iteration": 1,
+        "iteration": 10,
         "out_stream": None,
         "resume_op_run_id": None,
     }
@@ -68,7 +68,8 @@ class OpExecutor:
     a dictionary of collected metric results.
     """
 
-    def __init__(self, op: OperatorInterface, run_options: Dict[str, Any]):
+    def __init__(self, name: str, op: OperatorInterface, run_options: Dict[str, Any]):
+        self.name = name
         self.op = op
         self.device = run_options["device"]
         self.iteration = run_options["iteration"]
@@ -97,15 +98,13 @@ class OpExecutor:
     def _benchmark_op(
         self, op: Callable, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
     ):
-        logger.debug(f"benchmarking {tag} {op_run_id}")
+        logger.debug(f"benchmarking {self.name} {tag} {op_run_id}")
         # flush cache
         if self.device.startswith("cuda"):
             _clear_cache()
             if USE_NVTX:
                 tag_rng = nvtx.start_range(domain="param_bench", message=tag)
-                op_run_id_rng = nvtx.start_range(
-                    domain="param_bench", message=op_run_id
-                )
+                op_run_id_rng = nvtx.start_range(domain=self.name, message=op_run_id)
 
         with Timer(self.device) as timer:
             op(*args, **kwargs)
@@ -158,6 +157,23 @@ class OpExecutor:
 
 
 class BuildExecutor(metaclass=abc.ABCMeta):
+    """
+    An abstract base class for build executor. The build executor is responsible
+    for materialize build and input data, proper initialize/reset the operator,
+    and call OpExecutor to collect metrics.
+
+    Expected parameters:
+
+    build_input_config: A dictionary of "build" and "input" configs. The build config
+    is expected to be in its final form, while the input configs may or may not be.
+
+    op_config: Operator configurations.
+
+    run_options: Benchmark run options.
+
+    op_run_id: A unique string id that identifies the current build configuration.
+    """
+
     @classmethod
     def __subclasshook__(cls, subclass):
         return hasattr(subclass, "run") and callable(subclass.run) or NotImplemented
@@ -179,6 +195,7 @@ class OpBuildExecutor(BuildExecutor):
         run_options: Dict[str, Any],
         op_run_id: str,
     ):
+        super(OpBuildExecutor, self).__init__()
         self.build_input_config = build_input_config
         self.op_config = op_config
         self.run_options = run_options
@@ -186,7 +203,7 @@ class OpBuildExecutor(BuildExecutor):
         self.out_stream = run_options["out_stream"]
 
     def run(self):
-        # reset operator to clear memory before new build
+        # Reset operator to clear memory before new build
         self.op_config.op.cleanup()
         build_config = self.build_input_config["build"]
         if build_config:
@@ -206,18 +223,18 @@ class OpBuildExecutor(BuildExecutor):
             logger.debug(f"input_config: {input_config}")
             # generate data
             op_run_id = f"{self.op_run_id}:{input_id}"
-            self.run_for_input(op_run_id, input_config)
+            self._run_for_input(op_run_id, input_config)
 
             logger.debug(f"Finished running [{op_run_id}].")
 
-    def run_for_input(self, op_run_id: str, input_config: Dict[str, Any]):
+    def _run_for_input(self, op_run_id: str, input_config: Dict[str, Any]):
         # generate input data
         input_data_gen = self.op_config.input_data_generator()
         (input_args, input_kwargs) = input_data_gen.get_data(
             input_config, self.run_options["device"]
         )
 
-        op_exe = OpExecutor(self.op_config.op, self.run_options)
+        op_exe = OpExecutor(self.op_config.name, self.op_config.op, self.run_options)
 
         metrics = op_exe.run(input_args, input_kwargs, op_run_id)
         # print(result)
@@ -226,16 +243,16 @@ class OpBuildExecutor(BuildExecutor):
             "input": input_config,
         }
 
-        self.output_stats(op_run_id, metrics, final_config)
+        self._output_stats(op_run_id, metrics, final_config)
 
-    def output_stats(
+    def _output_stats(
         self, op_run_id: str, metrics: Dict[str, Any], config: Dict[str, Any]
     ):
         for pass_name, metric in metrics.items():
             logger.info(f"pass: {pass_name}")
             for metric_name, records in metric.items():
                 total = sum(records)
-                avg = total/len(records)
+                avg = total / len(records)
                 logger.info(
                     f"metric: {metric_name}, avg: {avg:.6f} sec, tot: {total:.6f} sec"
                 )
@@ -252,14 +269,37 @@ class OpBuildExecutor(BuildExecutor):
 
 
 class Benchmark:
+    """
+    Benchmark is the high level interface to collect metrics for a large number
+    of workloads with many configurations. This class does not execute the
+    benchmark directly. It takes a BuildExecutor class to create an executor.
+    The build executor a build config and operator inputs. The actual execution
+    of the workloads are implemented in OpExecutor.
+
+    The reason to have this flexibility is to provide a library interface that
+    allows use cases where a small number of build and input configurations can
+    be created on the fly and the user simply wants to get the metrics directly
+    from OpExecutor.
+
+    In other cases, a derived class of BuildExecutor may implement a parallel
+    (multiprocess) way to run the benchmarks, or run additional tool chains.
+    All this can be done by implementing a new BuildExecutor and without
+    modifying the benchmark logics in the OpExecutor.
+
+    bench_config: contains all the benchmark configurations for the workloads.
+
+    build_executor: a BuildExecutor that takes a concrete build config and operator
+    inputs, op configuration, to run and collect benchmark metrics.
+    """
+
     def __init__(
-        self, bench_config: BenchmarkConfig, executor_class: Type[BuildExecutor]
+        self, bench_config: BenchmarkConfig, build_executor: Type[BuildExecutor]
     ):
         # We don't want too many threads for stable benchmarks
         torch.set_num_threads(1)
 
         self.bench_config = bench_config
-        self.executor_class = executor_class
+        self.build_executor = build_executor
         self.run_options = bench_config.run_options
 
     def run(self):
@@ -294,26 +334,26 @@ class Benchmark:
                     build_input_config["build"] = build_config
                     build_input_config["input"] = config["input"]
                     op_run_id += f":{build_id}"
-                    exe = self.executor_class(
+                    build_exe = self.build_executor(
                         build_input_config,
                         op_config,
                         self.bench_config.run_options,
                         op_run_id,
                     )
-                    exe.run()
+                    build_exe.run()
             else:
                 logger.info(f"build_id: [{config_id}:{0}]")
                 logger.debug(f"build_config: {build_config}")
                 build_input_config["build"] = build_config
                 build_input_config["input"] = config["input"]
                 op_run_id += f":0"
-                exe = self.executor_class(
+                build_exe = self.build_executor(
                     build_input_config,
                     op_config,
                     self.bench_config.run_options,
                     op_run_id,
                 )
-                exe.run()
+                build_exe.run()
 
             config_id += 1
 

@@ -14,11 +14,12 @@ NCU_BIN: str = "/usr/local/NVIDIA-Nsight-Compute-2021.2/ncu"
 
 def run_ncu(args: str, metrics: str, out_prefix: str):
     ncu_bin = os.getenv("NCU_BIN")
+    param_bench_range = "param_bench@measure"
     if not ncu_bin:
         ncu_bin = NCU_BIN
     ncu_options = (
         f"--log-file {out_prefix}.ncu.log --csv --target-processes all "
-        f"--metrics {metrics} --nvtx --nvtx-include param_bench@metric"
+        f"--metrics {metrics} --nvtx --nvtx-include {param_bench_range}"
     )
 
     cmd = [ncu_bin] + ncu_options.split(" ") + args.split(" ")
@@ -48,7 +49,10 @@ def main():
         "--metrics_file", type=str, default=None, help="The metrics config file."
     )
     parser.add_argument(
-        "--output_prefix", type=str, default="op_metrics", help="output file prefix"
+        "--output_prefix",
+        type=str,
+        default="benchmark_result",
+        help="output file prefix",
     )
 
     args = parser.parse_args()
