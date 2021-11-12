@@ -278,7 +278,9 @@ def paramToCommName(name, supported_comms=None):
         new_name = name
 
     if supported_comms is not None and new_name not in supported_comms:
-        gracefulExit(f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}")
+        gracefulExit(
+            f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}"
+        )
 
     return new_name
 
@@ -347,7 +349,7 @@ class backendFunctions(ABC):
             "all_gather_base": self.all_gather_base,
             "reduce": self.reduce,
             "reduce_scatter": self.reduce_scatter,
-            "reduce_scatter_base": self.reduce_scatter,
+            "reduce_scatter_base": self.reduce_scatter_base,
             "barrier": self.barrier,
             "incast": self.incast,
             "multicast": self.multicast,
@@ -368,6 +370,7 @@ class backendFunctions(ABC):
             "all_to_allv",
             "all_gather",
             "reduce_scatter",
+            "reduce_scatter_base",
             "all_gather_base",
         ):
             if collectiveArgs.world_size != 0:
@@ -648,7 +651,10 @@ class paramCommsBench(ABC):
 
     def dcheck(self, commsParams, curSize, tensor):
         expRes = self.initVal
-        if (commsParams.collective == "all_reduce") or (
+        if (
+            commsParams.collective
+            in ("all_reduce", "reduce_scatter", "reduce_scatter_base")
+        ) or (
             self.backendFuncs.get_global_rank() == commsParams.srcOrDst
             and commsParams.collective == "reduce"
         ):
@@ -695,7 +701,7 @@ class paramCommsBench(ABC):
                 else newVal
             )
         elif isinstance(tensor, list):
-            # could be a list of tensor, for all_gather/gather
+            # could be a list of tensor, for all_gather, gather, reduce_scatter
             for t in tensor:
                 t[:] = newVal
         else:
@@ -712,7 +718,8 @@ class paramCommsBench(ABC):
             return ([], [])
 
         numElementsIn = curComm["in_msg_size"]
-        numElementsOut = curComm["out_msg_size"] # only meaningful for out-of-place collectives and pt2pt
+        # numElementsOut is only meaningful for out-of-place collectives and pt2pt
+        numElementsOut = curComm["out_msg_size"]
         world_size = self.collectiveArgs.world_size
         dtype = commsParams.dtype
         curDevice = commsParams.device
@@ -769,11 +776,36 @@ class paramCommsBench(ABC):
         elif commOp == "reduce_scatter":
             opTensor = ipTensor
             ipTensor = []
-            for _ in range(world_size):
-                ipTensor.append(
-                    self.backendFuncs.alloc_random(
-                        [numElementsOut], curDevice, dtype, scaleFactor
+            if commsParams.dcheck == 1:
+                for _ in range(world_size):
+                    ipTensor.append(
+                        self.backendFuncs.alloc_ones(
+                            [numElementsOut], curDevice, commsParams.dtype, self.initVal
+                        )
                     )
+            else:
+                for _ in range(world_size):
+                    ipTensor.append(
+                        self.backendFuncs.alloc_random(
+                            [numElementsOut], curDevice, commsParams.dtype, scaleFactor
+                        )
+                    )
+        elif commOp == "reduce_scatter_base":
+            opTensor = ipTensor
+            ipTensor = []
+            if commsParams.dcheck == 1:
+                ipTensor = self.backendFuncs.alloc_ones(
+                    numElementsOut * world_size,
+                    curDevice,
+                    commsParams.dtype,
+                    self.initVal,
+                )
+            else:
+                ipTensor = self.backendFuncs.alloc_random(
+                    numElementsOut * world_size,
+                    curDevice,
+                    commsParams.dtype,
+                    scaleFactor,
                 )
         elif commOp in ("all_to_all", "pt2pt"):
             # pt2pt or out-of-place collectives
