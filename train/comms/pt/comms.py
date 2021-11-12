@@ -1176,9 +1176,9 @@ def main():
 
     collBenchObj.checkArgs(args)
 
-    mpi_env_params = comms_utils.read_mpi_env_vars()
-    if mpi_env_params["global_rank"] == 0:
-        print("\t MPI environment: %s " % (str(mpi_env_params)))
+    comms_env_params = comms_utils.read_comms_env_vars()
+    if comms_env_params["global_rank"] == 0:
+        print("\t MPI environment: %s " % (str(comms_env_params)))
         print(
             "\t backend: %s nw-stack: %s mode: %s args.b: %d args.e: %d args.f: %d args.z: %s args.master_ip: %s "
             % (
@@ -1195,7 +1195,7 @@ def main():
 
     element_size = torch.ones([1], dtype=args.dtype).element_size()
     comms_world_info = comms_utils.comms_world_info_holder(
-        args.master_ip, args.master_port, args.num_tpu_cores, mpi_env_params
+        args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
     )
 
     commsParams = comms_utils.commsParamsHolder(
