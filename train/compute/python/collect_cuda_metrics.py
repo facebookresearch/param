@@ -1,5 +1,6 @@
-import argparse, os
+import argparse
 import logging
+import os
 import subprocess
 
 from .lib.init_helper import init_logging
