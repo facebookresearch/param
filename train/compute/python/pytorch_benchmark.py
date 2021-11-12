@@ -9,7 +9,11 @@ import argparse
 
 from .lib import pytorch as lib_pytorch
 from .lib.config import BenchmarkConfig
-from .lib.pytorch.benchmark import make_default_benchmark, ExecutionPass, get_benchmark_options
+from .lib.pytorch.benchmark import (
+    make_default_benchmark,
+    ExecutionPass,
+    get_benchmark_options,
+)
 from .workloads import pytorch as workloads_pytorch
 
 
@@ -38,6 +42,9 @@ def main():
         help="File name prefix to write benchmark results.",
     )
     parser.add_argument(
+        "-a", "--append", action="store_true", help="Append to output file, rather than overwrite."
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="Increase log output verbosity."
     )
 
@@ -53,8 +60,9 @@ def main():
     load_modules(workloads_pytorch)
 
     run_options = get_benchmark_options()
-
-    out_file_name = f"{args.output_prefix}.json"
+    run_options["warmup"] = args.warmup
+    run_options["iteration"] = args.iteration
+    run_options["device"] = args.device
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD
@@ -63,14 +71,19 @@ def main():
         run_options["pass_type"] = ExecutionPass.FORWARD
         logger.info(f"Pass: FORWARD")
 
-    bench_config = BenchmarkConfig(run_options)
-    bench_config.load_json_file(args.config)
-    benchmark = make_default_benchmark(bench_config)
-    benchmark.run()
+    out_file_name = f"{args.output_prefix}.json"
 
-    with open(out_file_name, "w") as out_file:
-        pass
+    write_option = "a" if args.append else "w"
+
+    with open(out_file_name, write_option) as out_file:
+        run_options["out_stream"] = out_file
+        bench_config = BenchmarkConfig(run_options)
+        bench_config.load_json_file(args.config)
+        benchmark = make_default_benchmark(bench_config)
+        benchmark.run()
 
     logger.info(f"Log written to {out_file_name}")
+
+
 if __name__ == "__main__":
     main()

@@ -13,7 +13,7 @@ from ..config import OperatorConfig, BenchmarkConfig
 from ..init_helper import get_logger
 from ..iterator import ConfigIterator
 from ..operator import OperatorInterface
-from .timer import Timer, format_time_list
+from .timer import Timer, format_float_val_list
 
 logger = get_logger()
 
@@ -41,14 +41,15 @@ def get_benchmark_options():
         "device": "cpu",
         "pass_type": ExecutionPass.FORWARD,
         "warmup": 5,
-        "iterations": 1,
-        "resume": None
+        "iteration": 1,
+        "out_stream": None,
+        "resume_op_run_id": None,
     }
 
     return options
 
 
-def _clear_cache(self):
+def _clear_cache():
     L2_cache_size = {
         70: 6 * 1024 * 1024,  # V100 6 MB L2 cache
         80: 40 * 1024 * 1024,  # A100 40 MB L2 cache
@@ -63,21 +64,35 @@ def _clear_cache(self):
 class OpExecutor:
     """
     OpExecutor takes an operator and run options (such as warmups, number of
-    iterations etc.) and execute the actual operator benchmark. It will return
+    iteration etc.) and execute the actual operator benchmark. It will return
     a dictionary of collected metric results.
     """
+
     def __init__(self, op: OperatorInterface, run_options: Dict[str, Any]):
         self.op = op
         self.device = run_options["device"]
-        self.iterations = run_options["iterations"]
+        self.iteration = run_options["iteration"]
         self.warmup = run_options["warmup"]
         self.pass_type = run_options["pass_type"]
 
-    def run(self, input_args: List, input_kwargs: Dict[str, Any], op_run_id: str) -> Dict[str, Any]:
-        # Warm up forward (and maybe backward depending on pass_type).
-        self._warmup(input_args, input_kwargs, op_run_id)
+    def run(
+        self, input_args: List, input_kwargs: Dict[str, Any], op_run_id: str
+    ) -> Dict[str, Any]:
+        result = {}
+        result[str(ExecutionPass.FORWARD)] = {}
+        if self.pass_type == ExecutionPass.BACKWARD:
+            result[str(ExecutionPass.BACKWARD)] = {}
 
-        return self._collect_metric(input_args, input_kwargs, op_run_id)
+        # Warm up forward (and maybe backward depending on pass_type).
+        self._measure(
+            input_args, input_kwargs, self.warmup, "warmup", op_run_id, result
+        )
+        # Actual measurements.
+        self._measure(
+            input_args, input_kwargs, self.iteration, "measure", op_run_id, result
+        )
+
+        return result
 
     def _benchmark_op(
         self, op: Callable, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
@@ -102,50 +117,44 @@ class OpExecutor:
         return timer.elapsed_time()
 
     def _benchmark_loop(
-        self, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
+        self, count: int, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
     ):
         fw_time_records = []
         bw_time_records = []
-        for _ in range(self.iterations):
-            op_run_id += f":{ExecutionPass.FORWARD}"
-            latency = self._benchmark_op(self.op.forward, args, kwargs, tag, op_run_id)
+        for _ in range(count):
+            op_run_pass = f"{op_run_id}:{ExecutionPass.FORWARD}"
+            latency = self._benchmark_op(
+                self.op.forward, args, kwargs, tag, op_run_pass
+            )
             fw_time_records.append(latency)
             if self.pass_type == ExecutionPass.BACKWARD:
                 self.op.create_grad()
-                op_run_id += ":{ExecutionPass.BACKWARD}"
-                latency = self._benchmark_op(self.op.backward, [], {}, tag, op_run_id)
+                op_run_pass = f"{op_run_id}:{ExecutionPass.BACKWARD}"
+                latency = self._benchmark_op(self.op.backward, [], {}, tag, op_run_pass)
                 bw_time_records.append(latency)
         return (fw_time_records, bw_time_records)
 
-    def _warmup(self, args: List, kwargs: Dict[str, Any], op_run_id: str):
-        logger.info(f"  Running {op_run_id} for {self.warmup} warm up iterations")
-
-        # warm up
-        fw_time_records, bw_time_records = self._benchmark_loop(
-            args, kwargs, "warmup", op_run_id
-        )
-
-        logger.info(f"    fw_warmup: {format_time_list(fw_time_records, 6)}")
-        if self.pass_type == ExecutionPass.BACKWARD:
-            logger.info(f"    bw_warmup: {format_time_list(bw_time_records, 6)}")
-
-    def _collect_metric(self, args: List, kwargs: Dict[str, Any], op_run_id: str) -> Dict[str, Any]:
-        results = {}
-        logger.info(f"  Running {op_run_id} for {self.iterations} measured iterations")
+    def _measure(
+        self,
+        args: List,
+        kwargs: Dict[str, Any],
+        iteration: int,
+        tag: str,
+        op_run_id: str,
+        result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        logger.info(f"Running [{op_run_id}] for {iteration} {tag} iteration")
 
         (fw_time_records, bw_time_records) = self._benchmark_loop(
-            args, kwargs, "metric", op_run_id
+            iteration, args, kwargs, tag, op_run_id
         )
 
+        metric_name = tag + ".time"
         pass_name = str(ExecutionPass.FORWARD)
-        logger.info(f"    pass: {pass_name}")
-        results[pass_name] = fw_time_records
+        result[pass_name][metric_name] = fw_time_records
         if self.pass_type == ExecutionPass.BACKWARD:
             pass_name = str(ExecutionPass.BACKWARD)
-            logger.info(f"    pass: {pass_name}")
-            results[pass_name] = bw_time_records
-
-        return results
+            result[pass_name][metric_name] = bw_time_records
 
 
 class BuildExecutor(metaclass=abc.ABCMeta):
@@ -174,18 +183,7 @@ class OpBuildExecutor(BuildExecutor):
         self.op_config = op_config
         self.run_options = run_options
         self.op_run_id = op_run_id
-
-    def run_for_input(self, op_run_id: str, input_config: Dict[str, Any]):
-        # generate input data
-        input_data_gen = self.op_config.input_data_generator()
-        (input_args, input_kwargs) = input_data_gen.get_data(
-            input_config, self.run_options["device"]
-        )
-
-        pt_instance = OpExecutor(self.op_config.op, self.run_options)
-
-        result = pt_instance.run(input_args, input_kwargs, op_run_id)
-        # print(result)
+        self.out_stream = run_options["out_stream"]
 
     def run(self):
         # reset operator to clear memory before new build
@@ -204,29 +202,53 @@ class OpBuildExecutor(BuildExecutor):
         )
 
         for (input_id, input_config) in generate_input_config:
-            logger.info(f"  input_id: [{input_id}]")
-            logger.debug(f"  input_config: {input_config}")
+            logger.info(f"input_id: [{input_id}]")
+            logger.debug(f"input_config: {input_config}")
             # generate data
             op_run_id = f"{self.op_run_id}:{input_id}"
             self.run_for_input(op_run_id, input_config)
 
-            logger.debug(f"Finished running {self.op_config.name}[{id}].")
+            logger.debug(f"Finished running [{op_run_id}].")
 
-    def output_stats(self, time_records, pass_name, iterations, config):
-        total = sum(time_records)
-        logger.info(f"    time: {format_time_list(time_records, 6)}")
-        logger.info(f"    avg: {total/iterations:.6f} sec")
-        logger.info(f"    tot: {total:.6f} sec")
+    def run_for_input(self, op_run_id: str, input_config: Dict[str, Any]):
+        # generate input data
+        input_data_gen = self.op_config.input_data_generator()
+        (input_args, input_kwargs) = input_data_gen.get_data(
+            input_config, self.run_options["device"]
+        )
+
+        op_exe = OpExecutor(self.op_config.op, self.run_options)
+
+        metrics = op_exe.run(input_args, input_kwargs, op_run_id)
+        # print(result)
+        final_config = {
+            "build": self.build_input_config["build"],
+            "input": input_config,
+        }
+
+        self.output_stats(op_run_id, metrics, final_config)
+
+    def output_stats(
+        self, op_run_id: str, metrics: Dict[str, Any], config: Dict[str, Any]
+    ):
+        for pass_name, metric in metrics.items():
+            logger.info(f"pass: {pass_name}")
+            for metric_name, records in metric.items():
+                total = sum(records)
+                avg = total/len(records)
+                logger.info(
+                    f"metric: {metric_name}, avg: {avg:.6f} sec, tot: {total:.6f} sec"
+                )
+                logger.info(f"{format_float_val_list(records, 6)}")
         stats = {
-            "name": self.op_name,
-            "id": self.id,
-            "pass": pass_name,
-            "device": self.device,
-            "time": time_records,
-            "iter": iterations,
+            "name": self.op_config.name,
+            "id": op_run_id,
+            "metric": metrics,
+            "device": self.run_options["device"],
             "config": config,
         }
-        return json.dumps(stats)
+        self.out_stream.write(json.dumps(stats) + "\n")
+        self.out_stream.flush()
 
 
 class Benchmark:
@@ -245,13 +267,9 @@ class Benchmark:
             self.run_op(op_config)
 
     def run_op(self, op_config: OperatorConfig) -> List[str]:
-        """
-        Run an operator based on its op_config.
-
-        """
         config_id = 0
         for config in op_config.config:
-            op_run_id = f"{op_config.name}:{config_id}"
+            op_run_id = str(config_id)
             if "input" not in config:
                 logger.error(
                     f"{op_config.name} has no input configurations defined, skipped."
@@ -271,8 +289,8 @@ class Benchmark:
 
             if generate_build_config:
                 for (build_id, build_config) in generate_build_config:
-                    logger.info(f"  build_id [{config_id}:{build_id}]")
-                    logger.debug(f"  build_config: {build_config}")
+                    logger.info(f"build_id [{config_id}:{build_id}]")
+                    logger.debug(f"build_config: {build_config}")
                     build_input_config["build"] = build_config
                     build_input_config["input"] = config["input"]
                     op_run_id += f":{build_id}"
@@ -284,8 +302,8 @@ class Benchmark:
                     )
                     exe.run()
             else:
-                logger.info(f"  build_id: [{config_id}:{0}]")
-                logger.debug(f"  build_config: {build_config}")
+                logger.info(f"build_id: [{config_id}:{0}]")
+                logger.debug(f"build_config: {build_config}")
                 build_input_config["build"] = build_config
                 build_input_config["input"] = config["input"]
                 op_run_id += f":0"
