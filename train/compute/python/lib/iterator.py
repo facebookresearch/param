@@ -1,11 +1,11 @@
 import abc
 import copy
-import logging
-from typing import Dict, Set, List, Tuple, Any, Callable, Iterable, Type, TextIO
+from typing import Dict, List, Any, Callable, Type
 
-import torch
 from .generator import full_range, IterableList, ListProduct, TableProduct
+from .init_helper import get_logger
 
+logger = get_logger()
 
 # Special meta attributes in range based configs
 ATTR_COPY = "__copy__"
@@ -56,9 +56,10 @@ def remove_meta_attr(config: Dict[str, Any]):
             arg.pop(attr, None)
     return result_config
 
+
 def create_range_iter(arg: Dict[str, Any]):
     def create_tensor(attr: Dict[str, Any]):
-        logging.debug(f"{attr}")
+        logger.debug(f"{attr}")
         result = copy.copy(attr)
         # if ranges exists, create iterator
         if ATTR_RANGE in attr:
@@ -106,12 +107,14 @@ def create_range_iter(arg: Dict[str, Any]):
     def create_none(attr: Dict[str, Any]):
         return copy.copy(attr)
 
+    # Called for a list of data types to be iterated
     def create_dtype(values: List[str]):
         return IterableList(values)
 
     def create_shape(values: List[Any]):
         shape = []
         for val in values:
+            # TODO lofe: should also check for ATTR_RANGE
             if type(val) is list:
                 shape.append(full_range(*val))
             else:
@@ -139,6 +142,18 @@ def create_range_iter(arg: Dict[str, Any]):
                 return TableProduct(result)
         return result
 
+    def create_tuple(attr: List[Any]):
+        result = copy.copy(attr)
+        if ATTR_RANGE in attr:
+            ranges = set(attr[ATTR_RANGE])
+            if "value" in ranges:
+                values = []
+                for item in attr["value"]:
+                    values.append(arg_factory_iter[item["type"]](item))
+                result["value"] = ListProduct(values)
+                return TableProduct(result)
+        return result
+
     arg_factory_iter: Dict[str, Callable] = {
         "tensor": create_tensor,
         "float": create_float,
@@ -152,8 +167,10 @@ def create_range_iter(arg: Dict[str, Any]):
         "shape": create_shape,
         "device": create_device,
         "genericlist": create_genericlist,
+        "tuple": create_tuple,
     }
     return arg_factory_iter[arg["type"]](arg)
+
 
 class RangeConfigIterator(ConfigIterator):
     def __init__(
@@ -169,7 +186,7 @@ class RangeConfigIterator(ConfigIterator):
         args = config["args"]
         # TODO lofe: support kwargs too.
         for arg in args:
-            if ATTR_COPY in arg:
+            if ATTR_COPY in arg and arg["type"] == "tensor":
                 copy_list = arg[ATTR_COPY]
                 for attr_map in copy_list:
                     for attr, mapping in attr_map.items():
@@ -202,7 +219,7 @@ class RangeConfigIterator(ConfigIterator):
             # start generating combinations
             config_id = 0
             for arg_config in TableProduct(config_generator):
-                logging.debug(arg_config)
+                logger.debug(arg_config)
                 # apply __copy__
                 self._apply_copy(arg_config)
 
@@ -263,10 +280,11 @@ class DummyConfigIterator(ConfigIterator):
 
 def register_config_iterator(name: str, iterator_class: Type[ConfigIterator]):
     global config_iterator_map
+    logger.debug(f"register iterator: {name}")
     if name not in config_iterator_map:
         config_iterator_map[name] = iterator_class
     else:
-        raise ValueError(f'Duplicate iterator registration name: "{name}"')
+        raise ValueError(f"Duplicate iterator registration name: {name}")
 
 
 config_iterator_map: Dict[str, Type[ConfigIterator]] = {}

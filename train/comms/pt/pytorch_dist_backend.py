@@ -580,6 +580,7 @@ class PyTorchDistBackend(backendFunctions):
         self.collectiveFunc["recv"] = self.recv
         self.collectiveFunc["isend"] = self.isend
         self.collectiveFunc["irecv"] = self.irecv
+        self.collectiveFunc["pt2pt"] = self.noop # dummy entry to support pt2pt benchmark
 
         backend = (
             self.commsParams["backend"]
@@ -606,14 +607,22 @@ class PyTorchDistBackend(backendFunctions):
 
         global_rank = self.get_global_rank()
         world_size = self.get_world_size()
+
         # Torch initializaiton
         if "MASTER_ADDR" in os.environ and str(master_ip) == "127.0.0.1":
-            logger.info("Using MASTER_ADDR=" + os.environ["MASTER_ADDR"])
+            logger.info("From environment variables, using MASTER_ADDR=" + os.environ["MASTER_ADDR"])
         else:
-            os.environ["MASTER_ADDR"] = str(master_ip)  # '127.0.0.1'
-        os.environ["MASTER_PORT"] = str(master_port)
-        os.environ["WORLD_SIZE"] = str(world_size)
-        os.environ["RANK"] = str(global_rank)
+            os.environ["MASTER_ADDR"] = str(master_ip)  # Set by --master-ip, Defaults to '127.0.0.1'
+
+        if "MASTER_PORT" in os.environ and str(master_port) == "29500":
+            logger.info("From environment variables, using MASTER_PORT=" + os.environ["MASTER_PORT"])
+        else:
+            os.environ["MASTER_PORT"] = str(master_port) # Set by --master-port, Defaults to '29500'
+
+        if world_size > 0:
+            os.environ["WORLD_SIZE"] = str(world_size)
+        if global_rank >= 0:
+            os.environ["RANK"] = str(global_rank)
 
         # default group
         dist.init_process_group(backend, rank=global_rank, world_size=world_size)

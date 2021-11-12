@@ -23,10 +23,12 @@ random.seed()
 logger = logging.getLogger(__name__)
 
 
-def gracefulExit():
+def gracefulExit(args=0):
     # TODO: Is this the best way to exit?
+    if args != 0:
+        logger.error(args)
     # WARNING: Assuming sys is always used, should find a platform-independent way to gracefully exit.
-    sys.exit()
+    sys.exit(args)
 
 
 def parsesize(ipValue):
@@ -159,29 +161,41 @@ def env2int(env_list, default=-1):
     return default
 
 
-def read_mpi_env_vars():
-    world_size = env2int(["PMI_SIZE", "OMPI_COMM_WORLD_SIZE", "MV2_COMM_WORLD_SIZE"], 1)
+def read_comms_env_vars():
+    world_size = env2int(
+        ["MV2_COMM_WORLD_SIZE", "OMPI_COMM_WORLD_SIZE", "PMI_SIZE", "WORLD_SIZE"], -1
+    )
 
     local_size = env2int(
-        ["MPI_LOCALNRANKS", "OMPI_COMM_WORLD_LOCAL_SIZE", "MV2_COMM_WORLD_LOCAL_SIZE"],
-        1,
+        [
+            "LOCAL_SIZE",
+            "MPI_LOCALNRANKS",
+            "MV2_COMM_WORLD_LOCAL_SIZE",
+            "OMPI_COMM_WORLD_LOCAL_SIZE",
+        ],
+        -1,
     )
 
     global_rank = env2int(
-        ["PMI_RANK", "OMPI_COMM_WORLD_RANK", "MV2_COMM_WORLD_RANK"], 0
+        ["MV2_COMM_WORLD_RANK", "OMPI_COMM_WORLD_RANK", "PMI_RANK", "RANK"], -1
     )
 
     local_rank = env2int(
-        ["MPI_LOCALRANKID", "OMPI_COMM_WORLD_LOCAL_RANK", "MV2_COMM_WORLD_LOCAL_RANK"],
-        0,
+        [
+            "LOCAL_RANK",
+            "MPI_LOCALRANKID",
+            "MV2_COMM_WORLD_LOCAL_RANK",
+            "OMPI_COMM_WORLD_LOCAL_RANK",
+        ],
+        -1,
     )
 
-    mpi_env_params = {}
-    mpi_env_params["world_size"] = world_size
-    mpi_env_params["local_size"] = local_size
-    mpi_env_params["global_rank"] = global_rank
-    mpi_env_params["local_rank"] = local_rank
-    return mpi_env_params
+    comms_env_params = {}
+    comms_env_params["world_size"] = world_size
+    comms_env_params["local_size"] = local_size
+    comms_env_params["global_rank"] = global_rank
+    comms_env_params["local_rank"] = local_rank
+    return comms_env_params
 
 
 def commonUrlRead(remotePath):
@@ -264,10 +278,7 @@ def paramToCommName(name, supported_comms=None):
         new_name = name
 
     if supported_comms is not None and new_name not in supported_comms:
-        logger.error(
-            f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}"
-        )
-        gracefulExit()
+        gracefulExit(f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}")
 
     return new_name
 
@@ -486,11 +497,11 @@ class backendFunctions(ABC):
 
 
 class comms_world_info_holder:
-    def __init__(self, master_ip, master_port, num_tpu_cores, mpi_env_params):
+    def __init__(self, master_ip, master_port, num_tpu_cores, comms_env_params):
         # Holding communication-world related parameters.
-        self.global_rank = mpi_env_params["global_rank"]
-        self.local_rank = mpi_env_params["local_rank"]
-        self.world_size = mpi_env_params["world_size"]
+        self.global_rank = comms_env_params["global_rank"]
+        self.local_rank = comms_env_params["local_rank"]
+        self.world_size = comms_env_params["world_size"]
 
         self.master_ip = master_ip
         self.master_port = master_port
@@ -650,7 +661,7 @@ class paramCommsBench(ABC):
             and self.backendFuncs.get_global_rank() != commsParams.srcOrDst
         ) or (
             # Check results of multicast only for dst_ranks
-            commsParams.collective == "multicast"
+            commsParams.collective in ("multicast", "pt2pt")
             and self.backendFuncs.get_global_rank() not in commsParams.dst_ranks
         ):
             return
@@ -701,7 +712,7 @@ class paramCommsBench(ABC):
             return ([], [])
 
         numElementsIn = curComm["in_msg_size"]
-        numElementsOut = curComm["out_msg_size"]
+        numElementsOut = curComm["out_msg_size"] # only meaningful for out-of-place collectives and pt2pt
         world_size = self.collectiveArgs.world_size
         dtype = commsParams.dtype
         curDevice = commsParams.device
@@ -736,13 +747,13 @@ class paramCommsBench(ABC):
             for _ in range(world_size):
                 opTensor.append(
                     self.backendFuncs.alloc_random(
-                        [numElementsOut], curDevice, dtype, scaleFactor
+                        [numElementsIn], curDevice, dtype, scaleFactor
                     )
                 )
         elif commOp == "all_gather_base":
             # this is a single all gather with flat output tensor
             opTensor = self.backendFuncs.alloc_random(
-                numElementsOut * world_size,
+                numElementsIn * world_size,
                 curDevice,
                 dtype,
                 scaleFactor,
@@ -908,10 +919,10 @@ class paramCommsBench(ABC):
         numeric_level = getattr(logging, args.log.upper(), None)
         if not isinstance(numeric_level, int):
             raise ValueError(f"Invalid log level: {args.log}")
-        mpi_env_params = read_mpi_env_vars()
+        comms_env_params = read_comms_env_vars()
         logging.basicConfig(
             level=numeric_level,
             format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
-                mpi_env_params["global_rank"]
+                comms_env_params["global_rank"]
             ),
         )

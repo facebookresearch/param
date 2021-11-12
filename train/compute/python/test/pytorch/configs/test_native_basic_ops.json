@@ -1,6 +1,7 @@
 {
-  "aten::baddbmm": {
-    "configs": [
+  "torch.add": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
       {
         "input": [
           {
@@ -8,42 +9,30 @@
               {
                 "dtype": "float",
                 "shape": [
-                  1,
-                  1,
-                  1
+                  256,
+                  256
                 ],
                 "type": "tensor"
               },
               {
                 "dtype": "float",
                 "shape": [
-                  1,
-                  1,
-                  1
-                ],
-                "type": "tensor"
-              },
-              {
-                "dtype": "float",
-                "shape": [
-                  1,
-                  1,
-                  1
+                  256,
+                  256
                 ],
                 "type": "tensor"
               }
-            ],
-            "kwargs": {
-              "beta": {
-                "type": "int",
-                "value": 1
-              },
-              "alpha": {
-                "type": "int",
-                "value": 1
-              }
-            }
-          },
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.baddbmm": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
           {
             "args": [
               {
@@ -89,8 +78,9 @@
       }
     ]
   },
-  "aten::bmm": {
-    "configs": [
+  "torch.bmm": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
       {
         "input": [
           {
@@ -98,106 +88,18 @@
               {
                 "dtype": "float",
                 "shape": [
-                  512,
-                  1234,
-                  30
-                ],
-                "type": "tensor"
-              },
-              {
-                "dtype": "float",
-                "shape": [
-                  512,
-                  30,
-                  64
-                ],
-                "type": "tensor"
-              }
-            ]
-          },
-          {
-            "args": [
-              {
-                "dtype": "float",
-                "shape": [
-                  512,
                   64,
-                  30
+                  128,
+                  128
                 ],
                 "type": "tensor"
               },
               {
                 "dtype": "float",
                 "shape": [
-                  512,
-                  30,
-                  1234
-                ],
-                "type": "tensor"
-              }
-            ]
-          },
-          {
-            "args": [
-              {
-                "dtype": "float",
-                "shape": [
-                  512,
-                  1234,
-                  64
-                ],
-                "type": "tensor"
-              },
-              {
-                "dtype": "float",
-                "shape": [
-                  512,
                   64,
-                  30
-                ],
-                "type": "tensor"
-              }
-            ]
-          },
-          {
-            "args": [
-              {
-                "dtype": "float",
-                "shape": [
-                  512,
-                  64,
-                  1234
-                ],
-                "type": "tensor"
-              },
-              {
-                "dtype": "float",
-                "shape": [
-                  512,
-                  1234,
-                  30
-                ],
-                "type": "tensor"
-              }
-            ]
-          },
-          {
-            "args": [
-              {
-                "dtype": "float",
-                "shape": [
-                  2,
-                  512,
-                  512
-                ],
-                "type": "tensor"
-              },
-              {
-                "dtype": "float",
-                "shape": [
-                  2,
-                  512,
-                  512
+                  128,
+                  256
                 ],
                 "type": "tensor"
               }
@@ -207,8 +109,46 @@
       }
     ]
   },
-  "aten::mm": {
-    "configs": [
+  "torch.cat": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "type": "tuple",
+                "value": [
+                  {
+                    "dtype": "float",
+                    "shape": [
+                      256,
+                      256
+                    ],
+                    "type": "tensor"
+                  },
+                  {
+                    "dtype": "float",
+                    "shape": [
+                      256,
+                      256
+                    ],
+                    "type": "tensor"
+                  }]
+              },
+              {
+                "type": "int",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.matmul": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
       {
         "input": [
           {
@@ -216,18 +156,148 @@
               {
                 "dtype": "float",
                 "shape": [
-                  512,
-                  512
+                  256,
+                  256
                 ],
                 "type": "tensor"
               },
               {
                 "dtype": "float",
                 "shape": [
-                  512,
-                  3702
+                  256,
+                  256
                 ],
                 "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.mean": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.mm": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  128,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.mul": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "type": "int",
+                "value": 2.5
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.nn.functional.relu": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.reshape": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "type": "tuple",
+                "value": [
+                  {
+                    "type": "int",
+                    "value": 128
+                  },
+                  {
+                    "type": "int",
+                    "value": 512
+                  }
+                ]
               }
             ]
           }
