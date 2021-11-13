@@ -252,6 +252,20 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    def reduce_scatter_base(self, collectiveArgs, retFlag=False, pair=False):
+        retObj = dist._reduce_scatter_base(
+            output=collectiveArgs.opTensor,
+            input=collectiveArgs.ipTensor,
+            group=collectiveArgs.group,
+            async_op=collectiveArgs.asyncOp,
+        )  # synchronicity is maintained in runColl
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
     def all_gather_base(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist._all_gather_base(
             output_tensor=collectiveArgs.opTensor,
@@ -531,7 +545,13 @@ class PyTorchDistBackend(backendFunctions):
         my_dev = torch.device(dev_str)
         if dev_str == "cuda":
             # explicitly select the device ordinal based on the local rank
-            my_dev = torch.device("cuda:%d" % self.get_local_rank())
+            ordinal = self.get_local_rank()
+            if self.get_local_rank() == -1:
+                logger.warning(
+                    "Cannot determine device ordinal since LOCAL_RANK is -1. Try GPU 0 and continue. "
+                )
+                ordinal = 0
+            my_dev = torch.device(f"cuda:{ordinal}")
         elif dev_str != "cpu":
             # sanity check, such error should be catched when parsing arguments
             raise ValueError(f"{dev_str} is not a valid device option")
@@ -580,7 +600,9 @@ class PyTorchDistBackend(backendFunctions):
         self.collectiveFunc["recv"] = self.recv
         self.collectiveFunc["isend"] = self.isend
         self.collectiveFunc["irecv"] = self.irecv
-        self.collectiveFunc["pt2pt"] = self.noop # dummy entry to support pt2pt benchmark
+        self.collectiveFunc[
+            "pt2pt"
+        ] = self.noop  # dummy entry to support pt2pt benchmark
 
         backend = (
             self.commsParams["backend"]
@@ -609,16 +631,7 @@ class PyTorchDistBackend(backendFunctions):
         world_size = self.get_world_size()
 
         # Torch initializaiton
-        if "MASTER_ADDR" in os.environ and str(master_ip) == "127.0.0.1":
-            logger.info("From environment variables, using MASTER_ADDR=" + os.environ["MASTER_ADDR"])
-        else:
-            os.environ["MASTER_ADDR"] = str(master_ip)  # Set by --master-ip, Defaults to '127.0.0.1'
-
-        if "MASTER_PORT" in os.environ and str(master_port) == "29500":
-            logger.info("From environment variables, using MASTER_PORT=" + os.environ["MASTER_PORT"])
-        else:
-            os.environ["MASTER_PORT"] = str(master_port) # Set by --master-port, Defaults to '29500'
-
+        # NOTE: MASTER_ADDR and MASTER_PORT should be set already in `comms_utils.py`
         if world_size > 0:
             os.environ["WORLD_SIZE"] = str(world_size)
         if global_rank >= 0:

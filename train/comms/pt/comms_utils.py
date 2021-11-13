@@ -22,6 +22,9 @@ random.seed()
 
 logger = logging.getLogger(__name__)
 
+default_master_ip = "127.0.0.1"
+default_master_port = "29500"
+
 
 def gracefulExit(args=0):
     # TODO: Is this the best way to exit?
@@ -278,7 +281,9 @@ def paramToCommName(name, supported_comms=None):
         new_name = name
 
     if supported_comms is not None and new_name not in supported_comms:
-        gracefulExit(f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}")
+        gracefulExit(
+            f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}"
+        )
 
     return new_name
 
@@ -347,7 +352,7 @@ class backendFunctions(ABC):
             "all_gather_base": self.all_gather_base,
             "reduce": self.reduce,
             "reduce_scatter": self.reduce_scatter,
-            "reduce_scatter_base": self.reduce_scatter,
+            "reduce_scatter_base": self.reduce_scatter_base,
             "barrier": self.barrier,
             "incast": self.incast,
             "multicast": self.multicast,
@@ -368,6 +373,7 @@ class backendFunctions(ABC):
             "all_to_allv",
             "all_gather",
             "reduce_scatter",
+            "reduce_scatter_base",
             "all_gather_base",
         ):
             if collectiveArgs.world_size != 0:
@@ -648,7 +654,10 @@ class paramCommsBench(ABC):
 
     def dcheck(self, commsParams, curSize, tensor):
         expRes = self.initVal
-        if (commsParams.collective == "all_reduce") or (
+        if (
+            commsParams.collective
+            in ("all_reduce", "reduce_scatter", "reduce_scatter_base")
+        ) or (
             self.backendFuncs.get_global_rank() == commsParams.srcOrDst
             and commsParams.collective == "reduce"
         ):
@@ -695,7 +704,7 @@ class paramCommsBench(ABC):
                 else newVal
             )
         elif isinstance(tensor, list):
-            # could be a list of tensor, for all_gather/gather
+            # could be a list of tensor, for all_gather, gather, reduce_scatter
             for t in tensor:
                 t[:] = newVal
         else:
@@ -712,7 +721,8 @@ class paramCommsBench(ABC):
             return ([], [])
 
         numElementsIn = curComm["in_msg_size"]
-        numElementsOut = curComm["out_msg_size"] # only meaningful for out-of-place collectives and pt2pt
+        # numElementsOut is only meaningful for out-of-place collectives and pt2pt
+        numElementsOut = curComm["out_msg_size"]
         world_size = self.collectiveArgs.world_size
         dtype = commsParams.dtype
         curDevice = commsParams.device
@@ -769,11 +779,36 @@ class paramCommsBench(ABC):
         elif commOp == "reduce_scatter":
             opTensor = ipTensor
             ipTensor = []
-            for _ in range(world_size):
-                ipTensor.append(
-                    self.backendFuncs.alloc_random(
-                        [numElementsOut], curDevice, dtype, scaleFactor
+            if commsParams.dcheck == 1:
+                for _ in range(world_size):
+                    ipTensor.append(
+                        self.backendFuncs.alloc_ones(
+                            [numElementsOut], curDevice, commsParams.dtype, self.initVal
+                        )
                     )
+            else:
+                for _ in range(world_size):
+                    ipTensor.append(
+                        self.backendFuncs.alloc_random(
+                            [numElementsOut], curDevice, commsParams.dtype, scaleFactor
+                        )
+                    )
+        elif commOp == "reduce_scatter_base":
+            opTensor = ipTensor
+            ipTensor = []
+            if commsParams.dcheck == 1:
+                ipTensor = self.backendFuncs.alloc_ones(
+                    numElementsOut * world_size,
+                    curDevice,
+                    commsParams.dtype,
+                    self.initVal,
+                )
+            else:
+                ipTensor = self.backendFuncs.alloc_random(
+                    numElementsOut * world_size,
+                    curDevice,
+                    commsParams.dtype,
+                    scaleFactor,
                 )
         elif commOp in ("all_to_all", "pt2pt"):
             # pt2pt or out-of-place collectives
@@ -810,13 +845,13 @@ class paramCommsBench(ABC):
         parser.add_argument(
             "--master-ip",
             type=str,
-            default="127.0.0.1",
+            default=default_master_ip,
             help="The master-IP to coordinate",
         )  # The master-IP to coordinate.
         parser.add_argument(
             "--master-port",
             type=str,
-            default="29500",
+            default=default_master_port,
             help="The master-port to coordinate",
         )  # The master-port to coordinate.
         parser.add_argument(
@@ -926,3 +961,36 @@ class paramCommsBench(ABC):
                 comms_env_params["global_rank"]
             ),
         )
+        # check master-ip and master-port with the following logic
+        #   1) prefer the values passed to PARAM, i.e., through --master-ip and --master-port
+        #   2) check and use the env. variable, i.e., MASTER_ADDR and MASTER_PORT
+        #   3) if both #1 and #2 are not set, pre-defined default values will be used
+        if "MASTER_ADDR" in os.environ:
+            if args.master_ip not in (default_master_ip, os.environ["MASTER_ADDR"]):
+                logger.warning(
+                    f"--master-ip={args.master_ip} while MASTER_ADDR={os.environ['MASTER_ADDR']}, "
+                    f"use --master-ip={args.master_ip} and continue..."
+                )
+                os.environ["MASTER_ADDR"] = args.master_ip
+            else:
+                logger.info(
+                    "From environment variables, using MASTER_ADDR="
+                    + os.environ["MASTER_ADDR"]
+                )
+        else:
+            os.environ["MASTER_ADDR"] = default_master_ip
+
+        if "MASTER_PORT" in os.environ:
+            if args.master_port not in (default_master_port, os.environ["MASTER_PORT"]):
+                logger.warning(
+                    f"--master-port={args.master_port} while MASTER_PORT={os.environ['MASTER_PORT']}, "
+                    f"use --master-port={args.master_port} and continue..."
+                )
+                os.environ["MASTER_PORT"] = args.master_port
+            else:
+                logger.info(
+                    "From environment variables, using MASTER_PORT="
+                    + os.environ["MASTER_PORT"]
+                )
+        else:
+            os.environ["MASTER_PORT"] = default_master_port

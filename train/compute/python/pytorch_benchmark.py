@@ -66,10 +66,10 @@ def main():
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD
-        logger.info(f"Pass: FORWARD and BACKWARD")
+        logger.info("Pass: FORWARD and BACKWARD")
     else:
         run_options["pass_type"] = ExecutionPass.FORWARD
-        logger.info(f"Pass: FORWARD")
+        logger.info("Pass: FORWARD")
 
     out_file_name = f"{args.output_prefix}.json"
 

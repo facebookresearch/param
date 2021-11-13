@@ -153,11 +153,9 @@ class SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator:
         num_tables = config["args"][0]["value"]
         if num_tables > 1:
             rows = genericList_to_list(config["args"][1])
-            dims = genericList_to_list(config["args"][2])
             pooling_factors = genericList_to_list(config["args"][4])
         else:
             rows = [config["args"][1]["value"]]
-            dims = [config["args"][2]["value"]]
             pooling_factors = [config["args"][4]["value"]]
         batch_size = config["args"][3]["value"]
         weighted = config["args"][5]["value"]
@@ -215,12 +213,12 @@ class SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator:
                 if weighted:
                     per_sample_weights_list.append(per_sample_weights)
 
-            indices_tensor = torch.cat([t for t in indices_list])
-            offsets_tensor = torch.cat([t for t in offsets_list])
+            indices_tensor = torch.cat(indices_list)
+            offsets_tensor = torch.cat(offsets_list)
 
             # check for per sample weights
             per_sample_weights_tensor = (
-                torch.cat([t for t in per_sample_weights_list]) if weighted else None
+                torch.cat(per_sample_weights_list) if weighted else None
             )
 
         logger.debug(f"indices: {indices_tensor.shape}, {indices_tensor}")

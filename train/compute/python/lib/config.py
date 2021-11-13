@@ -1,7 +1,6 @@
 import copy
 import json
 from typing import Dict, List, Any
-from typing import TextIO
 from typing import Type
 
 from .data import DataGenerator, data_generator_map

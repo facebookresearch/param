@@ -343,7 +343,7 @@ class Benchmark:
                 logger.debug(f"build_config: {build_config}")
                 build_input_config["build"] = build_config
                 build_input_config["input"] = config["input"]
-                op_run_id += f":0"
+                op_run_id += ":0"
                 build_exe = self.build_executor(
                     build_input_config,
                     op_config,
