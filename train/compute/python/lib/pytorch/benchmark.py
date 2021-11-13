@@ -326,11 +326,11 @@ class Benchmark:
 
             if generate_build_config:
                 for (build_id, build_config) in generate_build_config:
-                    logger.info(f"build_id [{config_id}:{build_id}]")
+                    op_run_id += f":{build_id}"
+                    logger.info(f"build_id [{op_run_id}]")
                     logger.debug(f"build_config: {build_config}")
                     build_input_config["build"] = build_config
                     build_input_config["input"] = config["input"]
-                    op_run_id += f":{build_id}"
                     build_exe = self.build_executor(
                         build_input_config,
                         op_config,
@@ -339,11 +339,11 @@ class Benchmark:
                     )
                     build_exe.run()
             else:
-                logger.info(f"build_id: [{config_id}:{0}]")
+                op_run_id += ":0"
+                logger.info(f"build_id [{op_run_id}]")
                 logger.debug(f"build_config: {build_config}")
                 build_input_config["build"] = build_config
                 build_input_config["input"] = config["input"]
-                op_run_id += ":0"
                 build_exe = self.build_executor(
                     build_input_config,
                     op_config,

@@ -30,14 +30,14 @@ def main():
     # Get the default benchmark options
     run_options = get_benchmark_options()
 
-    # Create OperatorConfig that initialize the actual operator workload and
-    # various generators to create inputs for the operator.
-    op_config = make_op_config(op_name, op_info, run_options["device"])
-
     # By default, benchmark will run the forward pass.
     # By setting backward (which requires running forward pass), the benchmark
     # will run both forward and backward pass.
     run_options["pass_type"] = ExecutionPass.BACKWARD
+
+    # Create OperatorConfig that initialize the actual operator workload and
+    # various generators to create inputs for the operator.
+    op_config = make_op_config(op_name, op_info, run_options["device"])
 
     # Generate the actual data for inputs. For operators that require a build
     # step, a similar data generation is needed for build config.
