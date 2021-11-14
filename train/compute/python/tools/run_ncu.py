@@ -3,7 +3,7 @@ import logging
 import os
 import subprocess
 
-from .lib.init_helper import init_logging
+from ..lib.init_helper import init_logging
 
 # Initialize logging format before loading all other modules
 logger = init_logging(logging.INFO)
@@ -19,7 +19,7 @@ def run_ncu(args: str, metrics: str, out_prefix: str):
     if not ncu_bin:
         ncu_bin = NCU_BIN
     ncu_options = (
-        f"--log-file {out_prefix}.ncu.log --csv --target-processes all "
+        f"--log-file {out_prefix}.ncu.log --csv --app-replay-buffer file --target-processes all "
         f"--metrics {metrics} --nvtx --nvtx-include {param_bench_range}"
     )
 
@@ -40,16 +40,18 @@ def main():
 
     parser = argparse.ArgumentParser(description="Microbenchmarks")
     parser.add_argument(
-        "--bench_args",
+        "-b",
+        "--benchmark",
         type=str,
         required=True,
         help="Args to pass to benchmark script.",
     )
-    parser.add_argument("--metrics", type=str, default="", help="The metric ids.")
+    parser.add_argument("-m", "--metrics", type=str, default="", help="The metric ids.")
     parser.add_argument(
-        "--metrics_file", type=str, default=None, help="The metrics config file."
+        "-f", "--metrics_file", type=str, default=None, help="The metrics config file."
     )
     parser.add_argument(
+        "-o",
         "--output_prefix",
         type=str,
         default="benchmark_result",

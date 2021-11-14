@@ -58,8 +58,7 @@ def main():
     for pass_name, pass_data in result.items():
         print(f"pass: {pass_name}")
         for metric_name, metrics in pass_data.items():
-            print(metric_name)
-            print(metrics)
+            print(metric_name, metrics)
 
 
 if __name__ == "__main__":

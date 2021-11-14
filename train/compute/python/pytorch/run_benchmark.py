@@ -1,20 +1,20 @@
 import logging
 
-from .lib.init_helper import init_logging, load_modules
+from ..lib.init_helper import init_logging, load_modules
 
 # Initialize logging format before loading all other modules
 logger = init_logging(logging.INFO)
 
 import argparse
 
-from .lib import pytorch as lib_pytorch
-from .lib.config import BenchmarkConfig
-from .lib.pytorch.benchmark import (
+from ..lib import pytorch as lib_pytorch
+from ..lib.config import BenchmarkConfig
+from ..lib.pytorch.benchmark import (
     make_default_benchmark,
     ExecutionPass,
-    get_benchmark_options,
 )
-from .workloads import pytorch as workloads_pytorch
+from ..workloads import pytorch as workloads_pytorch
+from ..lib.pytorch.config_util import get_benchmark_options
 
 
 def main():
@@ -42,7 +42,10 @@ def main():
         help="File name prefix to write benchmark results.",
     )
     parser.add_argument(
-        "-a", "--append", action="store_true", help="Append to output file, rather than overwrite."
+        "-a",
+        "--append",
+        action="store_true",
+        help="Append to output file, rather than overwrite.",
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Increase log output verbosity."

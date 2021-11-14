@@ -1,6 +1,28 @@
 import copy
+import enum
 from typing import Any
 from typing import Dict
+
+
+@enum.unique
+class ExecutionPass(enum.Enum):
+    # Forward pass will always run (also required for backward pass).
+    FORWARD = "FORWARD"
+    # Run backward pass in addition to forward pass.
+    BACKWARD = "BACKWARD"
+
+
+def get_benchmark_options():
+    options = {
+        "device": "cpu",
+        "pass_type": ExecutionPass.FORWARD,
+        "warmup": 1,
+        "iteration": 1,
+        "out_stream": None,
+        "resume_op_run_id": None,
+    }
+
+    return options
 
 
 def create_bench_config(name: str):
