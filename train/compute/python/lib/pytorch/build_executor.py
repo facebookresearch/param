@@ -41,8 +41,11 @@ class BuildExecutor(metaclass=abc.ABCMeta):
 
     run_options: Benchmark run options.
 
-    op_run_id: A unique string id that identifies the current build configuration.
+    run_id: A unique string id that identifies the current build configuration.
     """
+
+    _skip_run = False
+    _resume_op_run_id = None
 
     @classmethod
     def __subclasshook__(cls, subclass):
@@ -55,6 +58,28 @@ class BuildExecutor(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def run(self):
         raise NotImplementedError
+
+    @staticmethod
+    def set_resume_op_run_id(resume_op_run_id: str):
+        logger.debug(f"resume_op_run_id: {resume_op_run_id}")
+        BuildExecutor._resume_op_run_id = resume_op_run_id
+        # if a valid resume_op_run_id is defined, skip runs by default until
+        # a match op run id is found.
+        if BuildExecutor._resume_op_run_id:
+            BuildExecutor._skip_run = True
+        logger.debug(f"_resume_op_run_id: {BuildExecutor._resume_op_run_id}")
+        logger.debug(f"skip_run: {BuildExecutor._skip_run}")
+
+    @staticmethod
+    def should_skip(op_run_id: str):
+        # Check if we should skip the run, check if a matching run id is found.
+        if BuildExecutor._skip_run:
+            if op_run_id == BuildExecutor._resume_op_run_id:
+                BuildExecutor._skip_run = False
+        logger.debug(f"op_run_id: {op_run_id}")
+        logger.debug(f"resume_op_run_id: {BuildExecutor._resume_op_run_id}")
+        logger.debug(f"skip_run: {BuildExecutor._skip_run}")
+        return BuildExecutor._skip_run
 
 
 class OpBuildExecutor(BuildExecutor):
@@ -98,11 +123,15 @@ class OpBuildExecutor(BuildExecutor):
             self._run_ncu()
             self.input_config_queue.clear()
 
-
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
-        op_run_id = self.build_id + f":{input_id}"
+        run_id = self.build_id + f":{input_id}"
+
+        if BuildExecutor.should_skip(f"{self.op_config.name}:{run_id}"):
+            return
+
         logger.info(f"input_id: [{input_id}]")
         logger.debug(f"input_config: {input_config}")
+
         # generate input data
         input_data_gen = self.op_config.input_data_generator()
         (input_args, input_kwargs) = input_data_gen.get_data(
@@ -111,7 +140,7 @@ class OpBuildExecutor(BuildExecutor):
 
         op_exe = OpExecutor(self.op_config.name, self.op_config.op, self.run_options)
 
-        metrics = op_exe.run(input_args, input_kwargs, op_run_id)
+        metrics = op_exe.run(input_args, input_kwargs, run_id)
         # print(result)
         final_config = {
             "build": self.build_input_config["build"],
@@ -119,9 +148,9 @@ class OpBuildExecutor(BuildExecutor):
         }
 
         output_stats(
-            self.out_stream, self.op_config.name, op_run_id, metrics, final_config
+            self.out_stream, self.op_config.name, run_id, metrics, final_config
         )
-        logger.debug(f"Finished running [{op_run_id}].")
+        logger.debug(f"Finished running [{run_id}].")
 
         if self.run_options["run_ncu"]:
             input_config["id"] = input_id
@@ -129,7 +158,6 @@ class OpBuildExecutor(BuildExecutor):
             if len(self.input_config_queue) == 100:
                 self._run_ncu()
                 self.input_config_queue.clear()
-
 
     def _run_ncu(self):
         final_config = {
@@ -259,16 +287,19 @@ class MaterializedBuildExecutor(BuildExecutor):
                 input_id = input_config["id"]
             else:
                 input_id = counter
-            op_run_id = self.build_id + f":{input_id}"
-            logger.info(f"input_id: [{op_run_id}]")
-            logger.debug(f"input_config: {input_config}")
-            # generate data
-            self._run_for_input(op_run_id, input_config)
+            self._run_for_input(input_id, input_config)
 
             counter += 1
-            logger.debug(f"Finished running [{op_run_id}].")
 
-    def _run_for_input(self, op_run_id: str, input_config: Dict[str, Any]):
+    def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
+        run_id = self.build_id + f":{input_id}"
+
+        if BuildExecutor.should_skip(f"{self.op_config.name}:{run_id}"):
+            return
+
+        logger.info(f"input_id: [{run_id}]")
+        logger.debug(f"input_config: {input_config}")
+
         # generate input data
         input_data_gen = self.op_config.input_data_generator()
         (input_args, input_kwargs) = input_data_gen.get_data(
@@ -277,7 +308,7 @@ class MaterializedBuildExecutor(BuildExecutor):
 
         op_exe = OpExecutor(self.op_config.name, self.op_config.op, self.run_options)
 
-        metrics = op_exe.run(input_args, input_kwargs, op_run_id)
+        metrics = op_exe.run(input_args, input_kwargs, run_id)
         # print(result)
         final_config = {
             "build": self.build_input_config["build"],
@@ -285,14 +316,16 @@ class MaterializedBuildExecutor(BuildExecutor):
         }
 
         output_stats(
-            self.out_stream, self.op_config.name, op_run_id, metrics, final_config
+            self.out_stream, self.op_config.name, run_id, metrics, final_config
         )
+
+        logger.debug(f"Finished running [{run_id}].")
 
 
 def output_stats(
     out_stream: TextIO,
     name: str,
-    op_run_id: str,
+    run_id: str,
     metrics: Dict[str, Any],
     config: Dict[str, Any],
 ):
@@ -307,7 +340,7 @@ def output_stats(
             logger.info(f"{format_float_val_list(records, 6)}")
     stats = {
         "name": name,
-        "id": op_run_id,
+        "id": run_id,
         "metric": metrics,
         "config": config,
     }

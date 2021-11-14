@@ -1,4 +1,5 @@
 from typing import List, Dict, Any
+
 from ...lib import pytorch as lib_pytorch
 from ...lib.config import make_op_config
 from ...lib.init_helper import load_modules
@@ -7,7 +8,7 @@ from ...lib.pytorch.config_util import (
     create_bench_config,
     create_data,
     get_benchmark_options,
-    create_op_args
+    create_op_args,
 )
 from ...workloads import pytorch as workloads_pytorch
 

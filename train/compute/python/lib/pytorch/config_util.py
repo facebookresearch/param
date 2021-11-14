@@ -13,6 +13,10 @@ class ExecutionPass(enum.Enum):
     BACKWARD = "backward"
 
 
+def get_op_run_id(op_name: str, run_id: str):
+    return f"{op_name}:{run_id}"
+
+
 def get_benchmark_options():
     options = {
         "device": "cpu",
@@ -39,6 +43,8 @@ def create_op_info():
         "input_data_generator": "PyTorch::DefaultDataGenerator",
         "config": [{"build": [], "input": []}],
     }
+
+
 def create_op_args(args: List[Any], kwargs: Dict[str, Any]):
     return {"args": args, "kwargs": kwargs}
 

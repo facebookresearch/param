@@ -1,5 +1,6 @@
 {
-  "torch.add": {
+  "torch.mm": {
+    "input_iterator": "RangeConfigIterator",
     "input_data_generator": "PyTorch::DefaultDataGenerator",
     "config": [
       {
@@ -9,8 +10,11 @@
               {
                 "dtype": "float",
                 "shape": [
-                  256,
+                  [128, 256, 16],
                   256
+                ],
+                "__range__": [
+                  "shape"
                 ],
                 "type": "tensor"
               },

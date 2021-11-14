@@ -13,8 +13,8 @@ from ..lib.pytorch.benchmark import (
     make_default_benchmark,
     ExecutionPass,
 )
-from ..workloads import pytorch as workloads_pytorch
 from ..lib.pytorch.config_util import get_benchmark_options
+from ..workloads import pytorch as workloads_pytorch
 
 
 def main():
@@ -40,6 +40,13 @@ def main():
         type=str,
         default="benchmark_result",
         help="File name prefix to write benchmark results.",
+    )
+    parser.add_argument(
+        "-r",
+        "--resume-id",
+        type=str,
+        default=None,
+        help="Define a resume op_run_id to continue benchmark, skip all previous configs.",
     )
     parser.add_argument(
         "-a",
@@ -69,6 +76,8 @@ def main():
     run_options["warmup"] = args.warmup
     run_options["iteration"] = args.iteration
     run_options["device"] = args.device
+    run_options["resume_op_run_id"] = args.resume_id
+    print(run_options["resume_op_run_id"])
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD

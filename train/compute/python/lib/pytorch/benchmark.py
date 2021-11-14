@@ -55,6 +55,7 @@ class Benchmark:
         self.bench_config = bench_config
         self.build_executor = build_executor
         self.run_options = bench_config.run_options
+        BuildExecutor.set_resume_op_run_id(self.run_options["resume_op_run_id"])
 
     def run(self):
         for op_config in self.bench_config.op_configs:

@@ -46,7 +46,9 @@ def load_modules(package):
         try:
             importlib.import_module(name)
         except ModuleNotFoundError as error:
-            _logger.warning(f"Failed to import module: {name}. ModuleNotFoundError: {error}")
+            _logger.warning(
+                f"Failed to import module: {name}. ModuleNotFoundError: {error}"
+            )
 
 
 def load_package(package) -> bool:
@@ -57,6 +59,8 @@ def load_package(package) -> bool:
     try:
         importlib.import_module(package)
     except ModuleNotFoundError as error:
-        _logger.warning(f"Failed to import package: {package}. ModuleNotFoundError: {error}")
+        _logger.warning(
+            f"Failed to import package: {package}. ModuleNotFoundError: {error}"
+        )
         return False
     return True
