@@ -32,7 +32,7 @@
     ]
   },
   "run_options": {
-    "device": "cpu",
+    "device": "cuda",
     "pass_type": "FORWARD",
     "warmup": 1,
     "iteration": 1,

@@ -7,9 +7,9 @@ from typing import Dict
 @enum.unique
 class ExecutionPass(enum.Enum):
     # Forward pass will always run (also required for backward pass).
-    FORWARD = "FORWARD"
+    FORWARD = "forward"
     # Run backward pass in addition to forward pass.
-    BACKWARD = "BACKWARD"
+    BACKWARD = "backward"
 
 
 def get_benchmark_options():

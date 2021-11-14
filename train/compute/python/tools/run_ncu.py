@@ -68,7 +68,7 @@ def main():
             )
     # combine all metrics
     metrics_str = ",".join(str(s) for s in metrics)
-    run_ncu(args.bench_args, metrics_str, args.output_prefix)
+    run_ncu(args.benchmark, metrics_str, args.output_prefix)
 
 
 if __name__ == "__main__":

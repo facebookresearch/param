@@ -7,6 +7,7 @@ logger = init_logging(logging.INFO)
 
 import argparse
 import json
+import os
 from multiprocessing import shared_memory
 from typing import Any
 from typing import Callable
@@ -82,8 +83,9 @@ def main():
     op_config = make_op_config(op_name, op_info, run_options["device"])
     build_input_config = op_info["config"][0]
 
-    with open("test_run.json", "w") as out_file:
-        run_options["out_stream"] = out_file
+    # Don't need to write out anything.
+    with open(os.devnull, "w") as out_stream:
+        run_options["out_stream"] = out_stream
         build_exe = MaterializedBuildExecutor(
             build_input_config, op_config, run_options, build_id
         )

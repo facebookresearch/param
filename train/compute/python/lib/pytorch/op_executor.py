@@ -58,9 +58,9 @@ class OpExecutor:
         self, input_args: List, input_kwargs: Dict[str, Any], op_run_id: str
     ) -> Dict[str, Any]:
         result = {}
-        result[str(ExecutionPass.FORWARD)] = {}
+        result[ExecutionPass.FORWARD.value] = {}
         if self.pass_type == ExecutionPass.BACKWARD:
-            result[str(ExecutionPass.BACKWARD)] = {}
+            result[ExecutionPass.BACKWARD.value] = {}
 
         # Warm up forward (and maybe backward depending on pass_type).
         self._measure(
@@ -99,14 +99,14 @@ class OpExecutor:
         fw_time_records = []
         bw_time_records = []
         for _ in range(count):
-            op_run_pass = f"{op_run_id}:{ExecutionPass.FORWARD}"
+            op_run_pass = f"{op_run_id}:{ExecutionPass.FORWARD.value}"
             latency = self._benchmark_op(
                 self.op.forward, args, kwargs, tag, op_run_pass
             )
             fw_time_records.append(latency)
             if self.pass_type == ExecutionPass.BACKWARD:
                 self.op.create_grad()
-                op_run_pass = f"{op_run_id}:{ExecutionPass.BACKWARD}"
+                op_run_pass = f"{op_run_id}:{ExecutionPass.BACKWARD.value}"
                 latency = self._benchmark_op(self.op.backward, [], {}, tag, op_run_pass)
                 bw_time_records.append(latency)
         return (fw_time_records, bw_time_records)
@@ -127,8 +127,8 @@ class OpExecutor:
         )
 
         metric_name = tag + ".time"
-        pass_name = str(ExecutionPass.FORWARD)
+        pass_name = ExecutionPass.FORWARD.value
         result[pass_name][metric_name] = fw_time_records
         if self.pass_type == ExecutionPass.BACKWARD:
-            pass_name = str(ExecutionPass.BACKWARD)
+            pass_name = ExecutionPass.BACKWARD.value
             result[pass_name][metric_name] = bw_time_records

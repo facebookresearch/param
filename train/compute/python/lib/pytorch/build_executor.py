@@ -50,30 +50,6 @@ class BuildExecutor(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 
-def output_stats(
-    out_stream: TextIO,
-    name: str,
-    op_run_id: str,
-    metrics: Dict[str, Any],
-    config: Dict[str, Any],
-):
-    for pass_name, metric in metrics.items():
-        logger.info(f"pass: {pass_name}")
-        for metric_name, records in metric.items():
-            total = sum(records)
-            avg = total / len(records)
-            logger.info(
-                f"metric: {metric_name}, avg: {avg:.6f} sec, tot: {total:.6f} sec"
-            )
-            logger.info(f"{format_float_val_list(records, 6)}")
-    stats = {
-        "name": name,
-        "id": op_run_id,
-        "metric": metrics,
-        "config": config,
-    }
-    out_stream.write(json.dumps(stats) + "\n")
-    out_stream.flush()
 
 
 class OpBuildExecutor(BuildExecutor):
@@ -201,3 +177,29 @@ class MaterializedBuildExecutor(BuildExecutor):
         output_stats(
             self.out_stream, self.op_config.name, op_run_id, metrics, final_config
         )
+
+
+def output_stats(
+    out_stream: TextIO,
+    name: str,
+    op_run_id: str,
+    metrics: Dict[str, Any],
+    config: Dict[str, Any],
+):
+    for pass_name, metric in metrics.items():
+        logger.info(f"pass: {pass_name}")
+        for metric_name, records in metric.items():
+            total = sum(records)
+            avg = total / len(records)
+            logger.info(
+                f"metric: {metric_name}, avg: {avg:.6f} sec, tot: {total:.6f} sec"
+            )
+            logger.info(f"{format_float_val_list(records, 6)}")
+    stats = {
+        "name": name,
+        "id": op_run_id,
+        "metric": metrics,
+        "config": config,
+    }
+    out_stream.write(json.dumps(stats) + "\n")
+    out_stream.flush()
