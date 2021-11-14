@@ -71,9 +71,6 @@ class Benchmark:
                 return
 
             logger.info(f"{op_config.name}:")
-            # build op
-            build_config = []
-            build_input_config = {}
             generate_build_config = None
             if op_config.build_iterator and "build" in config:
                 if config["build"]:
@@ -81,11 +78,10 @@ class Benchmark:
                         config, "build", self.run_options["device"]
                     )
 
+            build_input_config = {}
             if generate_build_config:
                 for (build_id, build_config) in generate_build_config:
                     op_run_id += f":{build_id}"
-                    logger.info(f"build_id [{op_run_id}]")
-                    logger.debug(f"build_config: {build_config}")
                     build_input_config["build"] = build_config
                     build_input_config["input"] = config["input"]
                     build_exe = self.build_executor(
@@ -97,9 +93,7 @@ class Benchmark:
                     build_exe.run()
             else:
                 op_run_id += ":0"
-                logger.info(f"build_id [{op_run_id}]")
-                logger.debug(f"build_config: {build_config}")
-                build_input_config["build"] = build_config
+                build_input_config["build"] = []
                 build_input_config["input"] = config["input"]
                 build_exe = self.build_executor(
                     build_input_config,

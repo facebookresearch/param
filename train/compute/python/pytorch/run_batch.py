@@ -8,7 +8,7 @@ logger = init_logging(logging.INFO)
 import argparse
 import json
 import os
-from multiprocessing import shared_memory
+from multiprocessing import shared_memory, resource_tracker
 from typing import Any
 from typing import Callable
 from typing import Dict
@@ -57,8 +57,15 @@ def main():
         init_logging(logging.DEBUG)
 
     if args.shm:
-        print(args.shm)
+        """
+        Shared memory has a bug to proper track and release memory, see
+        https://bugs.python.org/issue39959
+        Fixed PR: https://github.com/python/cpython/pull/20136
+        Workaround: unregister from resource_tracker.
+        """
         shm = shared_memory.SharedMemory(args.shm)
+        logger.debug(f"shared memory: {shm.name}")
+        resource_tracker.unregister(shm._name, "shared_memory")
         config = json.loads(bytes(shm.buf[:]).decode("utf-8", "strict"))
         shm.close()
     elif args.file:

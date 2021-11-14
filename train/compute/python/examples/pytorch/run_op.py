@@ -1,8 +1,14 @@
+from typing import List, Dict, Any
 from ...lib import pytorch as lib_pytorch
 from ...lib.config import make_op_config
 from ...lib.init_helper import load_modules
 from ...lib.pytorch.benchmark import OpExecutor, ExecutionPass
-from ...lib.pytorch.config_util import create_bench_config, create_data, get_benchmark_options
+from ...lib.pytorch.config_util import (
+    create_bench_config,
+    create_data,
+    get_benchmark_options,
+    create_op_args
+)
 from ...workloads import pytorch as workloads_pytorch
 
 
@@ -24,7 +30,8 @@ def main():
     op_info = bench_config[op_name]
 
     # Add the two tensors as first and second positional args for the operator.
-    op_info["config"][0]["input"][0]["args"] = [tensor_1, tensor_2]
+    input_config = create_op_args([tensor_1, tensor_2], {})
+    op_info["config"][0]["input"].append(input_config)
     print(op_info)
 
     # Get the default benchmark options

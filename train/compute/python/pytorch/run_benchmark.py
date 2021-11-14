@@ -48,6 +48,9 @@ def main():
         help="Append to output file, rather than overwrite.",
     )
     parser.add_argument(
+        "--ncu", action="store_true", help="Run NSight Compute to collect metrics."
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="Increase log output verbosity."
     )
 
@@ -69,10 +72,13 @@ def main():
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD
-        logger.info("Pass: FORWARD and BACKWARD")
+        logger.info("Pass: forward and backward")
     else:
         run_options["pass_type"] = ExecutionPass.FORWARD
-        logger.info("Pass: FORWARD")
+        logger.info("Pass: forward")
+
+    if args.ncu:
+        run_options["run_ncu"] = True
 
     out_file_name = f"{args.output_prefix}.json"
 

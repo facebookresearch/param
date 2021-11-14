@@ -33,7 +33,7 @@
   },
   "run_options": {
     "device": "cuda",
-    "pass_type": "FORWARD",
+    "pass_type": "forward",
     "warmup": 1,
     "iteration": 1,
     "out_stream": null,

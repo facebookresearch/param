@@ -2,6 +2,7 @@ import copy
 import enum
 from typing import Any
 from typing import Dict
+from typing import List
 
 
 @enum.unique
@@ -19,6 +20,7 @@ def get_benchmark_options():
         "warmup": 1,
         "iteration": 1,
         "out_stream": None,
+        "run_ncu": False,
         "resume_op_run_id": None,
     }
 
@@ -35,8 +37,10 @@ def create_op_info():
         "input_iterator": None,
         "build_data_generator": None,
         "input_data_generator": "PyTorch::DefaultDataGenerator",
-        "config": [{"build": [], "input": [{"args": [], "kwargs": {}}]}],
+        "config": [{"build": [], "input": []}],
     }
+def create_op_args(args: List[Any], kwargs: Dict[str, Any]):
+    return {"args": args, "kwargs": kwargs}
 
 
 _pytorch_data: Dict[str, Any] = {
