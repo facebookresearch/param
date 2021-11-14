@@ -26,16 +26,17 @@ def get_benchmark_options():
 
 
 def create_bench_config(name: str):
-    bench_config = {
-        name: {
-            "build_iterator": None,
-            "input_iterator": None,
-            "build_data_generator": None,
-            "input_data_generator": "PyTorch::DefaultDataGenerator",
-            "config": [{"build": [], "input": [{"args": [], "kwargs": {}}]}],
-        }
+    return {name: create_op_info()}
+
+
+def create_op_info():
+    return {
+        "build_iterator": None,
+        "input_iterator": None,
+        "build_data_generator": None,
+        "input_data_generator": "PyTorch::DefaultDataGenerator",
+        "config": [{"build": [], "input": [{"args": [], "kwargs": {}}]}],
     }
-    return bench_config
 
 
 _pytorch_data: Dict[str, Any] = {

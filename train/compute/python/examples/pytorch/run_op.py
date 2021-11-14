@@ -1,8 +1,8 @@
 from ...lib import pytorch as lib_pytorch
 from ...lib.config import make_op_config
 from ...lib.init_helper import load_modules
-from ...lib.pytorch.benchmark import OpExecutor, ExecutionPass, get_benchmark_options
-from ...lib.pytorch.config_util import create_bench_config, create_data
+from ...lib.pytorch.benchmark import OpExecutor, ExecutionPass
+from ...lib.pytorch.config_util import create_bench_config, create_data, get_benchmark_options
 from ...workloads import pytorch as workloads_pytorch
 
 
