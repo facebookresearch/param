@@ -177,12 +177,6 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
     data_type = args.dtype
     # num_batches = args.num_batches
 
-    dt = torch.float32
-    if data_type == "float16":
-        dt = torch.float16
-    if data_type == "bfloat16":
-        dt = torch.bfloat16
-
     torch.manual_seed(1)
 
     lr = 0.01
@@ -234,7 +228,7 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
             assert 0, "Unsupported optimizer type"
 
     elap, loss = train(
-        model, dev, optimizer, dt, input_size, output_size, batch_size, args
+        model, dev, optimizer, data_type, input_size, output_size, batch_size, args
     )
     return elap, loss
 
