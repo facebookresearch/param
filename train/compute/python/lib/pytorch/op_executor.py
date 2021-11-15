@@ -1,23 +1,18 @@
-import abc
-import enum
-import json
+from ..init_helper import get_logger, load_package
+
+logger = get_logger()
+
 from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import List
-from typing import TextIO
-from typing import Type
 
 import torch
 
-from ..config import OperatorConfig, BenchmarkConfig
-from ..init_helper import get_logger, load_package
-from ..iterator import ConfigIterator
 from ..operator import OperatorInterface
 from .config_util import ExecutionPass
-from .timer import Timer, format_float_val_list
+from .timer import Timer
 
-logger = get_logger()
 
 # NVTX is used to mark ranges for benchmark GPU kernels.
 # It's use to correlate operator configurations and metrics collected from

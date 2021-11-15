@@ -54,7 +54,7 @@ def main():
         "-o",
         "--output_prefix",
         type=str,
-        default="benchmark_result",
+        default="benchmark",
         help="output file prefix",
     )
 

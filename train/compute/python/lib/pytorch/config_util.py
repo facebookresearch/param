@@ -13,11 +13,11 @@ class ExecutionPass(enum.Enum):
     BACKWARD = "backward"
 
 
-def get_op_run_id(op_name: str, run_id: str):
+def get_op_run_id(op_name: str, run_id: str) -> str:
     return f"{op_name}:{run_id}"
 
 
-def get_benchmark_options():
+def get_benchmark_options() -> Dict[str, Any]:
     options = {
         "device": "cpu",
         "pass_type": ExecutionPass.FORWARD,
@@ -25,17 +25,18 @@ def get_benchmark_options():
         "iteration": 1,
         "out_stream": None,
         "run_ncu": False,
+        "ncu_args": "",
         "resume_op_run_id": None,
     }
 
     return options
 
 
-def create_bench_config(name: str):
+def create_bench_config(name: str) -> Dict[str, Any]:
     return {name: create_op_info()}
 
 
-def create_op_info():
+def create_op_info() -> Dict[str, Any]:
     return {
         "build_iterator": None,
         "input_iterator": None,
@@ -45,7 +46,7 @@ def create_op_info():
     }
 
 
-def create_op_args(args: List[Any], kwargs: Dict[str, Any]):
+def create_op_args(args: List[Any], kwargs: Dict[str, Any]) -> Dict[str, Any]:
     return {"args": args, "kwargs": kwargs}
 
 
@@ -67,5 +68,5 @@ _pytorch_data: Dict[str, Any] = {
 }
 
 
-def create_data(type):
+def create_data(type) -> Dict[str, Any]:
     return copy.deepcopy(_pytorch_data[type])

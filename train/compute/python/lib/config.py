@@ -101,6 +101,7 @@ def make_op_config(op_name: str, op_info: Dict[str, Any], device: str):
 
     return op_config
 
+
 class BenchmarkConfig:
     """
     BenchmarkConfig stores loaded configuration data.

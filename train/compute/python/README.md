@@ -55,9 +55,10 @@ from param_bench.train.compute.python.lib.config import BenchmarkConfig
 A complete example to generate benchmark config, run the benchmark, then get the results can be found in [`run_op.py`](examples/pytorch/run_op.py)
 
 ## PyTorch Benchmark Options
-```shell
+```
 > python -m param_bench.train.compute.python.pytorch.run_benchmark -h
-usage: run_benchmark.py [-h] -c CONFIG [-w WARMUP] [-i ITERATION] [-b] [-d DEVICE] [-o OUTPUT_PREFIX] [-a] [-v]
+usage: run_benchmark.py [-h] -c CONFIG [-w WARMUP] [-i ITERATION] [-b] [-d DEVICE] [-o OUTPUT_PREFIX] [-r RESUME_ID] [-a]
+                        [--ncu] [--ncu-args-file NCU_ARGS_FILE] [-v]
 
 Microbenchmarks
 
@@ -74,7 +75,12 @@ optional arguments:
                         Target device for benchmark.
   -o OUTPUT_PREFIX, --output-prefix OUTPUT_PREFIX
                         File name prefix to write benchmark results.
+  -r RESUME_ID, --resume-id RESUME_ID
+                        Define a resume op_run_id to continue benchmark, skip all previous configs.
   -a, --append          Append to output file, rather than overwrite.
+  --ncu                 Run NSight Compute to collect metrics.
+  --ncu-args-file NCU_ARGS_FILE
+                        NSight Compute extra command line options (metrics etc.).
   -v, --verbose         Increase log output verbosity.
 ```
 

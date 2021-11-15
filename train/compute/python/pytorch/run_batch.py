@@ -9,23 +9,11 @@ import argparse
 import json
 import os
 from multiprocessing import shared_memory, resource_tracker
-from typing import Any
-from typing import Callable
-from typing import Dict
-from typing import List
-from typing import TextIO
-from typing import Type
 
 from ..lib import pytorch as lib_pytorch
-from ..lib.config import OperatorConfig, make_op_config
+from ..lib.config import make_op_config
 from ..lib.pytorch.build_executor import MaterializedBuildExecutor
-from ..lib.pytorch.config_util import (
-    ExecutionPass,
-    get_benchmark_options,
-    create_bench_config,
-    create_data,
-)
-from ..lib.pytorch.op_executor import OpExecutor
+from ..lib.pytorch.config_util import ExecutionPass
 from ..workloads import pytorch as workloads_pytorch
 
 

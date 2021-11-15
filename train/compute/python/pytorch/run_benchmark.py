@@ -58,6 +58,12 @@ def main():
         "--ncu", action="store_true", help="Run NSight Compute to collect metrics."
     )
     parser.add_argument(
+        "--ncu-args-file",
+        type=str,
+        default=None,
+        help="NSight Compute extra command line options (metrics etc.).",
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="Increase log output verbosity."
     )
 
@@ -92,6 +98,10 @@ def main():
     out_file_name = f"{args.output_prefix}.json"
 
     write_option = "a" if args.append else "w"
+
+    if args.ncu_args_file:
+        with open(args.ncu_args_file, "r") as ncu_file:
+            run_options["ncu_args"] = ncu_file.read().strip()
 
     with open(out_file_name, write_option) as out_file:
         run_options["out_stream"] = out_file

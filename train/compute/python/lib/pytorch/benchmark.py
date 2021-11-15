@@ -1,25 +1,14 @@
-import abc
-import enum
-import json
-from typing import Any
-from typing import Callable
-from typing import Dict
+from ..init_helper import get_logger
+
+logger = get_logger()
+
 from typing import List
-from typing import TextIO
 from typing import Type
 
 import torch
 
 from ..config import OperatorConfig, BenchmarkConfig
-from ..init_helper import get_logger, load_package
-from ..iterator import ConfigIterator
-from ..operator import OperatorInterface
 from .build_executor import BuildExecutor, OpBuildExecutor
-from .config_util import ExecutionPass
-from .op_executor import OpExecutor
-from .timer import Timer, format_float_val_list
-
-logger = get_logger()
 
 
 class Benchmark:

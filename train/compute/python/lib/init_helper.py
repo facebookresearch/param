@@ -35,6 +35,9 @@ def init_logging(log_level):
     return _logger
 
 
+logger = get_logger()
+
+
 def load_modules(package):
     """
     Given a package, load/import all the modules in that package.
@@ -42,11 +45,11 @@ def load_modules(package):
     """
     modules = pkgutil.iter_modules(package.__path__, package.__name__ + ".")
     for _, name, _ in modules:
-        _logger.debug(f"Loading module: {name}")
+        logger.debug(f"Loading module: {name}")
         try:
             importlib.import_module(name)
         except ModuleNotFoundError as error:
-            _logger.warning(
+            logger.warning(
                 f"Failed to import module: {name}. ModuleNotFoundError: {error}"
             )
 
@@ -55,11 +58,11 @@ def load_package(package) -> bool:
     """
     Try to load third-party modules, return false if failed.
     """
-    _logger.debug(f"Loading package: {package}")
+    logger.debug(f"Loading package: {package}")
     try:
         importlib.import_module(package)
     except ModuleNotFoundError as error:
-        _logger.warning(
+        logger.warning(
             f"Failed to import package: {package}. ModuleNotFoundError: {error}"
         )
         return False

@@ -1,29 +1,20 @@
+from ..init_helper import get_logger
+
+logger = get_logger()
+
 import abc
-import copy
-import enum
 import json
 import logging
 import os
 import subprocess
-from multiprocessing import shared_memory, resource_tracker
+from multiprocessing import shared_memory
 from typing import Any
-from typing import Callable
 from typing import Dict
-from typing import List
 from typing import TextIO
-from typing import Type
 
-import torch
-
-from ..config import OperatorConfig, BenchmarkConfig
-from ..init_helper import get_logger, load_package
-from ..operator import OperatorInterface
-from .config_util import create_op_info, get_benchmark_options, ExecutionPass
+from ..config import OperatorConfig
+from .config_util import create_op_info, get_benchmark_options
 from .op_executor import OpExecutor
-from .timer import Timer, format_float_val_list
-
-
-logger = get_logger()
 
 
 class BuildExecutor(metaclass=abc.ABCMeta):
@@ -160,11 +151,6 @@ class OpBuildExecutor(BuildExecutor):
                 self.input_config_queue.clear()
 
     def _run_ncu(self):
-        final_config = {
-            "build": self.build_input_config["build"],
-            "input": self.input_config_queue,
-        }
-        op_name = self.op_config.name
         NCU_BIN = "/usr/local/NVIDIA-Nsight-Compute-2021.2/ncu"
         ncu_bin = os.getenv("NCU_BIN")
         if not ncu_bin:
@@ -174,11 +160,13 @@ class OpBuildExecutor(BuildExecutor):
         input_id = self.input_config_queue[0]["id"]
         out_prefix = f"benchmark.ncu.{self.build_id}:{input_id}"
         out_prefix = out_prefix.replace(":", "-")
-        metrics = "dram__bytes.sum"
+        ncu_extra_args = self.run_options["ncu_args"]
         ncu_options = (
-            f"--log-file {out_prefix}.log --csv --app-replay-buffer file --target-processes all "
-            f"--metrics {metrics} --nvtx --nvtx-include {param_bench_range}"
+            f"--log-file {out_prefix}.log --csv --app-replay-buffer file --nvtx "
+            f"--nvtx-include {param_bench_range} --target-processes all"
         )
+        if ncu_extra_args:
+            ncu_options += f" {ncu_extra_args}"
 
         op_info = create_op_info()
         op_info["build_iterator"] = (
@@ -202,15 +190,15 @@ class OpBuildExecutor(BuildExecutor):
             else None
         )
 
-        op_info["config"][0]["build"] = final_config["build"]
-        op_info["config"][0]["input"] = final_config["input"]
+        op_info["config"][0]["build"] = self.build_input_config["build"]
+        op_info["config"][0]["input"] = self.input_config_queue
         run_options = get_benchmark_options()
         run_options["device"] = self.run_options["device"]
         run_options["pass_type"] = self.run_options["pass_type"].value
         run_options["warmup"] = 1
         run_options["iteration"] = 1
         config = {
-            "op_name": op_name,
+            "op_name": self.op_config.name,
             "build_id": self.build_id,
             "op_info": op_info,
             "run_options": run_options,
