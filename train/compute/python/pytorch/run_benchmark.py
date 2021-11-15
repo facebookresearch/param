@@ -9,11 +9,8 @@ import argparse
 
 from ..lib import pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
-from ..lib.pytorch.benchmark import (
-    make_default_benchmark,
-    ExecutionPass,
-)
-from ..lib.pytorch.config_util import get_benchmark_options
+from ..lib.pytorch.benchmark import make_default_benchmark
+from ..lib.pytorch.config_util import get_benchmark_options, ExecutionPass
 from ..workloads import pytorch as workloads_pytorch
 
 

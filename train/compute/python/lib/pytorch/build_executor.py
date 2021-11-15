@@ -10,6 +10,7 @@ import subprocess
 from multiprocessing import shared_memory
 from typing import Any
 from typing import Dict
+from typing import List
 from typing import TextIO
 
 from ..config import OperatorConfig
@@ -334,3 +335,8 @@ def output_stats(
     }
     out_stream.write(json.dumps(stats) + "\n")
     out_stream.flush()
+
+
+def format_float_val_list(time_records: List[float], decimals: int = 6):
+    format_str = f"{{0:.{decimals}f}}"
+    return f"[{', '.join([format_str.format(i) for i in time_records])}]"
