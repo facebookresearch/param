@@ -147,7 +147,7 @@ class OpBuildExecutor(BuildExecutor):
         if self.run_options["run_ncu"]:
             input_config["id"] = input_id
             self.input_config_queue.append(input_config)
-            if len(self.input_config_queue) == 100:
+            if len(self.input_config_queue) == self.run_options["ncu_batch"]:
                 self._run_ncu()
                 self.input_config_queue.clear()
 
@@ -159,11 +159,11 @@ class OpBuildExecutor(BuildExecutor):
 
         param_bench_range = "param_bench@measure"
         input_id = self.input_config_queue[0]["id"]
-        out_prefix = f"benchmark.ncu.{self.build_id}:{input_id}"
-        out_prefix = out_prefix.replace(":", "-")
+        ncu_log_file = f"benchmark.ncu.{self.build_id}:{input_id}.log"
+        ncu_log_file = ncu_log_file.replace(":", "-")
         ncu_extra_args = self.run_options["ncu_args"]
         ncu_options = (
-            f"--log-file {out_prefix}.log --csv --app-replay-buffer file --nvtx "
+            f"--log-file {ncu_log_file} --csv --app-replay-buffer file --nvtx "
             f"--nvtx-include {param_bench_range} --target-processes all"
         )
         if ncu_extra_args:
@@ -236,6 +236,7 @@ class OpBuildExecutor(BuildExecutor):
                     print(line, end="")
         shm.close()
         shm.unlink()
+        logger.info(f"ncu log file: {ncu_log_file}")
 
 
 class MaterializedBuildExecutor(BuildExecutor):

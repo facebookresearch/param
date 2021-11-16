@@ -1,14 +1,9 @@
-import logging
-
-from ..lib.init_helper import init_logging, load_modules
-
-# Initialize logging format before loading all other modules
-logger = init_logging(logging.INFO)
-
 import argparse
+import logging
 
 from ..lib import pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
+from ..lib.init_helper import init_logging, load_modules
 from ..lib.pytorch.benchmark import make_default_benchmark
 from ..lib.pytorch.config_util import get_benchmark_options, ExecutionPass
 from ..workloads import pytorch as workloads_pytorch
@@ -61,13 +56,21 @@ def main():
         help="NSight Compute extra command line options (metrics etc.).",
     )
     parser.add_argument(
+        "--ncu-batch",
+        type=int,
+        default=50,
+        help="NSight Compute input batch size (number of input configs to run in one launch).",
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="Increase log output verbosity."
     )
 
     args = parser.parse_args()
 
     if args.verbose:
-        init_logging(logging.DEBUG)
+        logger = init_logging(logging.DEBUG)
+    else:
+        logger = init_logging(logging.INFO)
 
     # Load PyTorch implementations for data generator and operators.
     load_modules(lib_pytorch)
@@ -80,6 +83,7 @@ def main():
     run_options["iteration"] = args.iteration
     run_options["device"] = args.device
     run_options["resume_op_run_id"] = args.resume_id
+    run_options["ncu_batch"] = args.ncu_batch
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD

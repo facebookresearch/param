@@ -26,6 +26,7 @@ def get_benchmark_options() -> Dict[str, Any]:
         "out_stream": None,
         "run_ncu": False,
         "ncu_args": "",
+        "ncu_batch": 50,
         "resume_op_run_id": None,
     }
 
