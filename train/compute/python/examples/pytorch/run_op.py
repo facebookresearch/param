@@ -1,3 +1,5 @@
+import torch
+
 from ...lib import pytorch as lib_pytorch
 from ...lib.config import make_op_config
 from ...lib.init_helper import load_modules
@@ -19,6 +21,10 @@ def main():
 
     # Load PyTorch operator workloads.
     load_modules(workloads_pytorch)
+
+    # Important to set num of threads to 1, some ops are not thread safe and
+    # also improves measurement stability.
+    torch.set_num_threads(1)
 
     op_name = "torch.mm"
     bench_config = create_bench_config(op_name)
@@ -58,6 +64,9 @@ def main():
     op_exe = OpExecutor(op_name, op_config.op, run_options)
 
     # Run and collect the result metrics.
+    # "0:0:0" is the run_id, an unique string identifies this benchmark run.
+    # It may be used to corrleate with other benchmark data (like metrics).
+    # The run_id format is: "config_id:build_id:input_id"
     result = op_exe.run(input_args, input_kwargs, "0:0:0")
 
     # Loop through and print the metrics.
