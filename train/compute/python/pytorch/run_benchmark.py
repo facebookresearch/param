@@ -80,7 +80,6 @@ def main():
     run_options["iteration"] = args.iteration
     run_options["device"] = args.device
     run_options["resume_op_run_id"] = args.resume_id
-    print(run_options["resume_op_run_id"])
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD
