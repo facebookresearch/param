@@ -25,8 +25,9 @@ def init_logging(log_level):
     _logger = logging.getLogger("param_bench")
     _logger.setLevel(log_level)
     # Reset the stream handlers to avoid multiple outputs.
-    if _logger_stream_handler and _logger.hasHandlers():
-        _logger.removeHandler(_logger_stream_handler)
+    _logger.handlers.clear()
+    # Do not use parent logger to avoid duplicate messages.
+    _logger.propagate = False
     _logger_stream_handler = logging.StreamHandler()
     _logger_stream_handler.setLevel(log_level)
     formatter = logging.Formatter(FORMAT)

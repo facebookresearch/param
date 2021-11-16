@@ -101,7 +101,7 @@ class OpBuildExecutor(BuildExecutor):
             (build_args, build_kwargs) = build_data_gen.get_data(
                 build_config, self.run_options["device"]
             )
-            logger.debug(f"{build_args} {build_kwargs}")
+            logger.debug(f"build args: {build_args} {build_kwargs}")
             self.op_config.op.build(*build_args, **build_kwargs)
 
         generate_input_config = self.op_config.input_iterator(
