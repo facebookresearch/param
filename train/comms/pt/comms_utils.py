@@ -978,7 +978,7 @@ class paramCommsBench(ABC):
                     + os.environ["MASTER_ADDR"]
                 )
         else:
-            os.environ["MASTER_ADDR"] = default_master_ip
+            os.environ["MASTER_ADDR"] = args.master_ip
 
         if "MASTER_PORT" in os.environ:
             if args.master_port not in (default_master_port, os.environ["MASTER_PORT"]):
@@ -993,4 +993,4 @@ class paramCommsBench(ABC):
                     + os.environ["MASTER_PORT"]
                 )
         else:
-            os.environ["MASTER_PORT"] = default_master_port
+            os.environ["MASTER_PORT"] = args.master_port
