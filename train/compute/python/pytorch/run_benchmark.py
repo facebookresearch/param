@@ -1,11 +1,12 @@
 import argparse
+import json
 import logging
 
 from ..lib import pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
 from ..lib.init_helper import init_logging, load_modules
 from ..lib.pytorch.benchmark import make_default_benchmark
-from ..lib.pytorch.config_util import get_benchmark_options, ExecutionPass
+from ..lib.pytorch.config_util import get_benchmark_options, ExecutionPass, get_sys_info
 from ..workloads import pytorch as workloads_pytorch
 
 
@@ -87,10 +88,8 @@ def main():
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD
-        logger.info("Pass: forward and backward")
     else:
         run_options["pass_type"] = ExecutionPass.FORWARD
-        logger.info("Pass: forward")
 
     if args.ncu:
         run_options["run_ncu"] = True
@@ -105,6 +104,9 @@ def main():
 
     with open(out_file_name, write_option) as out_file:
         run_options["out_stream"] = out_file
+        benchmark_setup = {"run_options": run_options, "sys_info": get_sys_info()}
+        out_file.write(json.dumps(benchmark_setup, default=str) + "\n")
+
         bench_config = BenchmarkConfig(run_options)
         bench_config.load_json_file(args.config)
         benchmark = make_default_benchmark(bench_config)

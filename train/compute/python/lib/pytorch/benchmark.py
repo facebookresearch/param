@@ -60,7 +60,7 @@ class Benchmark:
                 )
                 return
 
-            logger.info(f"{op_config.name}:")
+            logger.info(f"op: {op_config.name}")
             generate_build_config = None
             if op_config.build_iterator and "build" in config:
                 if config["build"]:

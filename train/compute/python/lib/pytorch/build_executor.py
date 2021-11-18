@@ -94,7 +94,7 @@ class OpBuildExecutor(BuildExecutor):
         # Reset operator to clear memory before new build
         self.op_config.op.cleanup()
         build_config = self.build_input_config["build"]
-        logger.info(f"build_id [{self.build_id}]")
+        logger.info(f"build_id: [{self.build_id}]")
         logger.debug(f"build_config: {build_config}")
         if build_config:
             build_data_gen = self.op_config.build_data_generator()
@@ -170,26 +170,10 @@ class OpBuildExecutor(BuildExecutor):
             ncu_options += f" {ncu_extra_args}"
 
         op_info = create_op_info()
-        op_info["build_iterator"] = (
-            self.op_config.info["build_iterator"]
-            if "build_iterator" in self.op_config.info
-            else None
-        )
-        op_info["input_iterator"] = (
-            self.op_config.info["input_iterator"]
-            if "input_iterator" in self.op_config.info
-            else None
-        )
-        op_info["build_data_generator"] = (
-            self.op_config.info["build_data_generator"]
-            if "build_data_generator" in self.op_config.info
-            else None
-        )
-        op_info["input_data_generator"] = (
-            self.op_config.info["input_data_generator"]
-            if "input_data_generator" in self.op_config.info
-            else None
-        )
+        op_info["build_iterator"] = self.op_config.info.get("build_iterator", None)
+        op_info["input_iterator"] = self.op_config.info.get("input_iterator", None)
+        op_info["build_data_generator"] = self.op_config.info.get("build_data_generator", None)
+        op_info["input_data_generator"] = self.op_config.info.get("input_data_generator", None)
 
         op_info["config"][0]["build"] = self.build_input_config["build"]
         op_info["config"][0]["input"] = self.input_config_queue
@@ -325,7 +309,7 @@ def output_stats(
             total = sum(records)
             avg = total / len(records)
             logger.info(
-                f"metric: {metric_name}, avg: {avg:.6f} sec, tot: {total:.6f} sec"
+                f"metric: {metric_name}, average: {avg:.6f} sec, total: {total:.6f} sec"
             )
             logger.info(f"{format_float_val_list(records, 6)}")
     stats = {

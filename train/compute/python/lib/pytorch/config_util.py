@@ -1,8 +1,16 @@
 import copy
 import enum
+import platform
+import socket
+from datetime import datetime
+from importlib.metadata import version as package_version
 from typing import Any
 from typing import Dict
 from typing import List
+
+import torch
+from torch.utils.collect_env import get_nvidia_driver_version
+from torch.utils.collect_env import run as run_cmd
 
 
 @enum.unique
@@ -71,3 +79,25 @@ _pytorch_data: Dict[str, Any] = {
 
 def create_data(type) -> Dict[str, Any]:
     return copy.deepcopy(_pytorch_data[type])
+
+
+def get_sys_info():
+    cuda_device_driver = get_nvidia_driver_version(run_cmd)
+    return {
+        "sys_info": {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "hostname": socket.gethostname(),
+            "param_bench_version": package_version("parambench_train_compute"),
+            "pytorch_version": torch.__version__,
+            "cudnn": torch.backends.cudnn.version(),
+            "cudnn_enabled": torch.backends.cudnn.enabled,
+            "cuda_device_driver": cuda_device_driver,
+            "cuda": torch.version.cuda,
+            "cuda_gencode": torch.cuda.get_gencode_flags(),
+            "cuda_device_id": torch.cuda.current_device(),
+            "cuda_device_name": torch.cuda.get_device_name(),
+            "python_version": platform.python_version(),
+            "pytorch_debug_build": torch.version.debug,
+            "pytorch_build_config": torch._C._show_config(),
+        }
+    }
