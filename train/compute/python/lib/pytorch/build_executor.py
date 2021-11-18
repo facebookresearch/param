@@ -245,7 +245,7 @@ class OpBuildExecutor(BuildExecutor):
                     print(line, end="")
         shm.close()
         shm.unlink()
-        logger.info(f"ncu log file: {ncu_log_file}")
+        logger.info(f"ncu result: {ncu_log_file}")
 
 
 class MaterializedBuildExecutor(BuildExecutor):

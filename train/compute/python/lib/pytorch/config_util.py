@@ -83,20 +83,30 @@ def create_data(type) -> Dict[str, Any]:
 
 
 def get_sys_info():
-    cuda_device_driver = get_nvidia_driver_version(run_cmd)
+    cuda_available = torch.cuda.is_available()
+    cuda_info = {}
+    if cuda_available:
+        cuda_device_id = torch.cuda.current_device()
+        cuda_device_property = torch.cuda.get_device_properties(cuda_device_id)
+        cuda_info = {
+            "cuda": torch.version.cuda,
+            "cuda_device_driver": get_nvidia_driver_version(run_cmd),
+            "cuda_gencode": torch.cuda.get_gencode_flags(),
+            "cuda_device_id": cuda_device_id,
+            "cuda_device_name": torch.cuda.get_device_name(),
+            "cuda_device_property": cuda_device_property,
+            "cudnn": torch.backends.cudnn.version(),
+            "cudnn_enabled": torch.backends.cudnn.enabled,
+        }
+
     return {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "hostname": socket.gethostname(),
-        "param_bench_version": package_version("parambench_train_compute"),
-        "pytorch_version": torch.__version__,
-        "cudnn": torch.backends.cudnn.version(),
-        "cudnn_enabled": torch.backends.cudnn.enabled,
-        "cuda_device_driver": cuda_device_driver,
-        "cuda": torch.version.cuda,
-        "cuda_gencode": torch.cuda.get_gencode_flags(),
-        "cuda_device_id": torch.cuda.current_device(),
-        "cuda_device_name": torch.cuda.get_device_name(),
         "python_version": platform.python_version(),
+        "param_bench_version": package_version("parambench_train_compute"),
+        "cuda_available": cuda_available,
+        **cuda_info,
+        "pytorch_version": torch.__version__,
         "pytorch_debug_build": torch.version.debug,
         "pytorch_build_config": torch._C._show_config(),
     }

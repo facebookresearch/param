@@ -22,7 +22,18 @@ packages = list(package_dir_map)
 
 setup(
     name="parambench-train-compute",
-    version="0.0.1",
+    version_config={
+        "template": "{full_sha}",
+        "dev_template": "{full_sha}.post{ccount}+git.{sha}",
+        "dirty_template": "{tag}.post{ccount}+git.{sha}.dirty",
+        "starting_version": "{full_sha}",
+        "version_callback": None,
+        "version_file": None,
+        "count_commits_from_version_file": False,
+        "branch_formatter": None,
+        "sort_by": None,
+    },
+    setup_requires=["setuptools-git-versioning"],
     author="Louis Feng",
     author_email="lofe@fb.com",
     packages=packages,
