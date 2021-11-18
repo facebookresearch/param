@@ -3,7 +3,6 @@ import enum
 import platform
 import socket
 from datetime import datetime
-from importlib.metadata import version as package_version
 from typing import Any
 from typing import Dict
 from typing import List
@@ -11,6 +10,8 @@ from typing import List
 import torch
 from torch.utils.collect_env import get_nvidia_driver_version
 from torch.utils.collect_env import run as run_cmd
+
+from ...lib import __version__ as param_bench_version
 
 
 @enum.unique
@@ -65,13 +66,13 @@ _pytorch_data: Dict[str, Any] = {
     "int_range": {"type": "int", "value_range": None},
     "long": {"type": "long", "value": None},
     "long_range": {"type": "long", "value_range": None},
-    "float": {"type": "float", "value": 1.2},
+    "float": {"type": "float", "value": None},
     "float_range": {"type": "float", "value_range": None},
-    "double": {"type": "double", "value": 3.4},
+    "double": {"type": "double", "value": None},
     "double_range": {"type": "double", "value_range": None},
     "bool": {"type": "bool", "value": None},
-    "device": {"type": "device", "value": "cpu"},
-    "str": {"type": "str", "value": "a string value"},
+    "device": {"type": "device", "value": None},
+    "str": {"type": "str", "value": None},
     "genericlist": {"type": "genericlist", "value": None},
     "tuple": {"type": "tuple", "value": None},
     "tensor": {"type": "tensor", "dtype": "float", "shape": None},
@@ -103,7 +104,7 @@ def get_sys_info():
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "hostname": socket.gethostname(),
         "python_version": platform.python_version(),
-        "param_bench_version": package_version("parambench_train_compute"),
+        "param_bench_version": param_bench_version,
         "cuda_available": cuda_available,
         **cuda_info,
         "pytorch_version": torch.__version__,
