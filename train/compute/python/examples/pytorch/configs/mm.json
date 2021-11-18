@@ -219,16 +219,16 @@
               {
                 "dtype": "float",
                 "shape": [
-                  512,
-                  512
+                  1024,
+                  1024
                 ],
                 "type": "tensor"
               },
               {
                 "dtype": "float",
                 "shape": [
-                  512,
-                  3702
+                  1024,
+                  1024
                 ],
                 "type": "tensor"
               }

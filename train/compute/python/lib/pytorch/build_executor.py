@@ -345,9 +345,9 @@ def output_stats(
             total = sum(records)
             avg = total / len(records)
             logger.info(
-                f"metric: {metric_name}, average: {avg:.6f} sec, total: {total:.6f} sec"
+                f"metric: {metric_name}, average: {avg:.3f} ms, total: {total:.3f} ms"
             )
-            logger.info(f"{format_float_val_list(records, 6)}")
+            logger.info(f"{format_float_val_list(records, 3)}")
     stats = {
         "name": name,
         "id": run_id,
@@ -358,6 +358,6 @@ def output_stats(
     out_stream.flush()
 
 
-def format_float_val_list(time_records: List[float], decimals: int = 6):
+def format_float_val_list(time_records: List[float], decimals: int = 3):
     format_str = f"{{0:.{decimals}f}}"
     return f"[{', '.join([format_str.format(i) for i in time_records])}]"

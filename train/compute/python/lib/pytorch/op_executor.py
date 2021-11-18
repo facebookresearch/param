@@ -6,6 +6,7 @@ from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import List
+from typing import Tuple
 
 import torch
 
@@ -70,7 +71,7 @@ class OpExecutor:
 
     def _benchmark_op(
         self, op: Callable, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
-    ):
+    ) -> float:
         logger.debug(f"benchmarking {self.name} {tag} {op_run_id}")
         # flush cache
         if self.device.startswith("cuda"):
@@ -86,11 +87,12 @@ class OpExecutor:
             nvtx.end_range(op_run_id_rng)
             nvtx.end_range(tag_rng)
 
+        # Return result in milliseconds.
         return timer.elapsed_time()
 
     def _benchmark_loop(
         self, count: int, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
-    ):
+    ) -> Tuple[List[float], List[float]]:
         fw_time_records = []
         bw_time_records = []
         for _ in range(count):
