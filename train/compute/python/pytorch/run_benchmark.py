@@ -16,7 +16,7 @@ def main():
         "-c", "--config", type=str, required=True, help="The benchmark config file."
     )
     parser.add_argument(
-        "-w", "--warmup", type=int, default=5, help="Number of warm up iterations."
+        "-w", "--warmup", type=int, default=1, help="Number of warm up iterations."
     )
     parser.add_argument(
         "-i", "--iteration", type=int, default=1, help="Number of benchmark iterations."

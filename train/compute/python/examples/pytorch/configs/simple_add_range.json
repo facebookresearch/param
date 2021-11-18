@@ -16,7 +16,7 @@
                 "type": "tensor"
               },
               {
-                "value": [1, 25, 1],
+                "value": [1, 10, 1],
                 "__range__": [
                   "value"
                 ],
@@ -35,7 +35,49 @@
                 "type": "tensor"
               },
               {
-                "value": [0, 50, 2],
+                "value": [10, 20, 2],
+                "__range__": [
+                  "value"
+                ],
+                "type": "int"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  64,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "value": [30, 40, 1],
+                "__range__": [
+                  "value"
+                ],
+                "type": "int"
+              }
+            ]
+          },
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  64,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "value": [40, 50, 2],
                 "__range__": [
                   "value"
                 ],

@@ -81,10 +81,8 @@ def main():
     # Don't need to write out anything.
     with open(os.devnull, "w") as out_stream:
         run_options["out_stream"] = out_stream
-        build_exe = MaterializedBuildExecutor(
-            build_input_config, op_config, run_options, build_id
-        )
-        build_exe.run()
+        build_exe = MaterializedBuildExecutor(run_options)
+        build_exe.run(op_config, build_input_config, build_id)
 
 
 if __name__ == "__main__":

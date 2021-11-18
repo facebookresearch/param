@@ -36,61 +36,76 @@ class BuildExecutor(metaclass=abc.ABCMeta):
     run_id: A unique string id that identifies the current build configuration.
     """
 
-    _skip_run = False
-    _resume_op_run_id = None
-
     @classmethod
     def __subclasshook__(cls, subclass):
         return hasattr(subclass, "run") and callable(subclass.run) or NotImplemented
 
     def __init__(self):
-        pass
+        self._skip_run = False
+        self._resume_op_run_id = None
 
     # Loads arg configurations and generates the arg data for an op.
     @abc.abstractmethod
-    def run(self):
+    def run(
+        self,
+        op_config: OperatorConfig,
+        build_input_config: Dict[str, Any],
+        build_id: str,
+    ):
         raise NotImplementedError
 
-    @staticmethod
-    def set_resume_op_run_id(resume_op_run_id: str):
+    def set_resume_op_run_id(self, resume_op_run_id: str):
         logger.debug(f"resume_op_run_id: {resume_op_run_id}")
-        BuildExecutor._resume_op_run_id = resume_op_run_id
-        # if a valid resume_op_run_id is defined, skip runs by default until
+        self._resume_op_run_id = resume_op_run_id
+        # If a valid resume_op_run_id is defined, skip runs by default until
         # a match op run id is found.
-        if BuildExecutor._resume_op_run_id:
-            BuildExecutor._skip_run = True
-        logger.debug(f"_resume_op_run_id: {BuildExecutor._resume_op_run_id}")
-        logger.debug(f"skip_run: {BuildExecutor._skip_run}")
+        if self._resume_op_run_id:
+            self._skip_run = True
+        logger.debug(f"_resume_op_run_id: {self._resume_op_run_id}")
+        logger.debug(f"skip_run: {self._skip_run}")
 
-    @staticmethod
-    def should_skip(op_run_id: str):
+    def should_skip(self, op_run_id: str):
         # Check if we should skip the run, check if a matching run id is found.
-        if BuildExecutor._skip_run:
-            if op_run_id == BuildExecutor._resume_op_run_id:
-                BuildExecutor._skip_run = False
+        if self._skip_run:
+            if op_run_id == self._resume_op_run_id:
+                self._skip_run = False
         logger.debug(f"op_run_id: {op_run_id}")
-        logger.debug(f"resume_op_run_id: {BuildExecutor._resume_op_run_id}")
-        logger.debug(f"skip_run: {BuildExecutor._skip_run}")
-        return BuildExecutor._skip_run
+        logger.debug(f"resume_op_run_id: {self._resume_op_run_id}")
+        logger.debug(f"skip_run: {self._skip_run}")
+        return self._skip_run
 
 
 class OpBuildExecutor(BuildExecutor):
-    def __init__(
+    """
+    OpBuildExecutor is the default BuildExecutor that supports most features.
+    It will take a materialized build config and a list of input configs (which
+    may contain macros and need to be materialized through iterators). It also
+    supports queueing a batch of input configs and collecting NCU metrics. If
+    a resume op_run_id is defined in the run_options, it will skip running
+    benchmarks till the matching op_run_id is found.
+    """
+
+    def __init__(self, run_options: Dict[str, Any]):
+        super(OpBuildExecutor, self).__init__()
+        self.run_options = run_options
+        self.out_stream = run_options["out_stream"]
+
+        self.input_config_queue = []
+        self.op_config = None
+        self.build_input_config = None
+        self.build_id = None
+
+    def run(
         self,
-        build_input_config: Dict[str, Any],
         op_config: OperatorConfig,
-        run_options: Dict[str, Any],
+        build_input_config: Dict[str, Any],
         build_id: str,
     ):
-        super(OpBuildExecutor, self).__init__()
-        self.build_input_config = build_input_config
+        self.input_config_queue.clear()
         self.op_config = op_config
-        self.run_options = run_options
+        self.build_input_config = build_input_config
         self.build_id = build_id
-        self.out_stream = run_options["out_stream"]
-        self.input_config_queue = []
 
-    def run(self):
         # Reset operator to clear memory before new build
         self.op_config.op.cleanup()
         build_config = self.build_input_config["build"]
@@ -110,7 +125,12 @@ class OpBuildExecutor(BuildExecutor):
 
         for (input_id, input_config) in generate_input_config:
             self._run_for_input(input_id, input_config)
+            # Check if the queue has enough for a batch to run with NCU.
+            if len(self.input_config_queue) == self.run_options["ncu_batch"]:
+                self._run_ncu()
+                self.input_config_queue.clear()
 
+        # If any input_config remains in the queue, run them with NCU.
         if self.run_options["run_ncu"] and self.input_config_queue:
             self._run_ncu()
             self.input_config_queue.clear()
@@ -118,7 +138,7 @@ class OpBuildExecutor(BuildExecutor):
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
         run_id = self.build_id + f":{input_id}"
 
-        if BuildExecutor.should_skip(f"{self.op_config.name}:{run_id}"):
+        if self.should_skip(f"{self.op_config.name}:{run_id}"):
             return
 
         logger.info(f"input_id: [{input_id}]")
@@ -145,11 +165,9 @@ class OpBuildExecutor(BuildExecutor):
         logger.debug(f"Finished running [{run_id}].")
 
         if self.run_options["run_ncu"]:
+            # Record the current input_id so the NCU run can reuse this id.
             input_config["id"] = input_id
             self.input_config_queue.append(input_config)
-            if len(self.input_config_queue) == self.run_options["ncu_batch"]:
-                self._run_ncu()
-                self.input_config_queue.clear()
 
     def _run_ncu(self):
         NCU_BIN = "/usr/local/NVIDIA-Nsight-Compute-2021.2/ncu"
@@ -172,8 +190,12 @@ class OpBuildExecutor(BuildExecutor):
         op_info = create_op_info()
         op_info["build_iterator"] = self.op_config.info.get("build_iterator", None)
         op_info["input_iterator"] = self.op_config.info.get("input_iterator", None)
-        op_info["build_data_generator"] = self.op_config.info.get("build_data_generator", None)
-        op_info["input_data_generator"] = self.op_config.info.get("input_data_generator", None)
+        op_info["build_data_generator"] = self.op_config.info.get(
+            "build_data_generator", None
+        )
+        op_info["input_data_generator"] = self.op_config.info.get(
+            "input_data_generator", None
+        )
 
         op_info["config"][0]["build"] = self.build_input_config["build"]
         op_info["config"][0]["input"] = self.input_config_queue
@@ -224,23 +246,34 @@ class OpBuildExecutor(BuildExecutor):
 
 
 class MaterializedBuildExecutor(BuildExecutor):
-    def __init__(
+    """
+    MaterializedBuildExecutor is a simple BuildExecutor that runs a single
+    materialized (all the macros are expanded) build config with a list of
+    materialized input configs. It simply iterate through them and run
+    OpExecutor on each config.
+    """
+
+    def __init__(self, run_options: Dict[str, Any]):
+        super(MaterializedBuildExecutor, self).__init__()
+        self.run_options = run_options
+        self.out_stream = run_options["out_stream"]
+
+        self.build_input_config = None
+        self.op_config = None
+        self.build_id = None
+
+    def run(
         self,
-        build_input_config: Dict[str, Any],
         op_config: OperatorConfig,
-        run_options: Dict[str, Any],
+        build_input_config: Dict[str, Any],
         build_id: str,
     ):
-        super(MaterializedBuildExecutor, self).__init__()
         self.build_input_config = build_input_config
         self.op_config = op_config
-        self.run_options = run_options
         self.build_id = build_id
-        self.out_stream = run_options["out_stream"]
         if "build" not in self.build_input_config:
             self.build_input_config["build"] = None
 
-    def run(self):
         # Reset operator to clear memory before new build
         self.op_config.op.cleanup()
         build_config = self.build_input_config["build"]
@@ -268,7 +301,7 @@ class MaterializedBuildExecutor(BuildExecutor):
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
         run_id = self.build_id + f":{input_id}"
 
-        if BuildExecutor.should_skip(f"{self.op_config.name}:{run_id}"):
+        if self.should_skip(f"{self.op_config.name}:{run_id}"):
             return
 
         logger.info(f"input_id: [{run_id}]")

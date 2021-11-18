@@ -44,13 +44,17 @@ class Benchmark:
         self.bench_config = bench_config
         self.build_executor = build_executor
         self.run_options = bench_config.run_options
-        BuildExecutor.set_resume_op_run_id(self.run_options["resume_op_run_id"])
+
+        # Construct a BuildExecutor
+        self.build_executor = build_executor(self.run_options)
+        self.build_executor.set_resume_op_run_id(self.run_options["resume_op_run_id"])
 
     def run(self):
         for op_config in self.bench_config.op_configs:
             self.run_op(op_config)
 
     def run_op(self, op_config: OperatorConfig) -> List[str]:
+        logger.info(f"op: {op_config.name}")
         config_id = 0
         for config in op_config.info["config"]:
             op_run_id = str(config_id)
@@ -60,7 +64,6 @@ class Benchmark:
                 )
                 return
 
-            logger.info(f"op: {op_config.name}")
             generate_build_config = None
             if op_config.build_iterator and "build" in config:
                 if config["build"]:
@@ -74,24 +77,12 @@ class Benchmark:
                     op_run_id += f":{build_id}"
                     build_input_config["build"] = build_config
                     build_input_config["input"] = config["input"]
-                    build_exe = self.build_executor(
-                        build_input_config,
-                        op_config,
-                        self.bench_config.run_options,
-                        op_run_id,
-                    )
-                    build_exe.run()
+                    self.build_executor.run(op_config, build_input_config, op_run_id)
             else:
                 op_run_id += ":0"
                 build_input_config["build"] = []
                 build_input_config["input"] = config["input"]
-                build_exe = self.build_executor(
-                    build_input_config,
-                    op_config,
-                    self.bench_config.run_options,
-                    op_run_id,
-                )
-                build_exe.run()
+                self.build_executor.run(op_config, build_input_config, op_run_id)
 
             config_id += 1
 
