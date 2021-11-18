@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import subprocess
+from datetime import datetime
 from multiprocessing import shared_memory
 from typing import Any
 from typing import Dict
@@ -177,7 +178,8 @@ class OpBuildExecutor(BuildExecutor):
 
         param_bench_range = "param_bench@measure"
         input_id = self.input_config_queue[0]["id"]
-        ncu_log_file = f"benchmark.ncu.{self.build_id}:{input_id}.log"
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        ncu_log_file = f"ncu_{self.build_id}:{input_id}_{timestamp}.log"
         ncu_log_file = ncu_log_file.replace(":", "-")
         ncu_extra_args = self.run_options["ncu_args"]
         ncu_options = (
