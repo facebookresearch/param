@@ -60,7 +60,7 @@ def main():
         with open(args.file) as config_file:
             config = json.load(config_file)
     else:
-        logger.info("No inputs provided.")
+        logger.info("no inputs provided.")
         return
 
     op_name = config["op_name"]

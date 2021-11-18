@@ -115,7 +115,7 @@ class OpExecutor:
         op_run_id: str,
         result: Dict[str, Any],
     ) -> Dict[str, Any]:
-        logger.info(f"Running [{op_run_id}] for {iteration} {tag} iteration")
+        logger.info(f"running [{op_run_id}] for {iteration} {tag} iteration")
 
         (fw_time_records, bw_time_records) = self._benchmark_loop(
             iteration, args, kwargs, tag, op_run_id

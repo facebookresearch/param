@@ -163,7 +163,7 @@ class OpBuildExecutor(BuildExecutor):
         output_stats(
             self.out_stream, self.op_config.name, run_id, metrics, final_config
         )
-        logger.debug(f"Finished running [{run_id}].")
+        logger.debug(f"finished running [{run_id}].")
 
         if self.run_options["run_ncu"]:
             # Record the current input_id so the NCU run can reuse this id.
@@ -232,7 +232,7 @@ class OpBuildExecutor(BuildExecutor):
             benchmark_cmd += " -v"
         cmd = [ncu_bin] + ncu_options.split(" ") + benchmark_cmd.split(" ")
         cmd_str = " ".join(cmd)
-        logger.info(f"Running: {cmd_str}")
+        logger.info(f"running: {cmd_str}")
         with subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -329,7 +329,7 @@ class MaterializedBuildExecutor(BuildExecutor):
             self.out_stream, self.op_config.name, run_id, metrics, final_config
         )
 
-        logger.debug(f"Finished running [{run_id}].")
+        logger.debug(f"finished running [{run_id}].")
 
 
 def output_stats(

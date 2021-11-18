@@ -46,12 +46,12 @@ def load_modules(package):
     """
     modules = pkgutil.iter_modules(package.__path__, package.__name__ + ".")
     for _, name, _ in modules:
-        logger.debug(f"Loading module: {name}")
+        logger.debug(f"loading module: {name}")
         try:
             importlib.import_module(name)
         except ModuleNotFoundError as error:
             logger.warning(
-                f"Failed to import module: {name}. ModuleNotFoundError: {error}"
+                f"failed to import module: {name}. ModuleNotFoundError: {error}"
             )
 
 
@@ -59,12 +59,12 @@ def load_package(package) -> bool:
     """
     Try to load third-party modules, return false if failed.
     """
-    logger.debug(f"Loading package: {package}")
+    logger.debug(f"loading package: {package}")
     try:
         importlib.import_module(package)
     except ModuleNotFoundError as error:
         logger.warning(
-            f"Failed to import package: {package}. ModuleNotFoundError: {error}"
+            f"failed to import package: {package}. ModuleNotFoundError: {error}"
         )
         return False
     return True

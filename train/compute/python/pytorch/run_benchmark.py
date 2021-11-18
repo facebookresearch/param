@@ -113,7 +113,7 @@ def main():
         benchmark = make_default_benchmark(bench_config)
         benchmark.run()
 
-    logger.info(f"Log written to {out_file_name}")
+    logger.info(f"log written to {out_file_name}")
 
 
 if __name__ == "__main__":
