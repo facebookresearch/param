@@ -12,9 +12,9 @@ logger = get_logger()
 
 
 class OperatorConfig:
-    def __init__(self, name: str, config: Dict[str, Any], op: OperatorInterface):
+    def __init__(self, name: str, info: Dict[str, Any], op: OperatorInterface):
         self._name = name
-        self._config = config
+        self._info = info
         self._op = op
 
     @property
@@ -26,8 +26,8 @@ class OperatorConfig:
         return self._op
 
     @property
-    def config(self) -> Dict[str, Any]:
-        return self._config
+    def info(self) -> Dict[str, Any]:
+        return self._info
 
     @property
     def build_iterator(self) -> Type[ConfigIterator]:
@@ -70,7 +70,7 @@ def make_op_config(op_name: str, op_info: Dict[str, Any], device: str):
     op = op_map[op_name]
     op.device = device
     configs = op_info["config"]
-    op_config = OperatorConfig(op_name, configs, op)
+    op_config = OperatorConfig(op_name, op_info, op)
 
     def get(key, table, default):
         nonlocal op_info
@@ -100,6 +100,7 @@ def make_op_config(op_name: str, op_info: Dict[str, Any], device: str):
         )
 
     return op_config
+
 
 class BenchmarkConfig:
     """

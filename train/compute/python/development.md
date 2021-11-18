@@ -12,8 +12,12 @@ Directories
   * Example scripts and configuration files.
 * [`python/lib`](./lib)
   * Benchmark library modules and utilities.
+* [`python/pytorch`](./pytorch)
+  * PyTorch framework benchmark scripts.
 * [`python/test`](./test)
   * Unit tests and test config files.
+* [`python/tools`](./tools)
+  * General tool scripts.
 * [`python/workloads`](./workloads)
   * Implementation of workloads (operators).
 

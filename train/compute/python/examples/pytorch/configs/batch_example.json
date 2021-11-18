@@ -1,0 +1,42 @@
+{
+  "op_name": "torch.add",
+  "build_id": "1:2",
+  "op_info": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "id": "2_34",
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "run_options": {
+    "device": "cuda",
+    "pass_type": "forward",
+    "warmup": 1,
+    "iteration": 1,
+    "out_stream": null,
+    "resume_op_run_id": null
+  }
+}

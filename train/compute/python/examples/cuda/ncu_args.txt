@@ -1,0 +1,1 @@
+--metrics dram__bytes.sum,l1tex__t_bytes.sum,lts__t_bytes.sum,sm__cycles_elapsed.avg,sm__cycles_elapsed.avg.per_second,sm__sass_thread_inst_executed_op_fadd_pred_on.sum,sm__sass_thread_inst_executed_op_ffma_pred_on.sum,sm__sass_thread_inst_executed_op_fmul_pred_on.sum

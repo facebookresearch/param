@@ -45,14 +45,14 @@ class SplitTableBatchedEmbeddingBagsCodegenInputIterator(ConfigIterator):
         super(SplitTableBatchedEmbeddingBagsCodegenInputIterator, self).__init__(
             configs, key, device
         )
-        logger.debug(configs)
-        build_configs = configs["build"]
-        logger.debug(build_configs)
-        self.num_tables = build_configs["args"][0]
-        self.rows = build_configs["args"][1]
-        self.dim = build_configs["args"][2]
-        self.weighted = build_configs["args"][4]
-        self.weights_precision = build_configs["args"][5]
+        logger.debug(f"build_input_config: {configs}")
+        build_config = configs["build"]
+        logger.debug(f"build_config: {build_config}")
+        self.num_tables = build_config["args"][0]
+        self.rows = build_config["args"][1]
+        self.dim = build_config["args"][2]
+        self.weighted = build_config["args"][4]
+        self.weights_precision = build_config["args"][5]
         self.generator = self._generator()
 
     def _generator(self):
@@ -70,7 +70,6 @@ class SplitTableBatchedEmbeddingBagsCodegenInputIterator(ConfigIterator):
 
             config_id = 0
             for arg_config in ListProduct(args):
-                logger.debug(arg_config)
                 batch_size = arg_config[0]
                 pooling_factor = arg_config[1]
                 result = {
@@ -140,15 +139,12 @@ def generate_requests(
         torch.randn(indices_size, dtype=torch.float32) if weighted else None
     )
 
-    logger.debug(indices)
-    logger.debug(offsets)
-    logger.debug(weights_tensor)
     return (indices, offsets, weights_tensor)
 
 
 class SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator:
     def get_data(self, config, device):
-        logger.debug(config)
+        logger.debug(f"data generator config: {config}")
         # batch size * pooling_factor
         num_tables = config["args"][0]["value"]
         if num_tables > 1:
@@ -221,8 +217,8 @@ class SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator:
                 torch.cat(per_sample_weights_list) if weighted else None
             )
 
-        logger.debug(f"indices: {indices_tensor.shape}, {indices_tensor}")
-        logger.debug(f"offsets: {offsets_tensor.shape}, {offsets_tensor}")
+        logger.debug(f"indices: {indices_tensor.shape}")
+        logger.debug(f"offsets: {offsets_tensor.shape}")
         if per_sample_weights_tensor is not None:
             logger.debug(
                 f"per_sample_weights: {per_sample_weights_tensor.shape}, {per_sample_weights_tensor}"
@@ -249,6 +245,7 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
         self,
     ):
         super(SplitTableBatchedEmbeddingBagsCodegenOp, self).__init__()
+        self.op = None
         self.fwd_out: torch.tensor = None
         self.grad_in: torch.tensor = None
 
@@ -263,7 +260,7 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
         optimizer: str,
     ):
         logger.debug(
-            f"Op build {num_tables}, {rows}, {dims}, {pooling}, {weighted}, {weights_precision}, {optimizer}"
+            f"build: [{num_tables}, {rows}, {dims}, {pooling}, {weighted}, {weights_precision}, {optimizer}]"
         )
         if num_tables == 1:
             rows_list = [rows]
@@ -300,10 +297,10 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
             cache_load_factor=0.0,
             cache_reserved_memory=12.0,
         )
-        logger.debug(f"Op built: {self.op.weights_precision} {self.op.embedding_specs}")
+        logger.debug(f"op embedding_specs: {self.op.embedding_specs}")
 
     def cleanup(self):
-        logger.debug("Op cleanup")
+        logger.debug("op cleanup")
         self.op = None
         self.grad_in = None
         self.fwd_out = None
@@ -315,7 +312,7 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
         self.fwd_out = self.op.forward(args[0], args[1], args[2])
 
     def create_grad(self):
-        self.grad_in = torch.ones_like(self.fwd_out, device=torch.device(self.device))
+        self.grad_in = torch.ones_like(self.fwd_out)
 
     def backward(self):
         self.fwd_out.backward(self.grad_in)
