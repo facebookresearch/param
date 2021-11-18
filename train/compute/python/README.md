@@ -33,18 +33,21 @@ The installed packages are under **`param_bench.train.compute.python`**.
 To use the [`FBGEMM_GPU`](https://github.com/pytorch/FBGEMM/tree/main/fbgemm_gpu) library and its operator benchmark workload ([`split_table_batched_embeddings_ops.py`](workloads/pytorch/split_table_batched_embeddings_ops.py)), please follow its set up instruction to download and install. It's not required for the compute benchmarks. During initialization, if an operator fail to import, it'll be ignored and will not affect other benchmarks.
 
 ## Usage
-The bundled tool scripts such as [`pytorch_benchmark.py`](pytorch_benchmark.py) are written using relative import paths as part of the `parambench-train-compute` package, so they must be run as a module using the `python -m` option.
+The bundled tool scripts such as [`run_benchmark.py`](pytorch/run_benchmark.py) are written using relative import paths as part of the `parambench-train-compute` package, so they must be run as a module using the `python -m` option.
+
+A reliable way to run the benchmarks is install `parambench-train-compute` as a package following the above instructions. Afterward, it can be ran as:
+```shell
+# Run benchmark tool script module
+> python -m param_bench.train.compute.python.pytorch.run_benchmark -c examples/pytorch/configs/simple_add.json
+```
 
 Without installing the package, you can run a tool script as a module in the source directory:
 ```shell
 # Inside dir "param/train/compute"
-> python -m python.pytorch_benchmark -c python/examples/pytorch/configs/simple_add.json
+> python -m python.pytorch.run_benchmark -c python/examples/pytorch/configs/simple_add.json
 ```
-However, this method may conflict with other packages (such as `fbgemm_gpu.split_table_batched_embeddings_ops`) that have its own modules under a `python` package. A more reliable ways to run the benchmarks is install `parambench-train-compute` as a package using the `setuptools`, it can be ran as:
-```shell
-# Run benchmark tool script module
-> python -m param_bench.train.compute.python.pytorch_benchmark -c examples/pytorch/configs/simple_add.json
-```
+However, this method may conflict with other packages (such as `fbgemm_gpu.split_table_batched_embeddings_ops`) that have its own modules under a `python` package.
+
 Additional example configs can be found in [`examples/pytorch/configs/`](examples/pytorch/configs/).
 
 ### Benchmark Library
@@ -55,9 +58,10 @@ from param_bench.train.compute.python.lib.config import BenchmarkConfig
 A complete example to generate benchmark config, run the benchmark, then get the results can be found in [`run_op.py`](examples/pytorch/run_op.py)
 
 ## PyTorch Benchmark Options
-```shell
-> python -m param_bench.train.compute.python.pytorch_benchmark -h
-usage: pytorch_benchmark.py [-h] -c CONFIG [-w WARMUP] [-i ITERATION] [-b] [-d DEVICE] [-o OUTPUT_PREFIX] [-v]
+```
+> python -m param_bench.train.compute.python.pytorch.run_benchmark -h
+usage: run_benchmark.py [-h] -c CONFIG [-w WARMUP] [-i ITERATION] [-b] [-d DEVICE] [-o OUTPUT_PREFIX] [-r RESUME_ID] [-a] [--ncu]
+                        [--ncu-args-file NCU_ARGS_FILE] [--ncu-batch NCU_BATCH] [-v]
 
 Microbenchmarks
 
@@ -74,6 +78,14 @@ optional arguments:
                         Target device for benchmark.
   -o OUTPUT_PREFIX, --output-prefix OUTPUT_PREFIX
                         File name prefix to write benchmark results.
+  -r RESUME_ID, --resume-id RESUME_ID
+                        Define a resume op_run_id to continue benchmark, skip all previous configs.
+  -a, --append          Append to output file, rather than overwrite.
+  --ncu                 Run NSight Compute to collect metrics.
+  --ncu-args-file NCU_ARGS_FILE
+                        NSight Compute extra command line options (metrics etc.).
+  --ncu-batch NCU_BATCH
+                        NSight Compute input batch size (number of input configs to run in one launch).
   -v, --verbose         Increase log output verbosity.
 ```
 

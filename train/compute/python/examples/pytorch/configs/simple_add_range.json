@@ -1,0 +1,92 @@
+{
+  "torch.add": {
+    "input_iterator": "RangeConfigIterator",
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  128,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "value": [1, 10, 1],
+                "__range__": [
+                  "value"
+                ],
+                "type": "int"
+              }
+            ]
+          },
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "value": [10, 20, 2],
+                "__range__": [
+                  "value"
+                ],
+                "type": "int"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  64,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "value": [30, 40, 1],
+                "__range__": [
+                  "value"
+                ],
+                "type": "int"
+              }
+            ]
+          },
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  64,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "value": [40, 50, 2],
+                "__range__": [
+                  "value"
+                ],
+                "type": "int"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
