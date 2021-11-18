@@ -110,9 +110,9 @@ class OpBuildExecutor(BuildExecutor):
         # Reset operator to clear memory before new build
         self.op_config.op.cleanup()
         build_config = self.build_input_config["build"]
-        logger.info(f"build_id: [{self.build_id}]")
+        logger.debug(f"config_build_id: [{self.build_id}]")
         logger.debug(f"build_config: {build_config}")
-        if build_config:
+        if build_config is not None:
             build_data_gen = self.op_config.build_data_generator()
             (build_args, build_kwargs) = build_data_gen.get_data(
                 build_config, self.run_options["device"]
@@ -180,7 +180,9 @@ class OpBuildExecutor(BuildExecutor):
         input_id = self.input_config_queue[0]["id"]
         out_file_prefix = self.run_options["out_file_prefix"]
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        ncu_log_file = f"{out_file_prefix}_ncu_{self.build_id}:{input_id}_{timestamp}.log"
+        ncu_log_file = (
+            f"{out_file_prefix}_ncu_{self.build_id}:{input_id}_{timestamp}.log"
+        )
         ncu_log_file = ncu_log_file.replace(":", "-")
         ncu_extra_args = self.run_options["ncu_args"]
         ncu_options = (

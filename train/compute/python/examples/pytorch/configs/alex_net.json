@@ -1,0 +1,28 @@
+{
+  "pytorch:alex_net": {
+    "build_iterator": "RangeConfigIterator",
+    "build_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "build": [],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  1,
+                  3,
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

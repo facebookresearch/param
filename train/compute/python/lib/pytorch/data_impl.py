@@ -155,7 +155,10 @@ class DefaultDataGenerator(DataGenerator):
                     self.op_kwargs[key] = materialize_arg(arg, device)
 
     def get_data(self, config: Dict[str, Any], device: str):
-        if self.cache:
+        if not config:
+            # No configs, just return empty args.
+            return (self.op_args, self.op_kwargs)
+        elif self.cache:
             # find the arg config that changed from previous iteration
             arg_updates, kwarg_updates = self._find_updates(config)
             # cache arg configs for next iteration to compare.

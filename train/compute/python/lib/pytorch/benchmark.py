@@ -58,6 +58,7 @@ class Benchmark:
         config_id = 0
         for config in op_config.info["config"]:
             op_run_id = str(config_id)
+            logger.info(f"config_id: [{op_run_id}]")
             if "input" not in config:
                 logger.error(
                     f"{op_config.name} has no input configurations defined, skipped."
@@ -66,21 +67,30 @@ class Benchmark:
 
             generate_build_config = None
             if op_config.build_iterator and "build" in config:
+                logger.debug(f"build_config: {config['build']}")
                 if config["build"]:
                     generate_build_config = op_config.build_iterator(
                         config, "build", self.run_options["device"]
                     )
 
+
             build_input_config = {}
             if generate_build_config:
+                logger.debug("generating build config")
                 for (build_id, build_config) in generate_build_config:
-                    op_run_id += f":{build_id}"
+                    logger.info(f"build_id: [{build_id}]")
+                    logger.debug(f"build_config: {build_config}")
+                    op_run_id = f"{op_run_id}:{build_id}"
                     build_input_config["build"] = build_config
                     build_input_config["input"] = config["input"]
                     self.build_executor.run(op_config, build_input_config, op_run_id)
             else:
-                op_run_id += ":0"
-                build_input_config["build"] = []
+                build_id = "0"
+                build_config = config.get("build", None)
+                logger.info(f"build_id: [{build_id}]")
+                logger.debug(f"build_config: {build_config}")
+                op_run_id = f"{op_run_id}:{build_id}"
+                build_input_config["build"] = build_config
                 build_input_config["input"] = config["input"]
                 self.build_executor.run(op_config, build_input_config, op_run_id)
 
