@@ -22,20 +22,11 @@ packages = list(package_dir_map)
 
 setup(
     name="parambench-train-compute",
-    version_config={
-        "template": "{full_sha}",
-        "dev_template": "{full_sha}.post{ccount}+git.{sha}",
-        "dirty_template": "{tag}.post{ccount}+git.{sha}.dirty",
-        "starting_version": "{full_sha}",
-        "version_callback": None,
-        "version_file": None,
-        "count_commits_from_version_file": False,
-        "branch_formatter": None,
-        "sort_by": None,
-    },
-    setup_requires=["setuptools-git-versioning"],
+    version="0.1.0",
+    python_requires=">=3.8",
     author="Louis Feng",
     author_email="lofe@fb.com",
+    url="https://github.com/facebookresearch/param",
     packages=packages,
     package_dir=package_dir_map,
 )

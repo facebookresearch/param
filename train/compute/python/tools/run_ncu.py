@@ -24,7 +24,7 @@ def run_ncu(args: str, metrics: str, out_prefix: str):
     )
 
     cmd = [ncu_bin] + ncu_options.split(" ") + args.split(" ")
-    logger.info("Running: " + " ".join(cmd))
+    logger.info("running: " + " ".join(cmd))
     with subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,

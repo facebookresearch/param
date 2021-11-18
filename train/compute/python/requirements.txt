@@ -1,2 +1,2 @@
 nvtx==0.2.3
-torch
+torch>=1.8

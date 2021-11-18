@@ -137,7 +137,7 @@ class OpBuildExecutor(BuildExecutor):
             self.input_config_queue.clear()
 
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
-        run_id = self.build_id + f":{input_id}"
+        run_id = f"{self.build_id}:{input_id}"
 
         if self.should_skip(f"{self.op_config.name}:{run_id}"):
             return
@@ -302,7 +302,7 @@ class MaterializedBuildExecutor(BuildExecutor):
             counter += 1
 
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
-        run_id = self.build_id + f":{input_id}"
+        run_id = f"{self.build_id}:{input_id}"
 
         if self.should_skip(f"{self.op_config.name}:{run_id}"):
             return
