@@ -2,6 +2,9 @@ import argparse
 import json
 import logging
 
+import torch
+from torch.autograd.profiler import record_function
+
 from ..lib import pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
 from ..lib.init_helper import init_logging, load_modules
@@ -111,7 +114,15 @@ def main():
         bench_config = BenchmarkConfig(run_options)
         bench_config.load_json_file(args.config)
         benchmark = make_default_benchmark(bench_config)
-        benchmark.run()
+        use_cuda = False
+        if run_options["device"].startswith("cuda"):
+            use_cuda = True
+        with torch.autograd.profiler.profile(
+            True, use_cuda=use_cuda, use_kineto=True, record_shapes=False
+        ) as prof:
+            with record_function("__parambench__"):
+                benchmark.run()
+        prof.export_chrome_trace(f"{args.output_prefix}_trace.json")
 
     logger.info(f"benchmark result: {out_file_name}")
 
