@@ -35,16 +35,19 @@ To use the [`FBGEMM_GPU`](https://github.com/pytorch/FBGEMM/tree/main/fbgemm_gpu
 ## Usage
 The bundled tool scripts such as [`run_benchmark.py`](pytorch/run_benchmark.py) are written using relative import paths as part of the `parambench-train-compute` package, so they must be run as a module using the `python -m` option.
 
+A reliable way to run the benchmarks is install `parambench-train-compute` as a package following the above instructions. Afterward, it can be ran as:
+```shell
+# Run benchmark tool script module
+> python -m param_bench.train.compute.python.pytorch.run_benchmark -c examples/pytorch/configs/simple_add.json
+```
+
 Without installing the package, you can run a tool script as a module in the source directory:
 ```shell
 # Inside dir "param/train/compute"
 > python -m python.pytorch.run_benchmark -c python/examples/pytorch/configs/simple_add.json
 ```
-However, this method may conflict with other packages (such as `fbgemm_gpu.split_table_batched_embeddings_ops`) that have its own modules under a `python` package. A more reliable ways to run the benchmarks is install `parambench-train-compute` as a package using the `setuptools`, it can be ran as:
-```shell
-# Run benchmark tool script module
-> python -m param_bench.train.compute.python.pytorch.run_benchmark -c examples/pytorch/configs/simple_add.json
-```
+However, this method may conflict with other packages (such as `fbgemm_gpu.split_table_batched_embeddings_ops`) that have its own modules under a `python` package.
+
 Additional example configs can be found in [`examples/pytorch/configs/`](examples/pytorch/configs/).
 
 ### Benchmark Library
@@ -57,8 +60,8 @@ A complete example to generate benchmark config, run the benchmark, then get the
 ## PyTorch Benchmark Options
 ```
 > python -m param_bench.train.compute.python.pytorch.run_benchmark -h
-usage: run_benchmark.py [-h] -c CONFIG [-w WARMUP] [-i ITERATION] [-b] [-d DEVICE] [-o OUTPUT_PREFIX] [-r RESUME_ID] [-a]
-                        [--ncu] [--ncu-args-file NCU_ARGS_FILE] [-v]
+usage: run_benchmark.py [-h] -c CONFIG [-w WARMUP] [-i ITERATION] [-b] [-d DEVICE] [-o OUTPUT_PREFIX] [-r RESUME_ID] [-a] [--ncu]
+                        [--ncu-args-file NCU_ARGS_FILE] [--ncu-batch NCU_BATCH] [-v]
 
 Microbenchmarks
 
@@ -81,6 +84,8 @@ optional arguments:
   --ncu                 Run NSight Compute to collect metrics.
   --ncu-args-file NCU_ARGS_FILE
                         NSight Compute extra command line options (metrics etc.).
+  --ncu-batch NCU_BATCH
+                        NSight Compute input batch size (number of input configs to run in one launch).
   -v, --verbose         Increase log output verbosity.
 ```
 
