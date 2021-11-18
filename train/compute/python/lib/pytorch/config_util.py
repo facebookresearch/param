@@ -31,6 +31,7 @@ def get_benchmark_options() -> Dict[str, Any]:
         "pass_type": ExecutionPass.FORWARD,
         "warmup": 1,
         "iteration": 1,
+        "out_file_prefix": None,
         "out_stream": None,
         "run_ncu": False,
         "ncu_args": "",
@@ -84,20 +85,18 @@ def create_data(type) -> Dict[str, Any]:
 def get_sys_info():
     cuda_device_driver = get_nvidia_driver_version(run_cmd)
     return {
-        "sys_info": {
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
-            "hostname": socket.gethostname(),
-            "param_bench_version": package_version("parambench_train_compute"),
-            "pytorch_version": torch.__version__,
-            "cudnn": torch.backends.cudnn.version(),
-            "cudnn_enabled": torch.backends.cudnn.enabled,
-            "cuda_device_driver": cuda_device_driver,
-            "cuda": torch.version.cuda,
-            "cuda_gencode": torch.cuda.get_gencode_flags(),
-            "cuda_device_id": torch.cuda.current_device(),
-            "cuda_device_name": torch.cuda.get_device_name(),
-            "python_version": platform.python_version(),
-            "pytorch_debug_build": torch.version.debug,
-            "pytorch_build_config": torch._C._show_config(),
-        }
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "hostname": socket.gethostname(),
+        "param_bench_version": package_version("parambench_train_compute"),
+        "pytorch_version": torch.__version__,
+        "cudnn": torch.backends.cudnn.version(),
+        "cudnn_enabled": torch.backends.cudnn.enabled,
+        "cuda_device_driver": cuda_device_driver,
+        "cuda": torch.version.cuda,
+        "cuda_gencode": torch.cuda.get_gencode_flags(),
+        "cuda_device_id": torch.cuda.current_device(),
+        "cuda_device_name": torch.cuda.get_device_name(),
+        "python_version": platform.python_version(),
+        "pytorch_debug_build": torch.version.debug,
+        "pytorch_build_config": torch._C._show_config(),
     }

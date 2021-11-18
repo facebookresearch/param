@@ -178,8 +178,9 @@ class OpBuildExecutor(BuildExecutor):
 
         param_bench_range = "param_bench@measure"
         input_id = self.input_config_queue[0]["id"]
+        out_file_prefix = self.run_options["out_file_prefix"]
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        ncu_log_file = f"ncu_{self.build_id}:{input_id}_{timestamp}.log"
+        ncu_log_file = f"{out_file_prefix}_ncu_{self.build_id}:{input_id}_{timestamp}.log"
         ncu_log_file = ncu_log_file.replace(":", "-")
         ncu_extra_args = self.run_options["ncu_args"]
         ncu_options = (

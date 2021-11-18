@@ -103,6 +103,7 @@ def main():
             run_options["ncu_args"] = ncu_file.read().strip()
 
     with open(out_file_name, write_option) as out_file:
+        run_options["out_file_prefix"] = args.output_prefix
         run_options["out_stream"] = out_file
         benchmark_setup = {"run_options": run_options, "sys_info": get_sys_info()}
         out_file.write(json.dumps(benchmark_setup, default=str) + "\n")
