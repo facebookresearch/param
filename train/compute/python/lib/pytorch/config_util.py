@@ -1,8 +1,8 @@
 import copy
 import enum
+import os
 import platform
 import socket
-from datetime import datetime
 from typing import Any
 from typing import Dict
 from typing import List
@@ -101,8 +101,8 @@ def get_sys_info():
         }
 
     return {
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
         "hostname": socket.gethostname(),
+        "pid": os.getpid(),
         "python_version": platform.python_version(),
         "param_bench_version": param_bench_version,
         "cuda_available": cuda_available,

@@ -54,7 +54,7 @@ class Benchmark:
             self.run_op(op_config)
 
     def run_op(self, op_config: OperatorConfig) -> List[str]:
-        logger.info(f"op: {op_config.name}")
+        logger.info(f"### op: {op_config.name}")
         config_id = 0
         for config in op_config.info["config"]:
             op_run_id = str(config_id)
@@ -72,7 +72,6 @@ class Benchmark:
                     generate_build_config = op_config.build_iterator(
                         config, "build", self.run_options["device"]
                     )
-
 
             build_input_config = {}
             if generate_build_config:

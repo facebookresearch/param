@@ -24,17 +24,18 @@ def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
 
     def create_tensor(attr: Dict[str, Any]):
         shape = attr["shape"]
+        requires_grad = attr.get("requires_grad", True)
         if len(shape) > 0:
             if attr["dtype"] == "float" or attr["dtype"] == "double":
                 return torch.rand(
-                    *shape, requires_grad=True, device=torch.device(device)
+                    *shape, requires_grad=requires_grad, device=torch.device(device)
                 )
             elif attr["dtype"] == "int" or attr["dtype"] == "long":
                 return torch.randint(
                     -10,
                     10,
                     tuple(shape),
-                    requires_grad=True,
+                    requires_grad=requires_grad,
                     device=torch.device(device),
                 )
         # Single value
@@ -42,7 +43,7 @@ def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
             return torch.tensor(
                 random.uniform(-10.0, 10.0),
                 dtype=pytorch_dtype_map[attr["dtype"]],
-                requires_grad=True,
+                requires_grad=requires_grad,
                 device=torch.device(device),
             )
 

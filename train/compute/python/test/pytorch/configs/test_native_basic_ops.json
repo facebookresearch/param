@@ -1,4 +1,62 @@
 {
+  "torch.add_": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.clamp_": {
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  256,
+                  256
+                ],
+                "type": "tensor"
+              },
+              {
+                "type": "int",
+                "value": 0
+              },
+              {
+                "type": "int",
+                "value": 10
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
   "torch.add": {
     "input_data_generator": "PyTorch::DefaultDataGenerator",
     "config": [
@@ -298,6 +356,197 @@
                     "value": 512
                   }
                 ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.nn.Conv2d": {
+    "build_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "type": "int",
+                "value": 3
+              },
+              {
+                "type": "int",
+                "value": 64
+              }
+            ],
+            "kwargs": {
+              "kernel_size": {
+                "type": "int",
+                "value": 11
+              },
+              "stride": {
+                "type": "int",
+                "value": 4
+              },
+              "padding": {
+                "type": "int",
+                "value": 2
+              }
+            }
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  1,
+                  3,
+                  64,
+                  64
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.nn.Dropout": {
+    "build_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "type": "float",
+                "value": 0.5
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  64,
+                  64
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.nn.MaxPool2d": {
+    "build_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "type": "int",
+                "value": 3
+              },
+              {
+                "type": "int",
+                "value": 2
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  1,
+                  3,
+                  64,
+                  64
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.nn.ReLU": {
+    "build_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "type": "bool",
+                "value": true
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  64,
+                  64
+                ],
+                "type": "tensor",
+                "requires_grad": false
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "torch.nn.Linear": {
+    "build_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "type": "int",
+                "value": 64
+              },
+              {
+                "type": "int",
+                "value": 8
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  64,
+                  64
+                ],
+                "type": "tensor"
               }
             ]
           }
