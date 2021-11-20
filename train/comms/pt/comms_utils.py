@@ -777,7 +777,6 @@ class paramCommsBench(ABC):
                     )
                 )
         elif commOp == "reduce_scatter":
-            opTensor = ipTensor
             ipTensor = []
             if commsParams.dcheck == 1:
                 for _ in range(world_size):
@@ -793,8 +792,10 @@ class paramCommsBench(ABC):
                             [numElementsOut], curDevice, commsParams.dtype, scaleFactor
                         )
                     )
+            opTensor = self.backendFuncs.alloc_random(
+                [numElementsOut], curDevice, dtype, scaleFactor
+            )
         elif commOp == "reduce_scatter_base":
-            opTensor = ipTensor
             ipTensor = []
             if commsParams.dcheck == 1:
                 ipTensor = self.backendFuncs.alloc_ones(
@@ -810,6 +811,9 @@ class paramCommsBench(ABC):
                     commsParams.dtype,
                     scaleFactor,
                 )
+            opTensor = self.backendFuncs.alloc_random(
+                [numElementsOut], curDevice, dtype, scaleFactor
+            )
         elif commOp in ("all_to_all", "pt2pt"):
             # pt2pt or out-of-place collectives
             opTensor = self.backendFuncs.alloc_random(
