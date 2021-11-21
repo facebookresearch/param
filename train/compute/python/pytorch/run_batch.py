@@ -64,12 +64,12 @@ def main():
         return
 
     op_name = config["op_name"]
-    build_id = config["build_id"]
+    config_build_id = config["config_build_id"]
     op_info = config["op_info"]
     run_options = config["run_options"]
 
     logger.debug(f"op_name: {op_name}")
-    logger.debug(f"build_id: {build_id}")
+    logger.debug(f"config_build_id: {config_build_id}")
     logger.debug(f"op_info: {op_info}")
     logger.debug(f"run_options: {run_options}")
 
@@ -82,7 +82,7 @@ def main():
     with open(os.devnull, "w") as out_stream:
         run_options["out_stream"] = out_stream
         build_exe = MaterializedBuildExecutor(run_options)
-        build_exe.run(op_config, build_input_config, build_id)
+        build_exe.run(op_config, build_input_config, config_build_id)
 
 
 if __name__ == "__main__":

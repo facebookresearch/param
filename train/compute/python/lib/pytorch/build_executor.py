@@ -51,7 +51,7 @@ class BuildExecutor(metaclass=abc.ABCMeta):
         self,
         op_config: OperatorConfig,
         build_input_config: Dict[str, Any],
-        build_id: str,
+        config_build_id: str,
     ):
         raise NotImplementedError
 
@@ -94,23 +94,23 @@ class OpBuildExecutor(BuildExecutor):
         self.input_config_queue = []
         self.op_config = None
         self.build_input_config = None
-        self.build_id = None
+        self.config_build_id = None
 
     def run(
         self,
         op_config: OperatorConfig,
         build_input_config: Dict[str, Any],
-        build_id: str,
+        config_build_id: str,
     ):
         self.input_config_queue.clear()
         self.op_config = op_config
         self.build_input_config = build_input_config
-        self.build_id = build_id
+        self.config_build_id = config_build_id
 
         # Reset operator to clear memory before new build
         self.op_config.op.cleanup()
         build_config = self.build_input_config["build"]
-        logger.debug(f"config_build_id: [{self.build_id}]")
+        logger.debug(f"config_build_id: [{self.config_build_id}]")
         logger.debug(f"build_config: {build_config}")
         if build_config is not None:
             build_data_gen = self.op_config.build_data_generator()
@@ -137,7 +137,7 @@ class OpBuildExecutor(BuildExecutor):
             self.input_config_queue.clear()
 
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
-        run_id = f"{self.build_id}:{input_id}"
+        run_id = f"{self.config_build_id}:{input_id}"
 
         if self.should_skip(f"{self.op_config.name}:{run_id}"):
             return
@@ -211,7 +211,7 @@ class OpBuildExecutor(BuildExecutor):
         run_options["iteration"] = 1
         config = {
             "op_name": self.op_config.name,
-            "build_id": self.build_id,
+            "config_build_id": self.config_build_id,
             "op_info": op_info,
             "run_options": run_options,
         }
@@ -254,8 +254,8 @@ class OpBuildExecutor(BuildExecutor):
                     "ncu_file": ncu_log_file,
                     "ncu_cmd_str": cmd_str,
                     "config": config,
-                    "start_run_id": f"{self.build_id}:{start_input_id}",
-                    "end_run_id": f"{self.build_id}:{end_input_id}",
+                    "start_run_id": f"{self.config_build_id}:{start_input_id}",
+                    "end_run_id": f"{self.config_build_id}:{end_input_id}",
                 }
             ),
             file=self.out_stream,
@@ -278,17 +278,17 @@ class MaterializedBuildExecutor(BuildExecutor):
 
         self.build_input_config = None
         self.op_config = None
-        self.build_id = None
+        self.config_build_id = None
 
     def run(
         self,
         op_config: OperatorConfig,
         build_input_config: Dict[str, Any],
-        build_id: str,
+        config_build_id: str,
     ):
         self.build_input_config = build_input_config
         self.op_config = op_config
-        self.build_id = build_id
+        self.config_build_id = config_build_id
         if "build" not in self.build_input_config:
             self.build_input_config["build"] = None
 
@@ -317,12 +317,12 @@ class MaterializedBuildExecutor(BuildExecutor):
             counter += 1
 
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
-        run_id = f"{self.build_id}:{input_id}"
+        run_id = f"{self.config_build_id}:{input_id}"
 
         if self.should_skip(f"{self.op_config.name}:{run_id}"):
             return
 
-        logger.info(f"input_id: [{run_id}]")
+        logger.info(f"run_id: [{run_id}]")
         logger.debug(f"input_config: {input_config}")
 
         # generate input data
