@@ -1,6 +1,6 @@
 {
   "torch.add_": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -29,7 +29,7 @@
     ]
   },
   "torch.clamp_": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -58,7 +58,7 @@
     ]
   },
   "torch.add": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -87,7 +87,7 @@
     ]
   },
   "torch.baddbmm": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -137,7 +137,7 @@
     ]
   },
   "torch.bmm": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -168,7 +168,7 @@
     ]
   },
   "torch.cat": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -205,7 +205,7 @@
     ]
   },
   "torch.matmul": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -234,7 +234,7 @@
     ]
   },
   "torch.mean": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -255,7 +255,7 @@
     ]
   },
   "torch.mm": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -284,7 +284,7 @@
     ]
   },
   "torch.mul": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -309,7 +309,7 @@
     ]
   },
   "torch.nn.functional.relu": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -330,7 +330,7 @@
     ]
   },
   "torch.reshape": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -364,8 +364,8 @@
     ]
   },
   "torch.nn.Conv2d": {
-    "build_data_generator": "PyTorch::DefaultDataGenerator",
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "build": [
@@ -416,8 +416,8 @@
     ]
   },
   "torch.nn.Dropout": {
-    "build_data_generator": "PyTorch::DefaultDataGenerator",
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "build": [
@@ -448,8 +448,8 @@
     ]
   },
   "torch.nn.MaxPool2d": {
-    "build_data_generator": "PyTorch::DefaultDataGenerator",
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "build": [
@@ -486,8 +486,8 @@
     ]
   },
   "torch.nn.ReLU": {
-    "build_data_generator": "PyTorch::DefaultDataGenerator",
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "build": [
@@ -519,8 +519,8 @@
     ]
   },
   "torch.nn.Linear": {
-    "build_data_generator": "PyTorch::DefaultDataGenerator",
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "build": [

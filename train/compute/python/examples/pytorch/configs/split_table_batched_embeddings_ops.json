@@ -2,7 +2,7 @@
   "SplitTableBatchedEmbeddingBagsCodegen": {
     "build_iterator": "RangeConfigIterator",
     "input_iterator": "SplitTableBatchedEmbeddingBagsCodegenInputIterator",
-    "build_data_generator": "PyTorch::DefaultDataGenerator",
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
     "input_data_generator": "SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator",
     "config": [
       {

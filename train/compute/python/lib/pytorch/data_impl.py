@@ -171,4 +171,4 @@ class DefaultDataGenerator(DataGenerator):
         return (self.op_args, self.op_kwargs)
 
 
-register_data_generator("PyTorch::DefaultDataGenerator", DefaultDataGenerator)
+register_data_generator("PyTorch:DefaultDataGenerator", DefaultDataGenerator)

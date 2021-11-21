@@ -1,3 +1,4 @@
+import gc
 from typing import Callable
 
 from ..init_helper import get_logger
@@ -53,6 +54,11 @@ class CallableOp(OperatorInterface):
         self.fwd_out: torch.tensor = None
         self.grad_in = None
 
+    def cleanup(self):
+        self.fwd_out = None
+        self.grad_in = None
+        gc.collect()
+
     def forward(self, *args, **kwargs):
         self.fwd_out = self.func(*args, **kwargs)
         return self.fwd_out
@@ -89,6 +95,11 @@ class BuildableOp(OperatorInterface):
     def build(self, *args, **kwargs):
         # Use `to` to make sure weights are on device.
         self.func = self.constructor(*args, **kwargs).to(torch.device(self.device))
+
+    def cleanup(self):
+        self.fwd_out = None
+        self.grad_in = None
+        gc.collect()
 
     def forward(self, *args, **kwargs):
         self.fwd_out = self.func(*args, **kwargs)

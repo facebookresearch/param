@@ -1,15 +1,15 @@
-import gc
-from typing import Callable
-
 import torch
 import torch.nn as nn
 
-from ...lib.operator import OperatorInterface, register_operator
+from ...lib.operator import register_operator
+from ...lib.pytorch.operator_impl import BuildableOp
+
 
 class AlexNet(nn.Module):
     """
     Ref: https://pytorch.org/vision/master/_modules/torchvision/models/alexnet.html
     """
+
     def __init__(self, num_classes: int = 1000, dropout: float = 0.5) -> None:
         super().__init__()
         self.features = nn.Sequential(
@@ -45,40 +45,5 @@ class AlexNet(nn.Module):
         x = self.classifier(x)
         return x
 
-class AlexNetOp(OperatorInterface):
-    """
-    A wrapper for an implementation of AlexNet.
-    """
 
-    def __init__(self):
-        super(AlexNetOp, self).__init__()
-        self.alex_net: Callable = None
-        self.fwd_out: torch.tensor = None
-        self.grad_in = None
-
-    def build(self):
-        self.alex_net = AlexNet().to(torch.device(self.device))
-
-    def cleanup(self):
-        self.op = None
-        self.grad_in = None
-        self.fwd_out = None
-        gc.collect()
-        if self.device.startswith("cuda"):
-            torch.cuda.empty_cache()
-
-    def forward(self, *args, **kwargs):
-        self.fwd_out = self.alex_net.forward(*args, **kwargs)
-        return self.fwd_out
-
-    def create_grad(self):
-        self.grad_in = torch.ones_like(self.fwd_out)
-
-    def backward(self):
-        self.fwd_out.backward(self.grad_in)
-
-
-
-register_operator(
-    "pytorch:alex_net", AlexNetOp()
-)
+register_operator("pytorch.model.alex_net", BuildableOp(AlexNet))

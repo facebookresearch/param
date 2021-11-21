@@ -2,7 +2,7 @@
   "op_name": "torch.add",
   "build_id": "1:2",
   "op_info": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [

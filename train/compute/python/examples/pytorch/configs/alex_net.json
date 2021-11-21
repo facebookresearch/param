@@ -1,7 +1,7 @@
 {
-  "pytorch:alex_net": {
-    "build_data_generator": "PyTorch::DefaultDataGenerator",
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+  "pytorch.model.alex_net": {
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "build": [],

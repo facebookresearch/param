@@ -1,6 +1,6 @@
 {
   "torch.add": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [

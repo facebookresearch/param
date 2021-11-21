@@ -177,11 +177,11 @@ class OpBuildExecutor(BuildExecutor):
             ncu_bin = NCU_BIN
 
         param_bench_range = "param_bench@measure"
-        input_id = self.input_config_queue[0]["id"]
+        start_input_id = self.input_config_queue[0]["id"]
         out_file_prefix = self.run_options["out_file_prefix"]
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        timestamp = int(datetime.timestamp(datetime.now()))
         ncu_log_file = (
-            f"{out_file_prefix}_ncu_{self.build_id}:{input_id}_{timestamp}.log"
+            f"{out_file_prefix}_{os.getpid()}_{timestamp}_ncu.log"
         )
         ncu_log_file = ncu_log_file.replace(":", "-")
         ncu_extra_args = self.run_options["ncu_args"]
@@ -247,6 +247,19 @@ class OpBuildExecutor(BuildExecutor):
                     print(line, end="")
         shm.close()
         shm.unlink()
+        end_input_id = self.input_config_queue[-1]['id']
+        print(
+            json.dumps(
+                {
+                    "ncu_file": ncu_log_file,
+                    "ncu_cmd_str": cmd_str,
+                    "config": config,
+                    "start_run_id": f"{self.build_id}:{start_input_id}",
+                    "end_run_id": f"{self.build_id}:{end_input_id}",
+                }
+            ),
+            file=self.out_stream,
+        )
         logger.info(f"ncu result: {ncu_log_file}")
 
 
@@ -283,7 +296,7 @@ class MaterializedBuildExecutor(BuildExecutor):
         self.op_config.op.cleanup()
         build_config = self.build_input_config["build"]
         logger.debug(build_config)
-        if build_config:
+        if build_config is not None:
             build_data_gen = self.op_config.build_data_generator()
             (build_args, build_kwargs) = build_data_gen.get_data(
                 build_config, self.run_options["device"]
@@ -351,7 +364,7 @@ def output_stats(
             )
             logger.info(f"{format_float_val_list(records, 3)}")
     stats = {
-        "name": name,
+        "op_name": name,
         "id": run_id,
         "metric": metrics,
         "config": config,

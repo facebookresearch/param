@@ -52,7 +52,7 @@ def create_op_info() -> Dict[str, Any]:
         "build_iterator": None,
         "input_iterator": None,
         "build_data_generator": None,
-        "input_data_generator": "PyTorch::DefaultDataGenerator",
+        "input_data_generator": "PyTorch:DefaultDataGenerator",
         "config": [{"build": [], "input": []}],
     }
 
@@ -103,6 +103,7 @@ def get_sys_info():
     return {
         "hostname": socket.gethostname(),
         "pid": os.getpid(),
+        "cwd": os.getcwd(),
         "python_version": platform.python_version(),
         "param_bench_version": param_bench_version,
         "cuda_available": cuda_available,
