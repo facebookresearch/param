@@ -1,4 +1,5 @@
 import torch
+from fbgemm_gpu.split_table_batched_embeddings_ops import PoolingMode
 
 from ...lib import pytorch as lib_pytorch
 from ...lib.config import make_op_config
@@ -53,8 +54,6 @@ def main():
     weighted = True
     weights_precision = "fp16"
     optimizer = "exact_row_wise_adagrad"
-    # pooling mode 0 is sum, 1 is mean, 2 is none
-    pooling_mode = 0
 
     # Construct configuration for input data generator.
     data_generator_config = create_op_args(
@@ -81,7 +80,7 @@ def main():
         num_tables,
         rows,
         dim,
-        pooling_mode,
+        PoolingMode.SUM,
         weighted,
         weights_precision,
         optimizer,
