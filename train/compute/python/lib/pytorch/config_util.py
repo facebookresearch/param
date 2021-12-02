@@ -2,6 +2,7 @@ import copy
 import enum
 import os
 import platform
+import random
 import socket
 from typing import Any
 from typing import Dict
@@ -32,6 +33,7 @@ def get_benchmark_options() -> Dict[str, Any]:
         "pass_type": ExecutionPass.FORWARD,
         "warmup": 1,
         "iteration": 1,
+        "time_unit": "millisecond",
         "out_file_prefix": None,
         "out_stream": None,
         "run_ncu": False,
@@ -112,3 +114,12 @@ def get_sys_info():
         "pytorch_debug_build": torch.version.debug,
         "pytorch_build_config": torch._C._show_config(),
     }
+
+
+def init_pytorch(run_options: Dict[str, Any]):
+    # We don't want too many threads for stable benchmarks
+    torch.set_num_threads(1)
+
+    # Fix random number generator seeds.
+    torch.manual_seed(0)
+    random.seed(0)

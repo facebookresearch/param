@@ -5,10 +5,9 @@ logger = get_logger()
 from typing import List
 from typing import Type
 
-import torch
-
 from ..config import OperatorConfig, BenchmarkConfig
 from .build_executor import BuildExecutor, OpBuildExecutor
+from .config_util import init_pytorch
 
 
 class Benchmark:
@@ -38,9 +37,7 @@ class Benchmark:
     def __init__(
         self, bench_config: BenchmarkConfig, build_executor: Type[BuildExecutor]
     ):
-        # We don't want too many threads for stable benchmarks
-        torch.set_num_threads(1)
-
+        init_pytorch(bench_config.run_options)
         self.bench_config = bench_config
         self.build_executor = build_executor
         self.run_options = bench_config.run_options

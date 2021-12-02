@@ -4,7 +4,6 @@ import logging
 import os
 from datetime import datetime
 
-# import graph_observer
 import torch
 from torch.autograd.profiler import record_function
 
@@ -14,11 +13,6 @@ from ..lib.init_helper import init_logging, load_modules
 from ..lib.pytorch.benchmark import make_default_benchmark
 from ..lib.pytorch.config_util import get_benchmark_options, ExecutionPass, get_sys_info
 from ..workloads import pytorch as workloads_pytorch
-
-# graph_observer.set_scope_label("__parambench__")
-# graph_observer.set_iter_label("")
-# graph_observer.set_iter_target(0)
-# graph_observer.registerExecutionGraphObserverOnce()
 
 
 def main():
@@ -149,7 +143,10 @@ def main():
             with record_function("__param_bench__"):
                 benchmark.run()
 
-        print(json.dumps({"finish_time": datetime.now().isoformat(timespec="seconds")}), file=out_file)
+        print(
+            json.dumps({"finish_time": datetime.now().isoformat(timespec="seconds")}),
+            file=out_file,
+        )
         if args.profile and prof:
             trace_file = f"{out_file_prefix}_trace.json"
             logger.info(f"trace: {trace_file}")
