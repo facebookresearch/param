@@ -1,6 +1,6 @@
 {
   "torch.baddbmm": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -91,7 +91,7 @@
     ]
   },
   "torch.bmm": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -210,7 +210,7 @@
     ]
   },
   "torch.mm": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
@@ -219,16 +219,16 @@
               {
                 "dtype": "float",
                 "shape": [
-                  512,
-                  512
+                  1024,
+                  1024
                 ],
                 "type": "tensor"
               },
               {
                 "dtype": "float",
                 "shape": [
-                  512,
-                  3702
+                  1024,
+                  1024
                 ],
                 "type": "tensor"
               }

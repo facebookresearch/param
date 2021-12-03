@@ -140,7 +140,7 @@ For each **`"build"`** and **`"input"`** configuration, the __`"args"`__ and __`
 ```json
 {
   "torch.baddbmm": {
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [

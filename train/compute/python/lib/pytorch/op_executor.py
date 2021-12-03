@@ -6,8 +6,10 @@ from typing import Any
 from typing import Callable
 from typing import Dict
 from typing import List
+from typing import Tuple
 
 import torch
+from torch.autograd.profiler import record_function
 
 from ..operator import OperatorInterface
 from .config_util import ExecutionPass
@@ -29,9 +31,11 @@ def _clear_cache():
     }
     capability = torch.cuda.get_device_capability()
     device_type = capability[0] * 10 + capability[1]
-    _ = torch.zeros(L2_cache_size[device_type] // 4).float() * 2
-    del _
-    torch.cuda.empty_cache()
+
+    with record_function("__param_bench__:_clear_cache"):
+        _ = torch.zeros(L2_cache_size[device_type] // 4).float() * 2
+        del _
+        torch.cuda.empty_cache()
 
 
 class OpExecutor:
@@ -70,7 +74,7 @@ class OpExecutor:
 
     def _benchmark_op(
         self, op: Callable, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
-    ):
+    ) -> float:
         logger.debug(f"benchmarking {self.name} {tag} {op_run_id}")
         # flush cache
         if self.device.startswith("cuda"):
@@ -79,18 +83,20 @@ class OpExecutor:
                 tag_rng = nvtx.start_range(domain="param_bench", message=tag)
                 op_run_id_rng = nvtx.start_range(domain=self.name, message=op_run_id)
 
-        with Timer(self.device) as timer:
-            op(*args, **kwargs)
+        with record_function("__param_bench__:_benchmark_op"):
+            with Timer(self.device) as timer:
+                op(*args, **kwargs)
 
         if self.device.startswith("cuda") and USE_NVTX:
             nvtx.end_range(op_run_id_rng)
             nvtx.end_range(tag_rng)
 
+        # Return result in milliseconds.
         return timer.elapsed_time()
 
     def _benchmark_loop(
         self, count: int, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
-    ):
+    ) -> Tuple[List[float], List[float]]:
         fw_time_records = []
         bw_time_records = []
         for _ in range(count):

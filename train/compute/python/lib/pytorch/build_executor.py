@@ -51,7 +51,7 @@ class BuildExecutor(metaclass=abc.ABCMeta):
         self,
         op_config: OperatorConfig,
         build_input_config: Dict[str, Any],
-        build_id: str,
+        config_build_id: str,
     ):
         raise NotImplementedError
 
@@ -94,25 +94,25 @@ class OpBuildExecutor(BuildExecutor):
         self.input_config_queue = []
         self.op_config = None
         self.build_input_config = None
-        self.build_id = None
+        self.config_build_id = None
 
     def run(
         self,
         op_config: OperatorConfig,
         build_input_config: Dict[str, Any],
-        build_id: str,
+        config_build_id: str,
     ):
         self.input_config_queue.clear()
         self.op_config = op_config
         self.build_input_config = build_input_config
-        self.build_id = build_id
+        self.config_build_id = config_build_id
 
         # Reset operator to clear memory before new build
         self.op_config.op.cleanup()
         build_config = self.build_input_config["build"]
-        logger.info(f"build_id: [{self.build_id}]")
+        logger.debug(f"config_build_id: [{self.config_build_id}]")
         logger.debug(f"build_config: {build_config}")
-        if build_config:
+        if build_config is not None:
             build_data_gen = self.op_config.build_data_generator()
             (build_args, build_kwargs) = build_data_gen.get_data(
                 build_config, self.run_options["device"]
@@ -137,7 +137,7 @@ class OpBuildExecutor(BuildExecutor):
             self.input_config_queue.clear()
 
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
-        run_id = f"{self.build_id}:{input_id}"
+        run_id = f"{self.config_build_id}:{input_id}"
 
         if self.should_skip(f"{self.op_config.name}:{run_id}"):
             return
@@ -177,10 +177,12 @@ class OpBuildExecutor(BuildExecutor):
             ncu_bin = NCU_BIN
 
         param_bench_range = "param_bench@measure"
-        input_id = self.input_config_queue[0]["id"]
+        start_input_id = self.input_config_queue[0]["id"]
         out_file_prefix = self.run_options["out_file_prefix"]
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        ncu_log_file = f"{out_file_prefix}_ncu_{self.build_id}:{input_id}_{timestamp}.log"
+        timestamp = int(datetime.timestamp(datetime.now()))
+        ncu_log_file = (
+            f"{out_file_prefix}_{os.getpid()}_{timestamp}_ncu.log"
+        )
         ncu_log_file = ncu_log_file.replace(":", "-")
         ncu_extra_args = self.run_options["ncu_args"]
         ncu_options = (
@@ -209,7 +211,7 @@ class OpBuildExecutor(BuildExecutor):
         run_options["iteration"] = 1
         config = {
             "op_name": self.op_config.name,
-            "build_id": self.build_id,
+            "config_build_id": self.config_build_id,
             "op_info": op_info,
             "run_options": run_options,
         }
@@ -245,6 +247,19 @@ class OpBuildExecutor(BuildExecutor):
                     print(line, end="")
         shm.close()
         shm.unlink()
+        end_input_id = self.input_config_queue[-1]['id']
+        print(
+            json.dumps(
+                {
+                    "ncu_file": ncu_log_file,
+                    "ncu_cmd_str": cmd_str,
+                    "config": config,
+                    "start_run_id": f"{self.config_build_id}:{start_input_id}",
+                    "end_run_id": f"{self.config_build_id}:{end_input_id}",
+                }
+            ),
+            file=self.out_stream,
+        )
         logger.info(f"ncu result: {ncu_log_file}")
 
 
@@ -263,17 +278,17 @@ class MaterializedBuildExecutor(BuildExecutor):
 
         self.build_input_config = None
         self.op_config = None
-        self.build_id = None
+        self.config_build_id = None
 
     def run(
         self,
         op_config: OperatorConfig,
         build_input_config: Dict[str, Any],
-        build_id: str,
+        config_build_id: str,
     ):
         self.build_input_config = build_input_config
         self.op_config = op_config
-        self.build_id = build_id
+        self.config_build_id = config_build_id
         if "build" not in self.build_input_config:
             self.build_input_config["build"] = None
 
@@ -281,7 +296,7 @@ class MaterializedBuildExecutor(BuildExecutor):
         self.op_config.op.cleanup()
         build_config = self.build_input_config["build"]
         logger.debug(build_config)
-        if build_config:
+        if build_config is not None:
             build_data_gen = self.op_config.build_data_generator()
             (build_args, build_kwargs) = build_data_gen.get_data(
                 build_config, self.run_options["device"]
@@ -302,12 +317,12 @@ class MaterializedBuildExecutor(BuildExecutor):
             counter += 1
 
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
-        run_id = f"{self.build_id}:{input_id}"
+        run_id = f"{self.config_build_id}:{input_id}"
 
         if self.should_skip(f"{self.op_config.name}:{run_id}"):
             return
 
-        logger.info(f"input_id: [{run_id}]")
+        logger.info(f"run_id: [{run_id}]")
         logger.debug(f"input_config: {input_config}")
 
         # generate input data
@@ -345,11 +360,11 @@ def output_stats(
             total = sum(records)
             avg = total / len(records)
             logger.info(
-                f"metric: {metric_name}, average: {avg:.6f} sec, total: {total:.6f} sec"
+                f"metric: {metric_name}, average: {avg:.3f} ms, total: {total:.3f} ms"
             )
-            logger.info(f"{format_float_val_list(records, 6)}")
+            logger.info(f"{format_float_val_list(records, 3)}")
     stats = {
-        "name": name,
+        "op_name": name,
         "id": run_id,
         "metric": metrics,
         "config": config,
@@ -358,6 +373,6 @@ def output_stats(
     out_stream.flush()
 
 
-def format_float_val_list(time_records: List[float], decimals: int = 6):
+def format_float_val_list(time_records: List[float], decimals: int = 3):
     format_str = f"{{0:.{decimals}f}}"
     return f"[{', '.join([format_str.format(i) for i in time_records])}]"

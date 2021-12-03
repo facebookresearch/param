@@ -158,7 +158,7 @@ In above example of a tensor argument, its shape's value at element index `0` (w
 The role of the data generator is given a configuration specification, it generates actual data (scalar, boolean, string, tensor, etc.) for building or executing an operator.
 
 In current implementations we provide a default data generator that supports PyTorch data types (see [PyTorch Data Types](#pyTorch-data-types)):
-* [`PyTorch::DefaultDataGenerator`](lib/pytorch/data_impl.py)
+* [`PyTorch:DefaultDataGenerator`](lib/pytorch/data_impl.py)
 
 If needed, it's possible to implement custom data generators based on the [`DataGenerator`](lib/data.py) interface. They can be registered using
 [`register_data_generator(name: str, data_gen_class: Type[DataGenerator])`](lib/data.py).

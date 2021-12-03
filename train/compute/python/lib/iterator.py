@@ -250,8 +250,7 @@ class DefaultConfigIterator(ConfigIterator):
         self.num_configs = len(self.configs)
 
     def __next__(self):
-        # check if this is in the op filter, skip if not
-        # loop through the different input variants
+        # loop through the different config variants
         if self.idx < self.num_configs:
             result = (self.idx, self.configs[self.idx])
             self.idx += 1
