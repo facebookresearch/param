@@ -5,10 +5,9 @@ logger = get_logger()
 from typing import List
 from typing import Type
 
-import torch
-
 from ..config import OperatorConfig, BenchmarkConfig
 from .build_executor import BuildExecutor, OpBuildExecutor
+from .config_util import init_pytorch
 
 
 class Benchmark:
@@ -38,9 +37,7 @@ class Benchmark:
     def __init__(
         self, bench_config: BenchmarkConfig, build_executor: Type[BuildExecutor]
     ):
-        # We don't want too many threads for stable benchmarks
-        torch.set_num_threads(1)
-
+        init_pytorch(bench_config.run_options)
         self.bench_config = bench_config
         self.build_executor = build_executor
         self.run_options = bench_config.run_options
@@ -54,10 +51,11 @@ class Benchmark:
             self.run_op(op_config)
 
     def run_op(self, op_config: OperatorConfig) -> List[str]:
-        logger.info(f"op: {op_config.name}")
+        logger.info(f"### op: {op_config.name}")
         config_id = 0
         for config in op_config.info["config"]:
             op_run_id = str(config_id)
+            logger.info(f"config_id: [{op_run_id}]")
             if "input" not in config:
                 logger.error(
                     f"{op_config.name} has no input configurations defined, skipped."
@@ -66,6 +64,7 @@ class Benchmark:
 
             generate_build_config = None
             if op_config.build_iterator and "build" in config:
+                logger.debug(f"build_config: {config['build']}")
                 if config["build"]:
                     generate_build_config = op_config.build_iterator(
                         config, "build", self.run_options["device"]
@@ -73,14 +72,21 @@ class Benchmark:
 
             build_input_config = {}
             if generate_build_config:
+                logger.debug("generating build config")
                 for (build_id, build_config) in generate_build_config:
-                    op_run_id += f":{build_id}"
+                    logger.info(f"build_id: [{build_id}]")
+                    logger.debug(f"build_config: {build_config}")
+                    op_run_id = f"{op_run_id}:{build_id}"
                     build_input_config["build"] = build_config
                     build_input_config["input"] = config["input"]
                     self.build_executor.run(op_config, build_input_config, op_run_id)
             else:
-                op_run_id += ":0"
-                build_input_config["build"] = []
+                build_id = "0"
+                build_config = config.get("build", None)
+                logger.info(f"build_id: [{build_id}]")
+                logger.debug(f"build_config: {build_config}")
+                op_run_id = f"{op_run_id}:{build_id}"
+                build_input_config["build"] = build_config
                 build_input_config["input"] = config["input"]
                 self.build_executor.run(op_config, build_input_config, op_run_id)
 

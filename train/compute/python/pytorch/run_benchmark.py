@@ -1,6 +1,11 @@
 import argparse
 import json
 import logging
+import os
+from datetime import datetime
+
+import torch
+from torch.autograd.profiler import record_function
 
 from ..lib import pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
@@ -11,7 +16,7 @@ from ..workloads import pytorch as workloads_pytorch
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Microbenchmarks")
+    parser = argparse.ArgumentParser(description="PyTorch Microbenchmarks")
     parser.add_argument(
         "-c", "--config", type=str, required=True, help="The benchmark config file."
     )
@@ -63,6 +68,13 @@ def main():
         help="NSight Compute input batch size (number of input configs to run in one launch).",
     )
     parser.add_argument(
+        "-p",
+        "--profile",
+        action="store_true",
+        help="Enable profiler and tracing.",
+    )
+
+    parser.add_argument(
         "-v", "--verbose", action="store_true", help="Increase log output verbosity."
     )
 
@@ -94,24 +106,52 @@ def main():
     if args.ncu:
         run_options["run_ncu"] = True
 
-    out_file_name = f"{args.output_prefix}.json"
+    pid = os.getpid()
+
+    start_time = datetime.now()
+    timestamp = int(datetime.timestamp(start_time))
+
+    out_file_prefix = f"{args.output_prefix}_{pid}_{timestamp}"
+    out_file_name = f"{out_file_prefix}.json"
 
     write_option = "a" if args.append else "w"
 
     if args.ncu_args_file:
         with open(args.ncu_args_file, "r") as ncu_file:
             run_options["ncu_args"] = ncu_file.read().strip()
+    run_options["benchmark_args"] = args.__dict__
 
     with open(out_file_name, write_option) as out_file:
         run_options["out_file_prefix"] = args.output_prefix
         run_options["out_stream"] = out_file
-        benchmark_setup = {"run_options": run_options, "sys_info": get_sys_info()}
-        out_file.write(json.dumps(benchmark_setup, default=str) + "\n")
+        benchmark_setup = {
+            "run_options": run_options,
+            "sys_info": get_sys_info(),
+            "start_time": start_time.isoformat(timespec="seconds"),
+        }
+        print(json.dumps(benchmark_setup, default=str), file=out_file)
 
         bench_config = BenchmarkConfig(run_options)
         bench_config.load_json_file(args.config)
         benchmark = make_default_benchmark(bench_config)
-        benchmark.run()
+        use_cuda = False
+        if run_options["device"].startswith("cuda"):
+            use_cuda = True
+        with torch.autograd.profiler.profile(
+            args.profile, use_cuda=use_cuda, use_kineto=True, record_shapes=False
+        ) as prof:
+            with record_function("__param_bench__"):
+                benchmark.run()
+
+        print(
+            json.dumps({"finish_time": datetime.now().isoformat(timespec="seconds")}),
+            file=out_file,
+        )
+        if args.profile and prof:
+            trace_file = f"{out_file_prefix}_trace.json"
+            logger.info(f"trace: {trace_file}")
+            prof.export_chrome_trace(trace_file)
+            print(json.dumps({"trace_file": trace_file}), file=out_file)
 
     logger.info(f"benchmark result: {out_file_name}")
 

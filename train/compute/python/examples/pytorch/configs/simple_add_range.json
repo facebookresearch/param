@@ -1,7 +1,7 @@
 {
   "torch.add": {
     "input_iterator": "RangeConfigIterator",
-    "input_data_generator": "PyTorch::DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
     "config": [
       {
         "input": [
