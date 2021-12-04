@@ -801,6 +801,8 @@ class commsCollBench(paramCommsBench):
             )[0]
             dequantLatencyAcrossRanks = dequantLatencyAcrossRanks.cpu().detach().numpy()
         else:
+            if isinstance(tensorList, list):
+                tensorList = [t.cpu().detach().numpy() for t in tensorList]            
             latencyAcrossRanks = np.array(tensorList)
             # quant tensor
             quantLatencyAcrossRanks = np.array(quantTimeTensorList)
@@ -857,6 +859,8 @@ class commsCollBench(paramCommsBench):
             latencyAcrossRanks = torch.transpose(tensorList.view(-1, 1), 0, 1)[0]
             latencyAcrossRanks = latencyAcrossRanks.cpu().detach().numpy()
         else:
+            if isinstance(tensorList, list):
+                tensorList = [t.cpu().detach().numpy() for t in tensorList]            
             latencyAcrossRanks = np.array(tensorList)
 
         logger.debug(f"Latency across all ranks: {latencyAcrossRanks}")

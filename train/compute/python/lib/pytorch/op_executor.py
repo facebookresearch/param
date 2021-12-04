@@ -9,6 +9,7 @@ from typing import List
 from typing import Tuple
 
 import torch
+from torch.autograd.profiler import record_function
 
 from ..operator import OperatorInterface
 from .config_util import ExecutionPass
@@ -30,9 +31,11 @@ def _clear_cache():
     }
     capability = torch.cuda.get_device_capability()
     device_type = capability[0] * 10 + capability[1]
-    _ = torch.zeros(L2_cache_size[device_type] // 4).float() * 2
-    del _
-    torch.cuda.empty_cache()
+
+    with record_function("__param_bench__:_clear_cache"):
+        _ = torch.zeros(L2_cache_size[device_type] // 4).float() * 2
+        del _
+        torch.cuda.empty_cache()
 
 
 class OpExecutor:
@@ -80,8 +83,9 @@ class OpExecutor:
                 tag_rng = nvtx.start_range(domain="param_bench", message=tag)
                 op_run_id_rng = nvtx.start_range(domain=self.name, message=op_run_id)
 
-        with Timer(self.device) as timer:
-            op(*args, **kwargs)
+        with record_function("__param_bench__:_benchmark_op"):
+            with Timer(self.device) as timer:
+                op(*args, **kwargs)
 
         if self.device.startswith("cuda") and USE_NVTX:
             nvtx.end_range(op_run_id_rng)
