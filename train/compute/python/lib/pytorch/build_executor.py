@@ -180,9 +180,7 @@ class OpBuildExecutor(BuildExecutor):
         start_input_id = self.input_config_queue[0]["id"]
         out_file_prefix = self.run_options["out_file_prefix"]
         timestamp = int(datetime.timestamp(datetime.now()))
-        ncu_log_file = (
-            f"{out_file_prefix}_{os.getpid()}_{timestamp}_ncu.log"
-        )
+        ncu_log_file = f"{out_file_prefix}_{os.getpid()}_{timestamp}_ncu.log"
         ncu_log_file = ncu_log_file.replace(":", "-")
         ncu_extra_args = self.run_options["ncu_args"]
         ncu_options = (
@@ -247,7 +245,7 @@ class OpBuildExecutor(BuildExecutor):
                     print(line, end="")
         shm.close()
         shm.unlink()
-        end_input_id = self.input_config_queue[-1]['id']
+        end_input_id = self.input_config_queue[-1]["id"]
         print(
             json.dumps(
                 {
@@ -357,12 +355,21 @@ def output_stats(
     for pass_name, metric in metrics.items():
         logger.info(f"pass: {pass_name}")
         for metric_name, records in metric.items():
-            total = sum(records)
-            avg = total / len(records)
-            logger.info(
-                f"metric: {metric_name}, average: {avg:.3f} ms, total: {total:.3f} ms"
-            )
-            logger.info(f"{format_float_val_list(records, 3)}")
+            if metric_name.endswith(".time"):
+                total = sum(records)
+                avg = total / len(records)
+                logger.info(
+                    f"metric: {metric_name}, average: {avg:.3f} ms, total: {total:.3f} ms"
+                )
+                logger.info(f"{format_float_val_list(records, 3)}")
+            elif metric_name.endswith(".memory"):
+                total = sum(records)
+                avg = total / len(records)
+                logger.info(
+                    f"metric: {metric_name}, average: {avg:.3f} MB, total: {total:.3f} MB"
+                )
+                logger.info(f"{format_float_val_list(records, 3)}")
+
     stats = {
         "op_name": name,
         "id": run_id,

@@ -76,9 +76,12 @@ class OpExecutor:
         self, op: Callable, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
     ) -> float:
         logger.debug(f"benchmarking {self.name} {tag} {op_run_id}")
+        gpu_memory = 0
         # flush cache
         if self.device.startswith("cuda"):
             _clear_cache()
+            # Reset to measure peak memory usage
+            torch.cuda.reset_peak_memory_stats()
             if USE_NVTX:
                 tag_rng = nvtx.start_range(domain="param_bench", message=tag)
                 op_run_id_rng = nvtx.start_range(domain=self.name, message=op_run_id)
@@ -90,27 +93,35 @@ class OpExecutor:
         if self.device.startswith("cuda") and USE_NVTX:
             nvtx.end_range(op_run_id_rng)
             nvtx.end_range(tag_rng)
+            # Memory size in MB
+            gpu_memory = torch.cuda.max_memory_allocated() / (1048576)
 
         # Return result in milliseconds.
-        return timer.elapsed_time()
+        return timer.elapsed_time(), gpu_memory
 
     def _benchmark_loop(
         self, count: int, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
     ) -> Tuple[List[float], List[float]]:
         fw_time_records = []
         bw_time_records = []
+        fw_mem_records = []
+        bw_mem_records = []
         for _ in range(count):
             op_run_pass = f"{op_run_id}:{ExecutionPass.FORWARD.value}"
-            latency = self._benchmark_op(
+            latency, peak_memory = self._benchmark_op(
                 self.op.forward, args, kwargs, tag, op_run_pass
             )
             fw_time_records.append(latency)
+            fw_mem_records.append(peak_memory)
             if self.pass_type == ExecutionPass.BACKWARD:
                 self.op.create_grad()
                 op_run_pass = f"{op_run_id}:{ExecutionPass.BACKWARD.value}"
-                latency = self._benchmark_op(self.op.backward, [], {}, tag, op_run_pass)
+                latency, peak_memory = self._benchmark_op(
+                    self.op.backward, [], {}, tag, op_run_pass
+                )
                 bw_time_records.append(latency)
-        return (fw_time_records, bw_time_records)
+                bw_mem_records.append(peak_memory)
+        return (fw_time_records, fw_mem_records, bw_time_records, bw_mem_records)
 
     def _measure(
         self,
@@ -123,9 +134,12 @@ class OpExecutor:
     ) -> Dict[str, Any]:
         logger.info(f"running [{op_run_id}] for {iteration} {tag} iteration")
 
-        (fw_time_records, bw_time_records) = self._benchmark_loop(
-            iteration, args, kwargs, tag, op_run_id
-        )
+        (
+            fw_time_records,
+            fw_mem_records,
+            bw_time_records,
+            bw_mem_records,
+        ) = self._benchmark_loop(iteration, args, kwargs, tag, op_run_id)
 
         metric_name = tag + ".time"
         pass_name = ExecutionPass.FORWARD.value
@@ -133,3 +147,10 @@ class OpExecutor:
         if self.pass_type == ExecutionPass.BACKWARD:
             pass_name = ExecutionPass.BACKWARD.value
             result[pass_name][metric_name] = bw_time_records
+
+        metric_name = tag + ".gpu.memory"
+        pass_name = ExecutionPass.FORWARD.value
+        result[pass_name][metric_name] = fw_mem_records
+        if self.pass_type == ExecutionPass.BACKWARD:
+            pass_name = ExecutionPass.BACKWARD.value
+            result[pass_name][metric_name] = bw_mem_records
