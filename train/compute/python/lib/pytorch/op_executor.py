@@ -95,6 +95,48 @@ class OpExecutor:
         return timer.elapsed_time()
 
     def _benchmark_loop(
+        self, self, count: int, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
+    ) -> float:
+        logger.debug(f"benchmarking {self.name} {tag} {op_run_id}")
+        # flush cache
+        if self.device.startswith("cuda"):
+            _clear_cache()
+            if USE_NVTX:
+                tag_rng = nvtx.start_range(domain="param_bench", message=tag)
+                op_run_id_rng = nvtx.start_range(domain=self.name, message=op_run_id)
+
+        fw_events = [(torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True))]
+        bw_events = []
+        with record_function("__param_bench__:_benchmark_op"):
+            if self.pass_type == ExecutionPass.FORWARD:
+                fw_start = torch.cuda.Event(enable_timing=True)
+                fw_end = torch.cuda.Event(enable_timing=True)
+                for i in range(count):
+                    fw_start.record()
+                    self.op.forward(*args, **kwargs)
+                    fw_end.record()
+            elif self.pass_type == ExecutionPass.BACKWARD:
+                fw_start = torch.cuda.Event(enable_timing=True)
+                fw_end = torch.cuda.Event(enable_timing=True)
+                bw_start = torch.cuda.Event(enable_timing=True)
+                bw_end = torch.cuda.Event(enable_timing=True)
+                for i in range(count):
+                    fw_start.record()
+                    self.op.forward(*args, **kwargs)
+                    fw_end.record()
+                    self.op.create_grad()
+                    bw_start.record()
+                    self.op.backward(*args, **kwargs)
+                    bw_end.record()
+
+        if self.device.startswith("cuda") and USE_NVTX:
+            nvtx.end_range(op_run_id_rng)
+            nvtx.end_range(tag_rng)
+
+        # Return result in milliseconds.
+        return timer.elapsed_time()
+
+    def _benchmark_isolated(
         self, count: int, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
     ) -> Tuple[List[float], List[float]]:
         fw_time_records = []
@@ -110,6 +152,23 @@ class OpExecutor:
                 op_run_pass = f"{op_run_id}:{ExecutionPass.BACKWARD.value}"
                 latency = self._benchmark_op(self.op.backward, [], {}, tag, op_run_pass)
                 bw_time_records.append(latency)
+        return (fw_time_records, bw_time_records)
+
+    def _benchmark_continuous(
+        self, count: int, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
+    ) -> Tuple[List[float], List[float]]:
+        fw_time_records = []
+        bw_time_records = []
+        op_run_pass = f"{op_run_id}:{ExecutionPass.FORWARD.value}"
+        latency = self._benchmark_op(
+            self.op.forward, args, kwargs, tag, op_run_pass
+        )
+        fw_time_records.append(latency)
+        if self.pass_type == ExecutionPass.BACKWARD:
+            self.op.create_grad()
+            op_run_pass = f"{op_run_id}:{ExecutionPass.BACKWARD.value}"
+            latency = self._benchmark_op(self.op.backward, [], {}, tag, op_run_pass)
+            bw_time_records.append(latency)
         return (fw_time_records, bw_time_records)
 
     def _measure(
