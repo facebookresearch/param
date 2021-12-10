@@ -62,7 +62,7 @@ def main():
             {"type": "int", "name": "rows", "value": rows},
             {"type": "int", "name": "dim", "value": dim},
             {"type": "int", "name": "batch_size", "value": batch_size},
-            {"name": "pooling_factor", "type": "int", "value": pooling_factor},
+            {"type": "int", "name": "pooling_factor", "value": pooling_factor},
             {"type": "bool", "name": "weighted", "value": weighted},
             {"type": "str", "name": "weights_precision", "value": weights_precision},
         ],

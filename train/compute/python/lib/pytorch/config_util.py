@@ -63,7 +63,7 @@ def create_op_args(args: List[Any], kwargs: Dict[str, Any]) -> Dict[str, Any]:
     return {"args": args, "kwargs": kwargs}
 
 
-_pytorch_data: Dict[str, Any] = {
+_pytorch_type: Dict[str, Any] = {
     "int": {"type": "int", "value": None},
     "int_range": {"type": "int", "value_range": None},
     "long": {"type": "long", "value": None},
@@ -81,8 +81,8 @@ _pytorch_data: Dict[str, Any] = {
 }
 
 
-def create_data(type) -> Dict[str, Any]:
-    return copy.deepcopy(_pytorch_data[type])
+def create_type(type) -> Dict[str, Any]:
+    return copy.deepcopy(_pytorch_type[type])
 
 
 def get_sys_info():
