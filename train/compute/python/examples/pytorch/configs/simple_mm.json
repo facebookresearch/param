@@ -1,0 +1,31 @@
+{
+  "torch.mm": {
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  1024,
+                  1024
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  1024,
+                  1024
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
