@@ -678,17 +678,19 @@ class paramCommsBench(ABC):
         if isinstance(tensor, list):
             # for allgather and incast, it's a list of tensors:
             for (rank, t) in enumerate(tensor):
-                for (index, val) in enumerate(t):
+                if not torch.all(torch.eq(t, expRes)):
+                    for (index, val) in enumerate(t):
+                        if val != expRes:
+                            raise ValueError(
+                                f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{rank}][{index}] = {t[index]}, expected {expRes}\n {tensor}"
+                            )
+        else:
+            if not torch.all(torch.eq(tensor, expRes)):
+                for (index, val) in enumerate(tensor):
                     if val != expRes:
                         raise ValueError(
-                            f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{rank}][{index}] = {tensor[index]}, expected {expRes}\n {tensor}"
+                            f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{index}] = {tensor[index]}, expected {expRes}\n {tensor}"
                         )
-        else:
-            for (index, val) in enumerate(tensor):
-                if val != expRes:
-                    raise ValueError(
-                        f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{index}] = {tensor[index]}, expected {expRes}\n {tensor}"
-                    )
 
     def setTensorVal(self, tensor, useRandVal=True):
         newVal = random.random() if useRandVal else self.initVal
