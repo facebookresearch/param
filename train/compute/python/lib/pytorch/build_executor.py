@@ -355,16 +355,17 @@ def output_stats(
     for pass_name, metric in metrics.items():
         logger.info(f"pass: {pass_name}")
         for metric_name, records in metric.items():
-            if metric_name.endswith(".time"):
+            total = 0
+            avg = 0
+            if records:
                 total = sum(records)
                 avg = total / len(records)
+            if metric_name.endswith(".time"):
                 logger.info(
                     f"metric: {metric_name}, average: {avg:.3f} ms, total: {total:.3f} ms"
                 )
                 logger.info(f"{format_float_val_list(records, 3)}")
             elif metric_name.endswith(".memory"):
-                total = sum(records)
-                avg = total / len(records)
                 logger.info(
                     f"metric: {metric_name}, average: {avg:.3f} MB, total: {total:.3f} MB"
                 )

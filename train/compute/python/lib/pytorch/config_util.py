@@ -23,6 +23,16 @@ class ExecutionPass(enum.Enum):
     BACKWARD = "backward"
 
 
+@enum.unique
+class OpExecutionMode(enum.Enum):
+    # Run operator seprately and clear cache between each call.
+    DISCRETE = "discrete"
+    # Run operator back to back without clear cache, etc.
+    CONTINUOUS = "continuous"
+    # Run operator back to back but record indivisual events.
+    CONTINUOUS_EVENTS = "continuous_events"
+
+
 def get_op_run_id(op_name: str, run_id: str) -> str:
     return f"{op_name}:{run_id}"
 
@@ -33,6 +43,7 @@ def get_benchmark_options() -> Dict[str, Any]:
         "pass_type": ExecutionPass.FORWARD,
         "warmup": 1,
         "iteration": 1,
+        "op_exe_mode": OpExecutionMode.CONTINUOUS,
         "time_unit": "millisecond",
         "out_file_prefix": None,
         "out_stream": None,
