@@ -15,14 +15,16 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.layer_num = layer_num
         self.linear_in = nn.Linear(input_size, hidden_size)
-        self.linear_hid = nn.Linear(hidden_size, hidden_size)
+        self.linear_hid_list = nn.ModuleList(
+            [nn.Linear(hidden_size, hidden_size) for _ in range(self.layer_num)]
+        )
         self.linear_out = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         x = self.linear_in(x)
         x = F.relu(x)
-        for _ in range(self.layer_num):
-            x = self.linear_hid(x)
+        for linear_hid in self.linear_hid_list:
+            x = linear_hid(x)
             x = F.relu(x)
         x = self.linear_out(x)
         x = F.softmax(x, dim=1)
@@ -282,7 +284,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Measure the performance of MLP")
     parser.add_argument("--device", required=True, choices=["cpu", "gpu", "tpu"])
     parser.add_argument(
-        "--optimizer-type", default="sgd", help="Optimizer: SGD", choices=["sgd", "lamb"]
+        "--optimizer-type",
+        default="sgd",
+        help="Optimizer: SGD",
+        choices=["sgd", "lamb"],
     )
     parser.add_argument(
         "--dtype",
