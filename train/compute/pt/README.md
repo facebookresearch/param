@@ -85,8 +85,8 @@ invoked through --usexlabag
 Example: Measure the performance of a MLP with 18 hidden layer, layer size 1024
 ```bash
 python pytorch_linear.py --device gpu --layer-num 18  --batch-size 128 --input-size 1024 \
-       --hidden-size 1024  --output-size 1024 --num-batches 100 \
-       --data-type=float16 --optimizer-type=sgd
+       --hidden-size 1024  --output-size 1024 --steps 100 \
+       --dtype=float16 --optimizer-type=sgd
 ```
 
 ### Testing MLP Linear
