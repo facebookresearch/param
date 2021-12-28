@@ -175,7 +175,6 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
     device = args.device
     optimizer_type = args.optimizer_type
     data_type = args.dtype
-    # num_batches = args.num_batches
 
     torch.manual_seed(1)
 
@@ -302,7 +301,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-size", type=int, default=1024, help="Output layer size"
     )
-    # parser.add_argument("--num-batches", type=int, default=100, help="Number of batches to train")
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--warmups", type=int, default=10)
 
@@ -312,7 +310,6 @@ if __name__ == "__main__":
     input_size = args.input_size
     hidden_size = args.hidden_size
     output_size = args.output_size
-    # num_batches = args.num_batches
 
     d = [(layer_num, input_size, hidden_size, output_size, batch_size)]
     run(args, d)
