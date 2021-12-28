@@ -296,7 +296,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=512, help="Batch size")
     parser.add_argument("--input-size", type=int, default=1024, help="Input layer size")
     parser.add_argument(
-        "--hidden-size", type=int, default=128, help="Number of hidden_sizes per layer"
+        "--hidden-size", type=int, default=1024, help="Number of hidden_sizes per layer"
     )
     parser.add_argument(
         "--output-size", type=int, default=1024, help="Output layer size"
