@@ -429,14 +429,17 @@ class commsTraceReplayBench(paramCommsBench):
             if self.is_blocking:
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
+        # For non-blocking, latency and global_latency are the same
+        global_latency = latency = collTimer.getTimeUS()
+
         if self.is_blocking:
             with paramProfile(
                 description="# PARAM replay barrier # " + curBlockStack
             ) as bt:
                 self.backendFuncs.sync_barrier(self.collectiveArgs)
 
-        latency = collTimer.getTimeUS()
-        global_latency = latency + (bt.intervalNS / 1e3)
+            # We sync the global_latency for blocking
+            global_latency = latency + (bt.intervalNS / 1e3)
 
         return (latency, global_latency)
 
