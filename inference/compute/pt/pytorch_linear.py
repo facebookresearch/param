@@ -202,6 +202,10 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
             model = Net(input_size, hidden_size, output_size, layer_num).to(dev)
             model.eval()
 
+            elap = infer(
+                model, device, data_type, input_size, output_size, batch_size, args
+            )
+
     elif device == "gpu":
 
         assert torch.cuda.is_available(), "cuda not available"
@@ -282,9 +286,9 @@ if __name__ == "__main__":
     parser.add_argument("--device", required=True, choices=["cpu", "gpu", "nnpi"])
     parser.add_argument(
         "--dtype",
-        default="float16",
+        default="float",
         help="data type",
-        choices=["float16", "int8"],
+        choices=["float", "float16"],
     )
     parser.add_argument(
         "--layer-num", type=int, default=20, help="Number of Linear layers"
