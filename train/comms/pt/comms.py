@@ -709,9 +709,11 @@ class commsCollBench(paramCommsBench):
         )
         collectiveArgs.opTensor = None
         if commsParams.backend != "xla":
-            timeList = [
-                torch.ones_like(timeElapsedTensor) for _ in range(self.comm_size)
-            ]
+            timeList = list(torch.ones(
+                (self.comm_size,) + timeElapsedTensor.shape,
+                dtype=timeElapsedTensor.dtype,
+                device=timeElapsedTensor.device,
+            ).unbind(0))
             collectiveArgs.opTensor = timeList
 
         collectiveArgs.ipTensor = timeElapsedTensor
