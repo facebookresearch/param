@@ -137,40 +137,43 @@ class cvt_convolutional_token_embedding(nn.Module):
         return x
 
 
-def run(layer_type, input_shape, kwargs, device):
+def run(layer_type, input_shape, kwargs, device, warmups, steps, forward_only):
 
     if layer_type == "conv_proj":
-        block = cvt_convolutional_projection(**kwargs)
+        conv_block = cvt_convolutional_projection(**kwargs)
     elif layer_type == "patch_embed":
-        block = cvt_convolutional_token_embedding(**kwargs)
+        conv_block = cvt_convolutional_token_embedding(**kwargs)
     else:
-        raise ValueError(f"{layer_name} is invalid.")
+        raise ValueError(f"{layer_type} is invalid.")
 
-    block = block.to(device)
+    conv_block = conv_block.to(device)
 
     # get output shape
-    if not args.forward_only:
+    if not forward_only:
         x = torch.rand(input_shape).to(device)
-        output_shape = block(x).shape
+        output_shape = conv_block(x).shape
 
     # create requests
-    requests = [
-        torch.rand(input_shape).to(device) for _ in range(args.warmups + args.steps)
-    ]
+    requests = [torch.rand(input_shape).to(device) for _ in range(warmups + steps)]
+    warmup_requests, requests = requests[:warmups], requests[warmups:]
 
-    if args.forward_only:
+    if forward_only:
         # forward
-        time_per_iter = benchmark_requests(requests, lambda x: block(x))
+        _ = benchmark_requests(warmup_requests, lambda x: conv_block(x))
+        time_per_iter = benchmark_requests(requests, lambda x: conv_block(x))
     else:
         # foward & backward
         grad_output = torch.randn(output_shape).to(device)
+        _ = benchmark_requests(
+            warmup_requests, lambda x: conv_block(x).backward(grad_output)
+        )
         time_per_iter = benchmark_requests(
-            requests, lambda x: block(x).backward(grad_output)
+            requests, lambda x: conv_block(x).backward(grad_output)
         )
 
     # compute flops
     stride, padding = kwargs["stride"], kwargs["padding"]
-    if "conv_proj" in layer_name:
+    if "conv_proj" == layer_type:
         conv_filter = [
             input_shape[0],
             kwargs["dim_in"],
@@ -378,7 +381,6 @@ if __name__ == "__main__":
         },
     ]
 
-    bench_time = []
     for cfg in benchmark_cfgs_l:
         layer_name = cfg["layer_name"]
         input_shape = cfg["input_shape"]
@@ -393,13 +395,19 @@ if __name__ == "__main__":
 
         print("Benchmarking", layer_name)
         global_elap, global_bytes, global_flops = run(
-            layer_type, input_shape, kwargs, device
+            layer_type,
+            input_shape,
+            kwargs,
+            device,
+            args.warmups,
+            args.steps,
+            args.forward_only,
         )
-        extra_metadata = {
+        benchmark_metrics = {
             "GB/s": global_bytes / global_elap / 1.0e3,
             "TF/s": global_flops / global_elap / 1.0e12,
             "ELAP": global_elap,
             "FLOPS": global_flops,
         }
-        print(extra_metadata)
+        print(benchmark_metrics)
         print("")
