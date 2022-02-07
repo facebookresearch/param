@@ -900,7 +900,7 @@ class paramCommsBench(ABC):
             type=str,
             default=("nccl" if self.isCudaAvail() else "mpi"),
             help="The backend to be used in PyTorch distributed process group",
-            choices=["nccl", "gloo", "mpi", "ucc", "xla"],
+            choices=["nccl", "gloo", "mpi", "ucc", "xla", "fairring"],
         )  #  backend used for the network stack
         parser.add_argument(
             "--z",
