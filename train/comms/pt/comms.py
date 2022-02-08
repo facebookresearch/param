@@ -256,6 +256,11 @@ class commsCollBench(paramCommsBench):
             self.collectiveArgs.numWarmupIters + self.collectiveArgs.numIters
         ):
             if nIter == self.collectiveArgs.numWarmupIters:
+                # Flush non-blocking ops to ensure warmup is really complete
+                self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+                ensureTensorFlush(self.collectiveArgs.opTensor)
+                if enable_comms_pair:
+                    ensureTensorFlush(self.collectiveArgs.opTensor_pair)
                 # Start measuring time after warmup iterations
                 elapsedTimeNS = 0.0
                 self.collectiveArgs.quant_time.reset()
@@ -704,9 +709,11 @@ class commsCollBench(paramCommsBench):
         )
         collectiveArgs.opTensor = None
         if commsParams.backend != "xla":
-            timeList = [
-                torch.ones_like(timeElapsedTensor) for _ in range(self.comm_size)
-            ]
+            timeList = list(torch.ones(
+                (self.comm_size,) + timeElapsedTensor.shape,
+                dtype=timeElapsedTensor.dtype,
+                device=timeElapsedTensor.device,
+            ).unbind(0))
             collectiveArgs.opTensor = timeList
 
         collectiveArgs.ipTensor = timeElapsedTensor
@@ -802,7 +809,7 @@ class commsCollBench(paramCommsBench):
             dequantLatencyAcrossRanks = dequantLatencyAcrossRanks.cpu().detach().numpy()
         else:
             if isinstance(tensorList, list):
-                tensorList = [t.cpu().detach().numpy() for t in tensorList]            
+                tensorList = [t.cpu().detach().numpy() for t in tensorList]
             latencyAcrossRanks = np.array(tensorList)
             # quant tensor
             quantLatencyAcrossRanks = np.array(quantTimeTensorList)
@@ -860,7 +867,7 @@ class commsCollBench(paramCommsBench):
             latencyAcrossRanks = latencyAcrossRanks.cpu().detach().numpy()
         else:
             if isinstance(tensorList, list):
-                tensorList = [t.cpu().detach().numpy() for t in tensorList]            
+                tensorList = [t.cpu().detach().numpy() for t in tensorList]
             latencyAcrossRanks = np.array(tensorList)
 
         logger.debug(f"Latency across all ranks: {latencyAcrossRanks}")
