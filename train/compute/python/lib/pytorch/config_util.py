@@ -19,6 +19,7 @@ from ...lib import __version__ as param_bench_version
 class ExecutionPass(enum.Enum):
     # Forward pass will always run (also required for backward pass).
     FORWARD = "forward"
+
     # Run backward pass in addition to forward pass.
     BACKWARD = "backward"
 
@@ -27,8 +28,10 @@ class ExecutionPass(enum.Enum):
 class OpExecutionMode(enum.Enum):
     # Run operator seprately and clear cache between each call.
     DISCRETE = "discrete"
+
     # Run operator back to back without clear cache, etc.
     CONTINUOUS = "continuous"
+
     # Run operator back to back but record indivisual events.
     CONTINUOUS_EVENTS = "continuous_events"
 
