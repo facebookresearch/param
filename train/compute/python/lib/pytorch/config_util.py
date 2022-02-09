@@ -46,7 +46,7 @@ def get_benchmark_options() -> Dict[str, Any]:
         "pass_type": ExecutionPass.FORWARD,
         "warmup": 1,
         "iteration": 1,
-        "op_exe_mode": OpExecutionMode.CONTINUOUS,
+        "op_exec_mode": OpExecutionMode.DISCRETE,
         "time_unit": "millisecond",
         "out_file_prefix": None,
         "out_stream": None,

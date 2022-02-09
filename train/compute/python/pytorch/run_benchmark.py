@@ -115,7 +115,7 @@ def main():
     else:
         run_options["pass_type"] = ExecutionPass.FORWARD
 
-    run_options["op_exe_mode"] = OpExecutionMode(args.exe_mode)
+    run_options["op_exec_mode"] = OpExecutionMode(args.exec_mode)
     if args.ncu:
         run_options["run_ncu"] = True
 

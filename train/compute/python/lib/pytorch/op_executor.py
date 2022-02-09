@@ -52,7 +52,7 @@ class OpExecutor:
         self.iteration = run_options["iteration"]
         self.warmup = run_options["warmup"]
         self.pass_type = run_options["pass_type"]
-        self.exe_mode = run_options["op_exe_mode"]
+        self.exec_mode = run_options["op_exec_mode"]
         self.benchmark_func = {
             OpExecutionMode.DISCRETE: self._benchmark_discrete,
             OpExecutionMode.CONTINUOUS: self._benchmark_continuous,
@@ -331,9 +331,9 @@ class OpExecutor:
         if self.device.startswith("cpu"):
             return self._benchmark_loop_cpu(count, args, kwargs, tag, op_run_id)
         elif self.device.startswith("cuda"):
-            if self.exe_mode == OpExecutionMode.CONTINUOUS:
+            if self.exec_mode == OpExecutionMode.CONTINUOUS:
                 return self._benchmark_loop_cuda(count, args, kwargs, tag, op_run_id)
-            elif self.exe_mode == OpExecutionMode.CONTINUOUS_EVENTS:
+            elif self.exec_mode == OpExecutionMode.CONTINUOUS_EVENTS:
                 return self._benchmark_loop_cuda_events(
                     count, args, kwargs, tag, op_run_id
                 )
@@ -355,7 +355,7 @@ class OpExecutor:
             fw_mem_records,
             bw_time_records,
             bw_mem_records,
-        ) = self.benchmark_func[self.exe_mode](iteration, args, kwargs, tag, op_run_id)
+        ) = self.benchmark_func[self.exec_mode](iteration, args, kwargs, tag, op_run_id)
 
         metric_name = tag + ".time"
         pass_name = ExecutionPass.FORWARD.value
