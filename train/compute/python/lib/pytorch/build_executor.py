@@ -205,6 +205,7 @@ class OpBuildExecutor(BuildExecutor):
         run_options = get_benchmark_options()
         run_options["device"] = self.run_options["device"]
         run_options["pass_type"] = self.run_options["pass_type"].value
+        run_options["op_exec_mode"] = self.run_options["op_exec_mode"].value
         run_options["warmup"] = 1
         run_options["iteration"] = 1
         config = {
