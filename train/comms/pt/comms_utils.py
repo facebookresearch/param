@@ -749,10 +749,10 @@ class paramCommsBench(ABC):
             )
             # all_to_allv requires tensors to specify split
             self.collectiveArgs.opTensor_split = (
-                curComm["out_split"] if ("out_split" in curComm.keys()) else []
+                curComm["out_split"] if ("out_split" in curComm.keys()) else [(numElementsOut//world_size) for _ in range(world_size)]
             )
             self.collectiveArgs.ipTensor_split = (
-                curComm["in_split"] if ("in_split" in curComm.keys()) else []
+                curComm["in_split"] if ("in_split" in curComm.keys()) else [(numElementsIn//world_size) for _ in range(world_size)]
             )
         elif commOp == "all_gather":
             # allgather requires a tensor list, e.g., List[torch.Tensor]
