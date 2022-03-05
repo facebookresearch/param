@@ -219,7 +219,11 @@ class commsCollBench(paramCommsBench):
         if args.device == "cpu" and args.backend == "nccl":
             raise ValueError(f"NCCL is not supported for device type {args.device}")
 
-        if args.c == 1 and args.z == 0 and args.collective in ("all_reduce", "reduce", "reduce_scatter"):
+        if (
+            args.c == 1
+            and args.z == 0
+            and args.collective in ("all_reduce", "reduce", "reduce_scatter")
+        ):
             logger.warning(
                 f"Data validation is not supported for {args.collective} in non-blocking mode, disabled and continue"
             )
@@ -239,15 +243,25 @@ class commsCollBench(paramCommsBench):
                 args.z,
             )
 
-    def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None):
+    def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None, dcheck=False):
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
         elapsedTimeNS = 0.0
         is_blocking = not self.collectiveArgs.asyncOp
-        enable_comms = False if (comm_fn is None or comm_fn == self.backendFuncs.noop) else True
-        enable_compute = False if (compute_fn is None or compute_fn == self.backendFuncs.noop) else True
-        enable_comms_pair = False if (comm_fn_pair is None or comm_fn_pair == self.backendFuncs.noop) else True
+        enable_comms = (
+            False if (comm_fn is None or comm_fn == self.backendFuncs.noop) else True
+        )
+        enable_compute = (
+            False
+            if (compute_fn is None or compute_fn == self.backendFuncs.noop)
+            else True
+        )
+        enable_comms_pair = (
+            False
+            if (comm_fn_pair is None or comm_fn_pair == self.backendFuncs.noop)
+            else True
+        )
 
         # for comms pair mode, force async comms for overlapping evaluation
         if enable_comms_pair:
@@ -266,7 +280,7 @@ class commsCollBench(paramCommsBench):
                 self.collectiveArgs.quant_time.reset()
                 self.collectiveArgs.dequant_time.reset()
             # reset tensor values for data validation check
-            if enable_comms:
+            if enable_comms and dcheck:
                 self.setTensorVal(self.collectiveArgs.opTensor)
             # for blocking mode, do barrier before starting collective
             if is_blocking:
@@ -709,11 +723,13 @@ class commsCollBench(paramCommsBench):
         )
         collectiveArgs.opTensor = None
         if commsParams.backend != "xla":
-            timeList = list(torch.ones(
-                (self.comm_size,) + timeElapsedTensor.shape,
-                dtype=timeElapsedTensor.dtype,
-                device=timeElapsedTensor.device,
-            ).unbind(0))
+            timeList = list(
+                torch.ones(
+                    (self.comm_size,) + timeElapsedTensor.shape,
+                    dtype=timeElapsedTensor.dtype,
+                    device=timeElapsedTensor.device,
+                ).unbind(0)
+            )
             collectiveArgs.opTensor = timeList
 
         collectiveArgs.ipTensor = timeElapsedTensor
@@ -1099,6 +1115,7 @@ class commsCollBench(paramCommsBench):
                         comm_fn=collectiveFunc,
                         compute_fn=computeFunc,
                         comm_fn_pair=collectiveFunc_pair,
+                        dcheck=commsParams.dcheck,
                     )
                 )
                 timeUsElapsedList = [results["timeUS"]]
