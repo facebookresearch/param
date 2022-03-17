@@ -19,8 +19,21 @@ from ...lib import __version__ as param_bench_version
 class ExecutionPass(enum.Enum):
     # Forward pass will always run (also required for backward pass).
     FORWARD = "forward"
+
     # Run backward pass in addition to forward pass.
     BACKWARD = "backward"
+
+
+@enum.unique
+class OpExecutionMode(enum.Enum):
+    # Run operator seprately and clear cache between each call.
+    DISCRETE = "discrete"
+
+    # Run operator back to back without clear cache, etc.
+    CONTINUOUS = "continuous"
+
+    # Run operator back to back but record indivisual events.
+    CONTINUOUS_EVENTS = "continuous_events"
 
 
 def get_op_run_id(op_name: str, run_id: str) -> str:
@@ -33,6 +46,7 @@ def get_benchmark_options() -> Dict[str, Any]:
         "pass_type": ExecutionPass.FORWARD,
         "warmup": 1,
         "iteration": 1,
+        "op_exec_mode": OpExecutionMode.DISCRETE,
         "time_unit": "millisecond",
         "out_file_prefix": None,
         "out_stream": None,
@@ -63,7 +77,7 @@ def create_op_args(args: List[Any], kwargs: Dict[str, Any]) -> Dict[str, Any]:
     return {"args": args, "kwargs": kwargs}
 
 
-_pytorch_data: Dict[str, Any] = {
+_pytorch_type: Dict[str, Any] = {
     "int": {"type": "int", "value": None},
     "int_range": {"type": "int", "value_range": None},
     "long": {"type": "long", "value": None},
@@ -81,8 +95,8 @@ _pytorch_data: Dict[str, Any] = {
 }
 
 
-def create_data(type) -> Dict[str, Any]:
-    return copy.deepcopy(_pytorch_data[type])
+def create_type(type) -> Dict[str, Any]:
+    return copy.deepcopy(_pytorch_type[type])
 
 
 def get_sys_info():

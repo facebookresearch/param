@@ -13,7 +13,7 @@ from multiprocessing import shared_memory, resource_tracker
 from ..lib import pytorch as lib_pytorch
 from ..lib.config import make_op_config
 from ..lib.pytorch.build_executor import MaterializedBuildExecutor
-from ..lib.pytorch.config_util import ExecutionPass
+from ..lib.pytorch.config_util import ExecutionPass, OpExecutionMode
 from ..workloads import pytorch as workloads_pytorch
 
 
@@ -74,6 +74,7 @@ def main():
     logger.debug(f"run_options: {run_options}")
 
     run_options["pass_type"] = ExecutionPass(run_options["pass_type"])
+    run_options["op_exec_mode"] = OpExecutionMode(run_options["op_exec_mode"])
 
     op_config = make_op_config(op_name, op_info, run_options["device"])
     build_input_config = op_info["config"][0]

@@ -5,7 +5,7 @@ from ...lib.config import make_op_config
 from ...lib.init_helper import load_modules
 from ...lib.pytorch.config_util import (
     create_bench_config,
-    create_data,
+    create_type,
     create_op_args,
     ExecutionPass,
     get_benchmark_options,
@@ -28,9 +28,9 @@ def main():
 
     op_name = "torch.mm"
     bench_config = create_bench_config(op_name)
-    tensor_1 = create_data("tensor")
+    tensor_1 = create_type("tensor")
     tensor_1["shape"] = [128, 128]
-    tensor_2 = create_data("tensor")
+    tensor_2 = create_type("tensor")
     tensor_2["shape"] = [128, 128]
 
     op_info = bench_config[op_name]

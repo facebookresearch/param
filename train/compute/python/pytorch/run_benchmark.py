@@ -11,7 +11,12 @@ from ..lib import pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
 from ..lib.init_helper import init_logging, load_modules
 from ..lib.pytorch.benchmark import make_default_benchmark
-from ..lib.pytorch.config_util import get_benchmark_options, ExecutionPass, get_sys_info
+from ..lib.pytorch.config_util import (
+    get_benchmark_options,
+    ExecutionPass,
+    get_sys_info,
+    OpExecutionMode,
+)
 from ..workloads import pytorch as workloads_pytorch
 
 
@@ -55,6 +60,13 @@ def main():
     parser.add_argument(
         "--ncu", action="store_true", help="Run NSight Compute to collect metrics."
     )
+    parser.add_argument(
+        "--exec-mode",
+        type=str,
+        default="continuous",
+        help="Set execution mode of the operators (discrete, continuous, continuous_events).",
+    )
+
     parser.add_argument(
         "--ncu-args-file",
         type=str,
@@ -103,6 +115,7 @@ def main():
     else:
         run_options["pass_type"] = ExecutionPass.FORWARD
 
+    run_options["op_exec_mode"] = OpExecutionMode(args.exec_mode)
     if args.ncu:
         run_options["run_ncu"] = True
 
