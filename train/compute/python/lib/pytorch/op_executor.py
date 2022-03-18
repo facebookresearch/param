@@ -155,7 +155,7 @@ class OpExecutor:
                     torch.cuda.Event(enable_timing=True),
                     torch.cuda.Event(enable_timing=True),
                 )
-                for i in range(count)
+                for _i in range(count)
             ]
 
         def compute_cuda_event_delta(events: List[Tuple[Any]]):
@@ -249,7 +249,7 @@ class OpExecutor:
             torch.cuda.reset_peak_memory_stats()
             timer = Timer(self.device)
             timer.start()
-            for i in range(count):
+            for _i in range(count):
                 self.op.forward(*args, **kwargs)
             timer.stop()
             fw_time = timer.elapsed_time_ms() / count
@@ -268,7 +268,7 @@ class OpExecutor:
                         message=f"{op_run_id}:{ExecutionPass.FORWARD.value}_{ExecutionPass.BACKWARD.value}",
                     )
                 timer.start()
-                for i in range(count):
+                for _i in range(count):
                     self.op.forward(*args, **kwargs)
                     self.op.backward()
                 timer.stop()
@@ -307,14 +307,14 @@ class OpExecutor:
         timer = Timer(self.device)
         with record_function("__param_bench__:_benchmark_op"):
             if self.pass_type == ExecutionPass.FORWARD:
-                for i in range(count):
+                for _i in range(count):
                     timer.start()
                     self.op.forward(*args, **kwargs)
                     timer.stop()
                     fw_time_records.append(timer.elapsed_time_ms())
 
             elif self.pass_type == ExecutionPass.BACKWARD:
-                for i in range(count):
+                for _i in range(count):
                     self.op.forward(*args, **kwargs)
                     self.op.create_grad()
                     timer.start()

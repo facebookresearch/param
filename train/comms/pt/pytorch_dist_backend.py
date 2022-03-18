@@ -465,6 +465,12 @@ class PyTorchDistBackend(backendFunctions):
             _sizeBytes = sum(
                 [t.nelement() * t.element_size() for t in collectiveArgs.ipTensor]
             )
+        # reduce_scatter_base should use input tensor for total memory size
+        elif collectiveArgs.collective == "reduce_scatter_base":
+            _sizeBytes = (
+                collectiveArgs.ipTensor.nelement()
+                * collectiveArgs.ipTensor.element_size()
+            )
         else:
             _sizeBytes = (
                 collectiveArgs.opTensor.nelement()

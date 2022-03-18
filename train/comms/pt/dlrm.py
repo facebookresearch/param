@@ -16,7 +16,6 @@ import torch.nn as nn
 import numpy as np
 import sys
 import argparse
-import os
 import json
 import subprocess
 import logging
@@ -1120,7 +1119,7 @@ class commsDLRMBench(paramCommsBench):
 
 def main():
 
-    mpi_env_params = comms_utils.read_mpi_env_vars()
+    mpi_env_params = comms_utils.read_comms_env_vars()
 
     dlrmBench = commsDLRMBench()
     parser = argparse.ArgumentParser(

@@ -61,6 +61,13 @@ def main():
         "--ncu", action="store_true", help="Run NSight Compute to collect metrics."
     )
     parser.add_argument(
+        "--exec-mode",
+        type=str,
+        default="continuous",
+        help="Set execution mode of the operators (discrete, continuous, continuous_events).",
+    )
+
+    parser.add_argument(
         "--ncu-args-file",
         type=str,
         default=None,

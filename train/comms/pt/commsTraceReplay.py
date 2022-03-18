@@ -90,6 +90,7 @@ class commsTraceReplayBench(paramCommsBench):
             "Int": torch.int32,
             "Long": torch.long,
             "Double": torch.double,
+            "Half": torch.half,
         }
 
     def readArgs(self, parser):
@@ -386,14 +387,15 @@ class commsTraceReplayBench(paramCommsBench):
 
     def warmUpBench(self, commsParams):
         for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
-            if curComm["comms"] not in self.allowList:
+            commEntry = curComm.copy()
+            if commEntry["comms"] not in self.allowList:
                 continue
             if self.backendFuncs.get_global_rank() == 0:
                 logger.debug(
-                    f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(curComm)}\n"
+                    f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(commEntry)}\n"
                 )
                 print(
-                    f"[Warm-up][{cnt} / {self.max_msg_cnt}] Replaying {curComm['comms']:>10}...",
+                    f"[Warm-up][{cnt} / {self.max_msg_cnt}] Replaying {commEntry['comms']:>10}...",
                     end="\r",
                 )
 
@@ -401,10 +403,10 @@ class commsTraceReplayBench(paramCommsBench):
             (
                 self.collectiveArgs.ipTensor,
                 self.collectiveArgs.opTensor,
-            ) = self.prepComms(curComm, commsParams)
+            ) = self.prepComms(commEntry, commsParams)
 
-            if curComm["comms"] in self.backendFuncs.collectiveFunc.keys():
-                self.backendFuncs.collectiveFunc[curComm["comms"]](self.collectiveArgs)
+            if commEntry["comms"] in self.backendFuncs.collectiveFunc.keys():
+                self.backendFuncs.collectiveFunc[commEntry["comms"]](self.collectiveArgs)
             # skip not supported ops
 
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
