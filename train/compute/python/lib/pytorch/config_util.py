@@ -53,6 +53,9 @@ def get_benchmark_options() -> Dict[str, Any]:
         "run_ncu": False,
         "ncu_args": "",
         "ncu_batch": 50,
+        "run_nsys": False,
+        "nsys_args": "",
+        "nsys_batch": 50,
         "resume_op_run_id": None,
     }
 

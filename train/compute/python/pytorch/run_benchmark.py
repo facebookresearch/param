@@ -61,13 +61,6 @@ def main():
         "--ncu", action="store_true", help="Run NSight Compute to collect metrics."
     )
     parser.add_argument(
-        "--exec-mode",
-        type=str,
-        default="continuous",
-        help="Set execution mode of the operators (discrete, continuous, continuous_events).",
-    )
-
-    parser.add_argument(
         "--ncu-args-file",
         type=str,
         default=None,
@@ -78,6 +71,27 @@ def main():
         type=int,
         default=50,
         help="NSight Compute input batch size (number of input configs to run in one launch).",
+    )
+    parser.add_argument(
+        "--nsys", action="store_true", help="Run NSight Systems to collect metrics."
+    )
+    parser.add_argument(
+        "--nsys-args-file",
+        type=str,
+        default=None,
+        help="NSight Systems extra command line options (metrics etc.).",
+    )
+    parser.add_argument(
+        "--nsys-batch",
+        type=int,
+        default=50,
+        help="NSight Systems input batch size (number of input configs to run in one launch).",
+    )
+    parser.add_argument(
+        "--exec-mode",
+        type=str,
+        default="continuous",
+        help="Set execution mode of the operators (discrete, continuous, continuous_events).",
     )
     parser.add_argument(
         "-p",
@@ -109,6 +123,7 @@ def main():
     run_options["device"] = args.device
     run_options["resume_op_run_id"] = args.resume_id
     run_options["ncu_batch"] = args.ncu_batch
+    run_options["nsys_batch"] = args.nsys_batch
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD
@@ -118,6 +133,8 @@ def main():
     run_options["op_exec_mode"] = OpExecutionMode(args.exec_mode)
     if args.ncu:
         run_options["run_ncu"] = True
+    if args.nsys:
+        run_options["run_nsys"] = True
 
     pid = os.getpid()
 
@@ -132,6 +149,10 @@ def main():
     if args.ncu_args_file:
         with open(args.ncu_args_file, "r") as ncu_file:
             run_options["ncu_args"] = ncu_file.read().strip()
+    if args.nsys_args_file:
+        with open(args.nsys_args_file, "r") as nsys_file:
+            run_options["nsys_args"] = nsys_file.read().strip()
+
     run_options["benchmark_args"] = args.__dict__
 
     with open(out_file_name, write_option) as out_file:
