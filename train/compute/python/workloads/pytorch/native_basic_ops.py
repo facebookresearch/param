@@ -6,7 +6,7 @@ from ...lib.operator import (
     OperatorInterface,
     register_operators,
 )
-from ...lib.pytorch.operator_impl import CallableOp, UnaryOp, BuildableOp
+from ...lib.pytorch.operator_impl import CallableOp, UnaryOp, BuildableOp, TorchScriptOp
 
 
 # Unary
@@ -40,3 +40,11 @@ buildable_ops: Dict[str, OperatorInterface] = {
     "torch.nn.Linear": BuildableOp(torch.nn.Linear),
 }
 register_operators(buildable_ops)
+
+
+torchscript_ops: Dict[str, OperatorInterface] = {
+    "aten::add": TorchScriptOp("aten::add"),
+    "aten::mul": TorchScriptOp("aten::mul"),
+    "aten::matmul": TorchScriptOp("aten::matmul"),
+}
+register_operators(torchscript_ops)

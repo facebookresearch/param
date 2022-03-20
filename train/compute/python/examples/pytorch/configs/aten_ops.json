@@ -1,0 +1,169 @@
+{
+  "aten::add": {
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "value": [
+                  {
+                    "type": "str",
+                    "value": "Tensor"
+                  },
+                  {
+                    "type": "str",
+                    "value": "Tensor"
+                  },
+                  {
+                    "type": "str",
+                    "value": "int"
+                  },
+                  {
+                    "type": "str",
+                    "value": "Tensor"
+                  }
+                ],
+                "type": "genericlist"
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              },
+              {
+                "value": 1,
+                "type": "int"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "aten::mul": {
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "value": [
+                  {
+                    "type": "str",
+                    "value": "Tensor"
+                  },
+                  {
+                    "type": "str",
+                    "value": "Tensor"
+                  },
+                  {
+                    "type": "str",
+                    "value": "Tensor"
+                  }
+                ],
+                "type": "genericlist"
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "aten::matmul": {
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "value": [
+                  {
+                    "type": "str",
+                    "value": "Tensor"
+                  },
+                  {
+                    "type": "str",
+                    "value": "Tensor"
+                  },
+                  {
+                    "type": "str",
+                    "value": "Tensor"
+                  }
+                ],
+                "type": "genericlist"
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

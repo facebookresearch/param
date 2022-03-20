@@ -6,6 +6,7 @@ import abc
 import json
 import logging
 import os
+import shlex
 import subprocess
 from datetime import datetime
 from multiprocessing import shared_memory
@@ -96,12 +97,27 @@ class OpBuildExecutor(BuildExecutor):
         self.build_input_config = None
         self.config_build_id = None
 
+    def _should_run_batch_input_config(self):
+        return self.run_options["run_ncu"] or self.run_options["run_nsys"]
+
     def run(
         self,
         op_config: OperatorConfig,
         build_input_config: Dict[str, Any],
         config_build_id: str,
     ):
+        def _run_nsight():
+            if self.run_options["run_ncu"]:
+                shm, config = self._create_shm_config()
+                self._run_ncu(shm, config)
+                shm.close()
+                shm.unlink()
+            if self.run_options["run_nsys"]:
+                shm, config = self._create_shm_config(warmup=5, iteration=5)
+                self._run_nsys(shm, config)
+                shm.close()
+                shm.unlink()
+
         self.input_config_queue.clear()
         self.op_config = op_config
         self.build_input_config = build_input_config
@@ -125,15 +141,19 @@ class OpBuildExecutor(BuildExecutor):
         )
 
         for (input_id, input_config) in generate_input_config:
+            # run for input, also fills the input_config_queue if there is a
+            # need to run in nsight batch.
             self._run_for_input(input_id, input_config)
-            # Check if the queue has enough for a batch to run with NCU.
-            if len(self.input_config_queue) == self.run_options["ncu_batch"]:
-                self._run_ncu()
-                self.input_config_queue.clear()
 
-        # If any input_config remains in the queue, run them with NCU.
-        if self.run_options["run_ncu"] and self.input_config_queue:
-            self._run_ncu()
+            if self._should_run_batch_input_config():
+                # Check if the queue has enough for a nsight batch to run.
+                if len(self.input_config_queue) == self.run_options["nsight_batch"]:
+                    _run_nsight()
+                    self.input_config_queue.clear()
+
+        # If any input_config remains in the queue, run them with NSight.
+        if self._should_run_batch_input_config() and self.input_config_queue:
+            _run_nsight()
             self.input_config_queue.clear()
 
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
@@ -154,7 +174,6 @@ class OpBuildExecutor(BuildExecutor):
         op_exe = OpExecutor(self.op_config.name, self.op_config.op, self.run_options)
 
         metrics = op_exe.run(input_args, input_kwargs, run_id)
-        # print(result)
         final_config = {
             "build": self.build_input_config["build"],
             "input": input_config,
@@ -165,31 +184,13 @@ class OpBuildExecutor(BuildExecutor):
         )
         logger.debug(f"finished running [{run_id}].")
 
-        if self.run_options["run_ncu"]:
-            # Record the current input_id so the NCU run can reuse this id.
+        # add this input config to the queue if we want to run it in a batch.
+        if self._should_run_batch_input_config():
+            # Record the current input_id so the NSight run can reuse this id.
             input_config["id"] = input_id
             self.input_config_queue.append(input_config)
 
-    def _run_ncu(self):
-        NCU_BIN = "/usr/local/NVIDIA-Nsight-Compute-2021.2/ncu"
-        ncu_bin = os.getenv("NCU_BIN")
-        if not ncu_bin:
-            ncu_bin = NCU_BIN
-
-        param_bench_range = "param_bench@measure"
-        start_input_id = self.input_config_queue[0]["id"]
-        out_file_prefix = self.run_options["out_file_prefix"]
-        timestamp = int(datetime.timestamp(datetime.now()))
-        ncu_log_file = f"{out_file_prefix}_{os.getpid()}_{timestamp}_ncu.log"
-        ncu_log_file = ncu_log_file.replace(":", "-")
-        ncu_extra_args = self.run_options["ncu_args"]
-        ncu_options = (
-            f"--log-file {ncu_log_file} --csv --app-replay-buffer file --nvtx "
-            f"--nvtx-include {param_bench_range} --target-processes all"
-        )
-        if ncu_extra_args:
-            ncu_options += f" {ncu_extra_args}"
-
+    def _create_shm_config(self, warmup=1, iteration=1):
         op_info = create_op_info()
         op_info["build_iterator"] = self.op_config.info.get("build_iterator", None)
         op_info["input_iterator"] = self.op_config.info.get("input_iterator", None)
@@ -203,11 +204,12 @@ class OpBuildExecutor(BuildExecutor):
         op_info["config"][0]["build"] = self.build_input_config["build"]
         op_info["config"][0]["input"] = self.input_config_queue
         run_options = get_benchmark_options()
+        run_options["cuda_l2_cache_clear"] = self.run_options["cuda_l2_cache_clear"]
         run_options["device"] = self.run_options["device"]
-        run_options["pass_type"] = self.run_options["pass_type"].value
+        run_options["iteration"] = iteration
         run_options["op_exec_mode"] = self.run_options["op_exec_mode"].value
-        run_options["warmup"] = 1
-        run_options["iteration"] = 1
+        run_options["pass_type"] = self.run_options["pass_type"].value
+        run_options["warmup"] = warmup
         config = {
             "op_name": self.op_config.name,
             "config_build_id": self.config_build_id,
@@ -215,6 +217,10 @@ class OpBuildExecutor(BuildExecutor):
             "run_options": run_options,
         }
         config_str = json.dumps(config)
+
+        # debug
+        with open("batch_config.json", "w") as batch_config:
+            batch_config.write(config_str)
 
         """
         BUG: Python shared memory bug workaround.
@@ -228,10 +234,33 @@ class OpBuildExecutor(BuildExecutor):
 
         shm.buf[:] = config_str.encode("utf-8")
         logger.debug(f"shared memory buffer: {shm.name}")
+        return shm, config
+
+    def _run_ncu(self, shm, config):
+        if not self.run_options['run_ncu']:
+            return
+        NCU_BIN = "/usr/local/NVIDIA-Nsight-Compute-2021.2/ncu"
+        ncu_bin = os.getenv("NCU_BIN")
+        if not ncu_bin:
+            ncu_bin = NCU_BIN
+
+        param_bench_range = "param_bench@measure"
+        start_input_id = self.input_config_queue[0]["id"]
+        out_file_prefix = self.run_options["out_file_prefix"]
+        timestamp = int(datetime.timestamp(datetime.now()))
+        ncu_log_file = f"{out_file_prefix}_{os.getpid()}_{timestamp}_ncu.log"
+        ncu_extra_args = self.run_options["ncu_args"]
+        ncu_options = (
+            f"--log-file {ncu_log_file} --csv --app-replay-buffer file --nvtx "
+            f"--nvtx-include {param_bench_range} --target-processes all"
+        )
+        if ncu_extra_args:
+            ncu_options += f" {ncu_extra_args}"
+
         benchmark_cmd = f"python -m param_bench.train.compute.python.pytorch.run_batch -s {shm.name}"
         if logger.getEffectiveLevel() == logging.DEBUG:
             benchmark_cmd += " -v"
-        cmd = [ncu_bin] + ncu_options.split(" ") + benchmark_cmd.split(" ")
+        cmd = [ncu_bin] + shlex.split(ncu_options) + shlex.split(benchmark_cmd)
         cmd_str = " ".join(cmd)
         logger.info(f"running: {cmd_str}")
         with subprocess.Popen(
@@ -244,8 +273,7 @@ class OpBuildExecutor(BuildExecutor):
             for line in proc.stdout:
                 if line.strip():
                     print(line, end="")
-        shm.close()
-        shm.unlink()
+
         end_input_id = self.input_config_queue[-1]["id"]
         print(
             json.dumps(
@@ -260,6 +288,63 @@ class OpBuildExecutor(BuildExecutor):
             file=self.out_stream,
         )
         logger.info(f"ncu result: {ncu_log_file}")
+
+
+    def _run_nsys(self, shm, config):
+        if not self.run_options['run_nsys']:
+            return
+        NSYS_BIN = "/opt/nvidia/nsight-systems/2021.4.1/bin/nsys"
+        nsys_bin = os.getenv("NSYS_BIN")
+        if not nsys_bin:
+            nsys_bin = NSYS_BIN
+
+        param_bench_range = "param_bench@measure"
+        start_input_id = self.input_config_queue[0]["id"]
+        out_file_prefix = self.run_options["out_file_prefix"]
+        timestamp = int(datetime.timestamp(datetime.now()))
+        nsys_output_file = f"{out_file_prefix}_{os.getpid()}_{timestamp}_nsys"
+        nsys_extra_args = self.run_options["nsys_args"]
+        # nsys_options = (
+        #     f"profile -t cuda,nvtx -c nvtx -p {param_bench_range} "
+        #     f"--capture-range-end repeat -o {nsys_output_file} "
+        #     "-e NSYS_NVTX_PROFILER_REGISTER_ONLY=0 "
+        # )
+        nsys_options = (
+            f"profile -t cuda,nvtx -o {nsys_output_file} "
+        )
+        if nsys_extra_args:
+            nsys_options += f" {nsys_extra_args}"
+
+        benchmark_cmd = f"python -m param_bench.train.compute.python.pytorch.run_batch -s {shm.name}"
+        if logger.getEffectiveLevel() == logging.DEBUG:
+            benchmark_cmd += " -v"
+        cmd = [nsys_bin] + shlex.split(nsys_options) + shlex.split(benchmark_cmd)
+        cmd_str = " ".join(cmd)
+        logger.info(f"running: {cmd_str}")
+        with subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+            universal_newlines=True,
+        ) as proc:
+            for line in proc.stdout:
+                if line.strip():
+                    print(line, end="")
+        end_input_id = self.input_config_queue[-1]["id"]
+        print(
+            json.dumps(
+                {
+                    "nsys_file": nsys_output_file,
+                    "nsys_cmd_str": cmd_str,
+                    "config": config,
+                    "start_run_id": f"{self.config_build_id}:{start_input_id}",
+                    "end_run_id": f"{self.config_build_id}:{end_input_id}",
+                }
+            ),
+            file=self.out_stream,
+        )
+        logger.info(f"nsys result: {nsys_output_file}")
 
 
 class MaterializedBuildExecutor(BuildExecutor):

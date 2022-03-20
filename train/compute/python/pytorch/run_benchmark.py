@@ -58,26 +58,16 @@ def main():
         help="Append to output file, rather than overwrite.",
     )
     parser.add_argument(
-        "--ncu", action="store_true", help="Run NSight Compute to collect metrics."
+        "--cuda-l2-cache-clear", action="store_true", help="Clear CUDA GPU L2 cache between iterations. Default=true"
     )
     parser.add_argument(
-        "--exec-mode",
-        type=str,
-        default="continuous",
-        help="Set execution mode of the operators (discrete, continuous, continuous_events).",
+        "--ncu", action="store_true", help="Run NSight Compute to collect metrics."
     )
-
     parser.add_argument(
         "--ncu-args-file",
         type=str,
         default=None,
         help="NSight Compute extra command line options (metrics etc.).",
-    )
-    parser.add_argument(
-        "--ncu-batch",
-        type=int,
-        default=50,
-        help="NSight Compute input batch size (number of input configs to run in one launch).",
     )
     parser.add_argument(
         "--nsys", action="store_true", help="Run NSight Systems to collect metrics."
@@ -89,16 +79,16 @@ def main():
         help="NSight Systems extra command line options (metrics etc.).",
     )
     parser.add_argument(
-        "--nsys-batch",
+        "--nsight-batch",
         type=int,
         default=50,
-        help="NSight Systems input batch size (number of input configs to run in one launch).",
+        help="NSight input batch size (number of input configs to run in one launch), used by both NCU and NSYS.",
     )
     parser.add_argument(
         "--exec-mode",
         type=str,
-        default="continuous",
-        help="Set execution mode of the operators (discrete, continuous, continuous_events).",
+        default="discrete",
+        help="Set execution mode of the operators (discrete, continuous, continuous_events). Default=discrete",
     )
     parser.add_argument(
         "-p",
@@ -128,9 +118,9 @@ def main():
     run_options["warmup"] = args.warmup
     run_options["iteration"] = args.iteration
     run_options["device"] = args.device
+    run_options["cuda_l2_cache_clear"] = args.cuda_l2_cache_clear
     run_options["resume_op_run_id"] = args.resume_id
-    run_options["ncu_batch"] = args.ncu_batch
-    run_options["nsys_batch"] = args.nsys_batch
+    run_options["nsight_batch"] = args.nsight_batch
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD
