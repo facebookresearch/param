@@ -52,10 +52,13 @@ def get_benchmark_options() -> Dict[str, Any]:
         "out_file_prefix": None,
         "out_stream": None,
         "run_ncu": False,
+        "ncu_bin": "/usr/local/NVIDIA-Nsight-Compute-2021.2/ncu",
         "ncu_args": "",
         "run_nsys": False,
+        "nsys_bin": "/opt/nvidia/nsight-systems/2021.4.1/bin/nsys",
         "nsys_args": "",
         "nsight_batch": 50,
+        "batch_cmd": "python -m param_bench.train.compute.python.pytorch.run_batch",
         "resume_op_run_id": None,
     }
 

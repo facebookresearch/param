@@ -64,6 +64,11 @@ def main():
         "--ncu", action="store_true", help="Run NSight Compute to collect metrics."
     )
     parser.add_argument(
+        "--ncu-bin", type=str,
+        default=None,
+        help="Path to the NSight Compute (ncu) binary.",
+    )
+    parser.add_argument(
         "--ncu-args-file",
         type=str,
         default=None,
@@ -71,6 +76,11 @@ def main():
     )
     parser.add_argument(
         "--nsys", action="store_true", help="Run NSight Systems to collect metrics."
+    )
+    parser.add_argument(
+        "--nsys-bin", type=str,
+        default=None,
+        help="Path to the NSight Systems (nsys) binary.",
     )
     parser.add_argument(
         "--nsys-args-file",
@@ -83,6 +93,12 @@ def main():
         type=int,
         default=50,
         help="NSight input batch size (number of input configs to run in one launch), used by both NCU and NSYS.",
+    )
+    parser.add_argument(
+        "--batch-cmd",
+        type=str,
+        default=None,
+        help="Run batch job command.",
     )
     parser.add_argument(
         "--exec-mode",
@@ -128,10 +144,8 @@ def main():
         run_options["pass_type"] = ExecutionPass.FORWARD
 
     run_options["op_exec_mode"] = OpExecutionMode(args.exec_mode)
-    if args.ncu:
-        run_options["run_ncu"] = True
-    if args.nsys:
-        run_options["run_nsys"] = True
+    run_options["run_ncu"] = args.ncu
+    run_options["run_nsys"] = args.nsys
 
     pid = os.getpid()
 
@@ -143,6 +157,15 @@ def main():
 
     write_option = "a" if args.append else "w"
 
+    if args.batch_cmd:
+        run_options["batch_cmd"] = args.batch_cmd
+
+    if args.ncu_bin:
+        run_options["ncu_bin"] = args.ncu_bin
+
+    if args.nsys_bin:
+        run_options["nsys_bin"] = args.nsys_bin
+
     if args.ncu_args_file:
         with open(args.ncu_args_file, "r") as ncu_file:
             run_options["ncu_args"] = ncu_file.read().strip()
@@ -150,7 +173,7 @@ def main():
         with open(args.nsys_args_file, "r") as nsys_file:
             run_options["nsys_args"] = nsys_file.read().strip()
 
-    run_options["benchmark_args"] = args.__dict__
+    run_options["cmd_args"] = args.__dict__
 
     with open(out_file_name, write_option) as out_file:
         run_options["out_file_prefix"] = args.output_prefix

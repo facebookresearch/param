@@ -239,10 +239,8 @@ class OpBuildExecutor(BuildExecutor):
     def _run_ncu(self, shm, config):
         if not self.run_options['run_ncu']:
             return
-        NCU_BIN = "/usr/local/NVIDIA-Nsight-Compute-2021.2/ncu"
-        ncu_bin = os.getenv("NCU_BIN")
-        if not ncu_bin:
-            ncu_bin = NCU_BIN
+
+        ncu_bin = self.run_options["ncu_bin"]
 
         param_bench_range = "param_bench@measure"
         start_input_id = self.input_config_queue[0]["id"]
@@ -293,10 +291,8 @@ class OpBuildExecutor(BuildExecutor):
     def _run_nsys(self, shm, config):
         if not self.run_options['run_nsys']:
             return
-        NSYS_BIN = "/opt/nvidia/nsight-systems/2021.4.1/bin/nsys"
-        nsys_bin = os.getenv("NSYS_BIN")
-        if not nsys_bin:
-            nsys_bin = NSYS_BIN
+
+        nsys_bin = self.run_options["nsys_bin"]
 
         param_bench_range = "param_bench@measure"
         start_input_id = self.input_config_queue[0]["id"]
