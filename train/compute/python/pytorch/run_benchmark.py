@@ -58,7 +58,7 @@ def main():
         help="Append to output file, rather than overwrite.",
     )
     parser.add_argument(
-        "--cuda-l2-cache-clear", action="store_true", help="Clear CUDA GPU L2 cache between iterations. Default=true"
+        "--cuda-l2-cache-clear", action="store_true", help="Clear CUDA GPU L2 cache between iterations. Default=False"
     )
     parser.add_argument(
         "--ncu", action="store_true", help="Run NSight Compute to collect metrics."

@@ -152,7 +152,7 @@ class TorchScriptOp(OperatorInterface):
         input_types = types[:-1]
         output_type = types[-1]
         for var_type in input_types:
-            graph_args.append(f"%{var_id}: {var_type}")
+            graph_args.append(f"%{var_id} : {var_type}")
             func_args.append(f"%{var_id}")
             var_id += 1
 
