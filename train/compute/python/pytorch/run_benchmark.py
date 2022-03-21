@@ -89,10 +89,10 @@ def main():
         help="NSight Systems extra command line options (metrics etc.).",
     )
     parser.add_argument(
-        "--nsight-batch",
+        "--run-batch-size",
         type=int,
         default=50,
-        help="NSight input batch size (number of input configs to run in one launch), used by both NCU and NSYS.",
+        help="Batch run input size (number of input configs to run in one launch), used by both NCU and NSYS.",
     )
     parser.add_argument(
         "--batch-cmd",
@@ -136,7 +136,7 @@ def main():
     run_options["device"] = args.device
     run_options["cuda_l2_cache_clear"] = args.cuda_l2_cache_clear
     run_options["resume_op_run_id"] = args.resume_id
-    run_options["nsight_batch"] = args.nsight_batch
+    run_options["run_batch_size"] = args.run_batch_size
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD

@@ -147,7 +147,7 @@ class OpBuildExecutor(BuildExecutor):
 
             if self._should_run_batch_input_config():
                 # Check if the queue has enough for a nsight batch to run.
-                if len(self.input_config_queue) == self.run_options["nsight_batch"]:
+                if len(self.input_config_queue) == self.run_options["run_batch_size"]:
                     _run_nsight()
                     self.input_config_queue.clear()
 
@@ -219,8 +219,8 @@ class OpBuildExecutor(BuildExecutor):
         config_str = json.dumps(config)
 
         # debug
-        with open("batch_config.json", "w") as batch_config:
-            batch_config.write(config_str)
+        # with open("batch_config.json", "w") as batch_config:
+        #     batch_config.write(config_str)
 
         """
         BUG: Python shared memory bug workaround.
@@ -242,7 +242,7 @@ class OpBuildExecutor(BuildExecutor):
 
         ncu_bin = self.run_options["ncu_bin"]
 
-        param_bench_range = "param_bench@measure"
+        param_bench_range = "param_bench:measure"
         start_input_id = self.input_config_queue[0]["id"]
         out_file_prefix = self.run_options["out_file_prefix"]
         timestamp = int(datetime.timestamp(datetime.now()))
@@ -255,7 +255,8 @@ class OpBuildExecutor(BuildExecutor):
         if ncu_extra_args:
             ncu_options += f" {ncu_extra_args}"
 
-        benchmark_cmd = f"python -m param_bench.train.compute.python.pytorch.run_batch -s {shm.name}"
+        batch_cmd = self.run_options["batch_cmd"]
+        benchmark_cmd = f"{batch_cmd} -s {shm.name}"
         if logger.getEffectiveLevel() == logging.DEBUG:
             benchmark_cmd += " -v"
         cmd = [ncu_bin] + shlex.split(ncu_options) + shlex.split(benchmark_cmd)
@@ -294,24 +295,19 @@ class OpBuildExecutor(BuildExecutor):
 
         nsys_bin = self.run_options["nsys_bin"]
 
-        param_bench_range = "param_bench@measure"
         start_input_id = self.input_config_queue[0]["id"]
         out_file_prefix = self.run_options["out_file_prefix"]
         timestamp = int(datetime.timestamp(datetime.now()))
         nsys_output_file = f"{out_file_prefix}_{os.getpid()}_{timestamp}_nsys"
         nsys_extra_args = self.run_options["nsys_args"]
-        # nsys_options = (
-        #     f"profile -t cuda,nvtx -c nvtx -p {param_bench_range} "
-        #     f"--capture-range-end repeat -o {nsys_output_file} "
-        #     "-e NSYS_NVTX_PROFILER_REGISTER_ONLY=0 "
-        # )
         nsys_options = (
             f"profile -t cuda,nvtx -o {nsys_output_file} "
         )
         if nsys_extra_args:
             nsys_options += f" {nsys_extra_args}"
 
-        benchmark_cmd = f"python -m param_bench.train.compute.python.pytorch.run_batch -s {shm.name}"
+        batch_cmd = self.run_options["batch_cmd"]
+        benchmark_cmd = f"{batch_cmd} -s {shm.name}"
         if logger.getEffectiveLevel() == logging.DEBUG:
             benchmark_cmd += " -v"
         cmd = [nsys_bin] + shlex.split(nsys_options) + shlex.split(benchmark_cmd)
