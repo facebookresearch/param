@@ -61,7 +61,7 @@ class commsCollBench(paramCommsBench):
             "--w", type=int, default=5, help="number of warmup iterations"
         )  # number of warmup-iterations
         parser.add_argument(
-            "--n", type=int, default=5, help="number of iterations"
+            "--n", "--num_iters", type=int, default=5, help="number of iterations"
         )  # number of iterations
         # experiment related parameters
         parser.add_argument(
