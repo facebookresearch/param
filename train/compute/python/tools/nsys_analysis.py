@@ -20,8 +20,7 @@ class OperatorEvent:
             "analysis": {"T1": [], "T2": [], "T3": [], "T4": []},
         }
 
-    def add_op_event(self, range_id, event_type, name, start, end):
-        assert event_type in {"range"}
+    def add_op_event(self, range_id, name, start, end):
         if range_id not in self.event_data["ranges"]:
             self.event_data["ranges"][range_id] = {
                 "name": name,
@@ -132,9 +131,8 @@ def build_events(event_info: List[Tuple[Any]]):
         )
         op_events.setdefault(op_name, {})
         op_events[op_name].setdefault(id, OperatorEvent(op_name, id))
-        op_events[op_name].setdefault(id, OperatorEvent(op_name, id))
         op_events[op_name][id].add_op_event(
-            range_id, "range", pass_name, event[2], event[3]
+            range_id, pass_name, event[2], event[3]
         )
         op_events[op_name][id].add_cuda_event(
             range_id,
