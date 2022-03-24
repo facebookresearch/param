@@ -114,15 +114,12 @@ def main():
     )
 
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Increase log output verbosity."
+        "-l", "--log-level", default="INFO", help="Log output verbosity."
     )
 
     args = parser.parse_args()
 
-    if args.verbose:
-        logger = init_logging(logging.DEBUG)
-    else:
-        logger = init_logging(logging.INFO)
+    logger = init_logging(getattr(logging, args.log_level.upper(), logging.INFO))
 
     # Load PyTorch implementations for data generator and operators.
     load_modules(lib_pytorch)
