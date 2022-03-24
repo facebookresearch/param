@@ -58,7 +58,7 @@ def main():
         help="Append to output file, rather than overwrite.",
     )
     parser.add_argument(
-        "--cuda-l2-cache", default="off", nargs="?", const="off", choices=["on", "off"], help="Set option for CUDA GPU L2 cache between iterations."
+        "--cuda-l2-cache", default="off", nargs="?", choices=["on", "off"], help="Set option for CUDA GPU L2 cache between iterations."
     )
     parser.add_argument(
         "--ncu", action="store_true", help="Run NSight Compute to collect metrics."
@@ -104,6 +104,8 @@ def main():
         "--exec-mode",
         type=str,
         default="discrete",
+        nargs="?",
+        choices=["discrete", "continuous", "continuous_events"],
         help="Set execution mode of the operators (discrete, continuous, continuous_events). Default=discrete",
     )
     parser.add_argument(
