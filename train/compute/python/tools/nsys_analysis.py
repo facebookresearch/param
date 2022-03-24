@@ -1,7 +1,10 @@
 import argparse
 import json
+import logging
+import os
 import sqlite3
-from typing import Dict
+from typing import List, Dict, Tuple, Any
+
 
 def print_rows(rows):
     for row in rows:
@@ -9,24 +12,51 @@ def print_rows(rows):
 
 
 class OperatorEvent:
-    def __init__(self, name, id, start, end):
+    def __init__(self, name, id):
         self.event_data = {
             "op_name": name,
             "id": id,
-            "start": start,
-            "end": end,
             "ranges": {},
-            "analysis": {"T1": [], "T2": [], "T3": [], "T4": []}
+            "analysis": {"T1": [], "T2": [], "T3": [], "T4": []},
         }
 
-    def add_cuda_event(self, range_id, correlation_id, event_type, name, start, end):
-        assert event_type in {"kernel", "runtime"}
-        self.event_data["ranges"].setdefault(range_id, {}).setdefault(correlation_id, {}).setdefault(event_type, None)
-        self.event_data["ranges"][range_id][correlation_id][event_type]= {
+    def add_op_event(self, range_id, event_type, name, start, end):
+        assert event_type in {"range"}
+        if range_id not in self.event_data["ranges"]:
+            self.event_data["ranges"][range_id] = {
                 "name": name,
                 "start": start,
                 "end": end,
+                "cuda_events": [],
             }
+
+    def add_cuda_event(
+        self,
+        range_id,
+        correlation_id,
+        kernel_name,
+        kernel_start,
+        kernel_end,
+        runtime_name,
+        runtime_start,
+        runtime_end,
+    ):
+        self.event_data["ranges"][range_id]["cuda_events"].append(
+            (
+                correlation_id,
+                {
+                    "name": kernel_name,
+                    "start": kernel_start,
+                    "end": kernel_end,
+                },
+                {
+                    "name": runtime_name,
+                    "start": runtime_start,
+                    "end": runtime_end,
+                },
+            )
+        )
+
     def __str__(self):
         return json.dumps(self.event_data)
 
@@ -36,15 +66,16 @@ class OperatorEvent:
     def to_json(self):
         return self.event_data
 
+
 class CustomEncoder(json.JSONEncoder):
     def default(self, o):
         if "to_json" in dir(o):
             return o.to_json()
         return json.JSONEncoder.default(self, o)
 
+
 queries: Dict[str, str] = {
-"kernels":
-    """
+    "nvtx": """
     SELECT NVTX_EVENTS.rangeId,
         NVTX_EVENTS.text,
         NVTX_EVENTS.start,
@@ -71,18 +102,91 @@ queries: Dict[str, str] = {
     """,
 }
 
+
+def build_events(event_info: List[Tuple[Any]]):
+    op_events: Dict[str, Dict[str, OperatorEvent]] = {}
+
+    for event in event_info:
+        range_id = event[0]
+        nvtx_label = event[1]
+        op_info = nvtx_label.split(":")
+        op_name = op_info[0]
+        stage = op_info[1]
+        id = f"{op_info[2]}:{op_info[3]}:{op_info[4]}"
+        pass_name = op_info[5]
+        logging.debug(
+            f"op_name: {op_name}, range_id: {range_id}, stage: {stage}, id: {id}, pass: {pass_name}"
+        )
+        logging.debug(f"  start: {event[2]}, end: {event[3]}, dur: {event[3]-event[2]}")
+        correlation_id = event[4]
+        logging.debug(f"    correlation_id: {correlation_id}")
+        kernel_name = event[5]
+        logging.debug(f"    kernel: {kernel_name}")
+        logging.debug(
+            f"      start: {event[6]}, end: {event[7]}, dur: {event[7]-event[6]}"
+        )
+        runtime_name = event[8]
+        logging.debug(f"    runtime: {runtime_name}")
+        logging.debug(
+            f"      start: {event[9]}, end: {event[10]}, dur: {event[10]-event[9]}"
+        )
+        op_events.setdefault(op_name, {})
+        op_events[op_name].setdefault(id, OperatorEvent(op_name, id))
+        op_events[op_name].setdefault(id, OperatorEvent(op_name, id))
+        op_events[op_name][id].add_op_event(
+            range_id, "range", pass_name, event[2], event[3]
+        )
+        op_events[op_name][id].add_cuda_event(
+            range_id,
+            correlation_id,
+            kernel_name,
+            event[6],
+            event[7],
+            runtime_name,
+            event[9],
+            event[10],
+        )
+
+    return op_events
+
+
+def analyze_events(op_events):
+    for name, run_info in op_events.items():
+        for id, op_event in run_info.items():
+            T1 = op_event.event_data["analysis"]["T1"]  # total time
+            T2 = op_event.event_data["analysis"]["T2"]  # op_start to first kernel_start
+            T3 = op_event.event_data["analysis"]["T3"]  # total of kernel latencies
+            T4 = op_event.event_data["analysis"]["T4"]  # last kernel_end to op_end
+            for range_id, data in op_event.event_data["ranges"].items():
+                op_start = data["start"]
+                op_end = data["end"]
+                T1.append(op_end - op_start)
+                assert len(data["cuda_events"]) > 0
+                (_, first_kernel_event, _) = data["cuda_events"][0]
+                (_, last_kernel_event, _) = data["cuda_events"][-1]
+                T2.append(first_kernel_event["start"] - op_start)
+                T4.append(op_end - last_kernel_event["end"])
+                total_kernel_time = 0
+                for cuda_event in data["cuda_events"]:
+                    (_, kernel_event, _) = cuda_event
+                    total_kernel_time += kernel_event["end"] - kernel_event["start"]
+                T3.append(total_kernel_time)
+
+
 def main():
 
-    parser = argparse.ArgumentParser(description="Microbenchmarks")
+    parser = argparse.ArgumentParser(
+        description="Microbenchmarks NSight System Analysis"
+    )
     parser.add_argument(
         "-f", "--file", type=str, default=None, help="The nsys sqlite file."
     )
     parser.add_argument(
         "-o",
-        "--output_prefix",
+        "--output",
         type=str,
         default=None,
-        help="output file prefix",
+        help="output file name",
     )
 
     args = parser.parse_args()
@@ -90,42 +194,18 @@ def main():
     con = sqlite3.connect(args.file)
 
     cur = con.cursor()
-    rows = list(cur.execute(queries["kernels"]))
-    # print_rows(rows)
-
-    op_events: Dict[str, Dict[str, OperatorEvent]] = {}
-
-    for row in rows:
-        range_id = row[0]
-        nvtx_label = row[1]
-        op_info = nvtx_label.split(":")
-        op_name = op_info[0]
-        stage = op_info[1]
-        id = f"{op_info[2]}:{op_info[3]}:{op_info[4]}"
-        pass_name = op_info[5]
-        print(f"op_name: {op_name}, range_id: {range_id}, stage: {stage}, id: {id}, pass: {pass_name}")
-        print(f"  start: {row[2]}, end: {row[3]}, dur: {row[3]-row[2]}")
-        correlation_id = row[4]
-        print(f"    correlation_id: {correlation_id}")
-        kernel_name = row[5]
-        print(f"    kernel: {kernel_name}")
-        print(f"      start: {row[6]}, end: {row[7]}, dur: {row[7]-row[6]}")
-        runtime_name = row[8]
-        print(f"    runtime: {runtime_name}")
-        print(f"      start: {row[9]}, end: {row[10]}, dur: {row[10]-row[9]}")
-        op_events.setdefault(op_name, {})
-        op_events[op_name].setdefault(id, OperatorEvent(op_name, id, row[2], row[3]))
-        op_events[op_name][id].add_cuda_event(range_id, correlation_id, "kernel", kernel_name, row[6], row[7])
-        op_events[op_name][id].add_cuda_event(range_id, correlation_id, "runtime", runtime_name, row[9], row[10])
-
-    print(json.dumps(op_events, indent=2, cls=CustomEncoder))
-
-
-
-
-
-    # rows = cur.execute("select * from where text='measure'")
+    rows = list(cur.execute(queries["nvtx"]))
     con.close()
+    op_events = build_events(rows)
+    analyze_events(op_events)
+    if args.output:
+        out_file_name = args.output
+    else:
+        out_file_name = os.path.splitext(args.file)[0] + ".json"
+    with open(out_file_name, "w") as out_file:
+        for op, run_info in op_events.items():
+            for _, op_range_info in run_info.items():
+                print(json.dumps(op_range_info, cls=CustomEncoder), file=out_file)
 
 
 if __name__ == "__main__":

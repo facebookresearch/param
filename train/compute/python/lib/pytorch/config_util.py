@@ -57,7 +57,7 @@ def get_benchmark_options() -> Dict[str, Any]:
         "run_nsys": False,
         "nsys_bin": "/opt/nvidia/nsight-systems/2021.4.1/bin/nsys",
         "nsys_args": "",
-        "nsight_batch": 50,
+        "run_batch_size": 50,
         "batch_cmd": "python -m param_bench.train.compute.python.pytorch.run_batch",
         "resume_op_run_id": None,
     }
