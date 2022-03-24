@@ -43,7 +43,7 @@ class OpExecutor:
         self.device = run_options["device"]
         self.iteration = run_options["iteration"]
         self.warmup = run_options["warmup"]
-        self.cuda_l2_cache_clear = run_options["cuda_l2_cache_clear"]
+        self.cuda_l2_cache = run_options["cuda_l2_cache"]
         self.pass_type = run_options["pass_type"]
         self.exec_mode = run_options["op_exec_mode"]
         self.use_cuda = self.device.startswith("cuda")
@@ -81,7 +81,7 @@ class OpExecutor:
 
         # flush cache
         if self.use_cuda:
-            if self.cuda_l2_cache_clear:
+            if not self.cuda_l2_cache:
                 _clear_cache()
             # Reset to measure peak memory usage
             torch.cuda.reset_peak_memory_stats()

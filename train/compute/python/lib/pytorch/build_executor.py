@@ -204,7 +204,7 @@ class OpBuildExecutor(BuildExecutor):
         op_info["config"][0]["build"] = self.build_input_config["build"]
         op_info["config"][0]["input"] = self.input_config_queue
         run_options = get_benchmark_options()
-        run_options["cuda_l2_cache_clear"] = self.run_options["cuda_l2_cache_clear"]
+        run_options["cuda_l2_cache"] = self.run_options["cuda_l2_cache"]
         run_options["device"] = self.run_options["device"]
         run_options["iteration"] = iteration
         run_options["op_exec_mode"] = self.run_options["op_exec_mode"].value

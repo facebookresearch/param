@@ -47,7 +47,7 @@ def get_benchmark_options() -> Dict[str, Any]:
         "warmup": 1,
         "iteration": 1,
         "op_exec_mode": OpExecutionMode.DISCRETE,
-        "cuda_l2_cache_clear": True,
+        "cuda_l2_cache": False,
         "time_unit": "millisecond",
         "out_file_prefix": None,
         "out_stream": None,
