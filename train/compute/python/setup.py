@@ -18,6 +18,7 @@ def main():
         f"{package_base}.test": "test",
         f"{package_base}.test.pytorch": "test/pytorch",
         f"{package_base}.tools": "tools",
+        f"{package_base}.tools.lib": "tools/lib",
         f"{package_base}.workloads": "workloads",
         f"{package_base}.workloads.pytorch": "workloads/pytorch",
     }

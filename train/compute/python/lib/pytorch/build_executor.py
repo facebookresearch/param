@@ -298,7 +298,7 @@ class OpBuildExecutor(BuildExecutor):
         start_input_id = self.input_config_queue[0]["id"]
         out_file_prefix = self.run_options["out_file_prefix"]
         timestamp = int(datetime.timestamp(datetime.now()))
-        nsys_output_file = f"{out_file_prefix}_{os.getpid()}_{timestamp}_nsys"
+        nsys_output_file = f"{out_file_prefix}_{os.getpid()}_{timestamp}_nsys.nsys-rep"
         nsys_extra_args = self.run_options["nsys_args"]
         nsys_options = (
             f"profile -t cuda,nvtx -o {nsys_output_file} "
