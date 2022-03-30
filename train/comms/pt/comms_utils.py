@@ -743,17 +743,45 @@ class paramCommsBench(ABC):
             )
 
         if commOp == "all_to_allv":
-            # all_to_all(v) requires two tensors
+            # all_to_allv requires two tensors
             opTensor = self.backendFuncs.alloc_random(
                 [numElementsOut], curDevice, dtype, scaleFactor
             )
             # all_to_allv requires tensors to specify split
             self.collectiveArgs.opTensor_split = (
-                curComm["out_split"] if ("out_split" in curComm.keys()) else [(numElementsOut//world_size) for _ in range(world_size)]
+                curComm["out_split"]
+                if ("out_split" in curComm.keys())
+                else [(numElementsOut // world_size) for _ in range(world_size)]
             )
             self.collectiveArgs.ipTensor_split = (
-                curComm["in_split"] if ("in_split" in curComm.keys()) else [(numElementsIn//world_size) for _ in range(world_size)]
+                curComm["in_split"]
+                if ("in_split" in curComm.keys())
+                else [(numElementsIn // world_size) for _ in range(world_size)]
             )
+        elif commOp == "all_to_all":
+            # all_to_all requires two tensor lists, e.g., List[torch.Tensor]
+            ipTensor = []
+            opTensor = []
+            if commsParams.dcheck == 1:
+                for _ in range(world_size):
+                    ipTensor.append(
+                        self.backendFuncs.alloc_ones(
+                            [(numElementsIn // world_size)], curDevice, commsParams.dtype, self.initVal
+                        )
+                    )
+            else:
+                for _ in range(world_size):
+                    ipTensor.append(
+                        self.backendFuncs.alloc_random(
+                            [(numElementsIn // world_size)], curDevice, commsParams.dtype, scaleFactor
+                        )
+                    )
+            for _ in range(world_size):
+                opTensor.append(
+                    self.backendFuncs.alloc_random(
+                        [(numElementsOut // world_size)], curDevice, dtype, scaleFactor
+                    )
+                )
         elif commOp == "all_gather":
             # allgather requires a tensor list, e.g., List[torch.Tensor]
             for _ in range(world_size):
@@ -816,7 +844,7 @@ class paramCommsBench(ABC):
             opTensor = self.backendFuncs.alloc_random(
                 [numElementsOut], curDevice, dtype, scaleFactor
             )
-        elif commOp in ("all_to_all", "pt2pt"):
+        elif commOp in ("pt2pt"):
             # pt2pt or out-of-place collectives
             opTensor = self.backendFuncs.alloc_random(
                 [numElementsOut],

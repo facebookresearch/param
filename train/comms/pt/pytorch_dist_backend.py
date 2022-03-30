@@ -173,11 +173,9 @@ class PyTorchDistBackend(backendFunctions):
         if collectiveArgs.all2all_qcomm and not pair:
             work = all_to_all_internal(collectiveArgs)
         else:
-            work = dist.all_to_all_single(
+            work = dist.all_to_all(
                 collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
                 collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
-                None,
-                None,
                 group=collectiveArgs.group,
                 async_op=collectiveArgs.asyncOp,
             )
