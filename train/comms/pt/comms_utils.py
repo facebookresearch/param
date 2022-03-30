@@ -666,7 +666,7 @@ class paramCommsBench(ABC):
 
         if (
             # Check results for incast only on root
-            commsParams.collective == "incast"
+            commsParams.collective in ("incast", "reduce")
             and self.backendFuncs.get_global_rank() != commsParams.srcOrDst
         ) or (
             # Check results of multicast only for dst_ranks
