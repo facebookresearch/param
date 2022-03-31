@@ -108,12 +108,12 @@ class OpBuildExecutor(BuildExecutor):
     ):
         def _run_nsight():
             if self.run_options["run_ncu"]:
-                shm, config = self._create_shm_config()
+                shm, config = self._create_shm_config(warmup=self.run_options["ncu_warmup"], iteration=self.run_options["ncu_iteration"])
                 self._run_ncu(shm, config)
                 shm.close()
                 shm.unlink()
             if self.run_options["run_nsys"]:
-                shm, config = self._create_shm_config(warmup=5, iteration=5)
+                shm, config = self._create_shm_config(warmup=self.run_options["nsys_warmup"], iteration=self.run_options["nsys_iteration"])
                 self._run_nsys(shm, config)
                 shm.close()
                 shm.unlink()
