@@ -95,6 +95,12 @@ def main():
         help="Batch run input size (number of input configs to run in one launch), used by both NCU and NSYS.",
     )
     parser.add_argument(
+        "--batch-cuda-device",
+        type=int,
+        default=1,
+        help="CUDA GPU device ID to run batch job.",
+    )
+    parser.add_argument(
         "--batch-cmd",
         type=str,
         default=None,
@@ -136,6 +142,7 @@ def main():
     run_options["cuda_l2_cache"] = args.cuda_l2_cache == "on"
     run_options["resume_op_run_id"] = args.resume_id
     run_options["run_batch_size"] = args.run_batch_size
+    run_options["batch_cuda_device"] = args.batch_cuda_device
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD

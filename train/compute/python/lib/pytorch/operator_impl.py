@@ -1,4 +1,3 @@
-import gc
 from typing import Callable, List
 
 from ..init_helper import get_logger
@@ -57,7 +56,6 @@ class CallableOp(OperatorInterface):
     def cleanup(self):
         self.fwd_out = None
         self.grad_in = None
-        gc.collect()
 
     def forward(self, *args, **kwargs):
         self.fwd_out = self.func(*args, **kwargs)
@@ -99,7 +97,6 @@ class BuildableOp(OperatorInterface):
     def cleanup(self):
         self.fwd_out = None
         self.grad_in = None
-        gc.collect()
 
     def forward(self, *args, **kwargs):
         self.fwd_out = self.func(*args, **kwargs)
@@ -171,7 +168,6 @@ class TorchScriptOp(OperatorInterface):
     def cleanup(self):
         self.fwd_out = None
         self.grad_in = None
-        gc.collect()
 
     def forward(self, *args, **kwargs):
         self.fwd_out = self.func(*args, **kwargs)

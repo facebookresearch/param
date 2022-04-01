@@ -304,7 +304,6 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
         self.op = None
         self.grad_in = None
         self.fwd_out = None
-        gc.collect()
 
     def forward(self, *args, **kwargs):
         self.fwd_out = self.op.forward(args[0], args[1], args[2])

@@ -76,7 +76,7 @@ class Benchmark:
                 for (build_id, build_config) in generate_build_config:
                     logger.info(f"build_id: [{build_id}]")
                     logger.debug(f"build_config: {build_config}")
-                    op_run_id = f"{op_run_id}:{build_id}"
+                    op_run_id = f"{op_run_id}|{build_id}"
                     build_input_config["build"] = build_config
                     build_input_config["input"] = config["input"]
                     self.build_executor.run(op_config, build_input_config, op_run_id)
@@ -85,7 +85,7 @@ class Benchmark:
                 build_config = config.get("build", None)
                 logger.info(f"build_id: [{build_id}]")
                 logger.debug(f"build_config: {build_config}")
-                op_run_id = f"{op_run_id}:{build_id}"
+                op_run_id = f"{op_run_id}|{build_id}"
                 build_input_config["build"] = build_config
                 build_input_config["input"] = config["input"]
                 self.build_executor.run(op_config, build_input_config, op_run_id)

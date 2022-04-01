@@ -3,6 +3,7 @@ from ..init_helper import get_logger
 logger = get_logger()
 
 import abc
+import gc
 import json
 import logging
 import os
@@ -18,6 +19,7 @@ from typing import TextIO
 from ..config import OperatorConfig
 from .config_util import create_op_info, get_benchmark_options
 from .op_executor import OpExecutor
+from .cuda_util import free_torch_cuda_memory, log_cuda_memory_usage
 
 
 class BuildExecutor(metaclass=abc.ABCMeta):
@@ -157,23 +159,35 @@ class OpBuildExecutor(BuildExecutor):
             self.input_config_queue.clear()
 
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
-        run_id = f"{self.config_build_id}:{input_id}"
+        run_id = f"{self.config_build_id}|{input_id}"
 
-        if self.should_skip(f"{self.op_config.name}:{run_id}"):
+        if self.should_skip(f"{self.op_config.name}|{run_id}"):
             return
 
         logger.info(f"input_id: [{input_id}]")
+        if self.run_options["device"].startswith("cuda"):
+            log_cuda_memory_usage()
         logger.debug(f"input_config: {input_config}")
 
-        # generate input data
-        input_data_gen = self.op_config.input_data_generator()
-        (input_args, input_kwargs) = input_data_gen.get_data(
-            input_config, self.run_options["device"]
-        )
+        # generate input data only if we actually need to run it
+        if self.run_options["warmup"] != 0 or self.run_options["iteration"] != 0:
+            input_data_gen = self.op_config.input_data_generator()
+            (input_args, input_kwargs) = input_data_gen.get_data(
+                input_config, self.run_options["device"]
+            )
+            op_exe = OpExecutor(self.op_config.name, self.op_config.op, self.run_options)
 
-        op_exe = OpExecutor(self.op_config.name, self.op_config.op, self.run_options)
+            metrics = op_exe.run(input_args, input_kwargs, run_id)
 
-        metrics = op_exe.run(input_args, input_kwargs, run_id)
+            # clean up inputs
+            input_args = None
+            input_kwargs = None
+            # Reset operator outputs to clear memory
+            self.op_config.op.cleanup()
+            free_torch_cuda_memory()
+        else:
+            metrics = {}
+
         final_config = {
             "build": self.build_input_config["build"],
             "input": input_config,
@@ -262,12 +276,15 @@ class OpBuildExecutor(BuildExecutor):
         cmd = [ncu_bin] + shlex.split(ncu_options) + shlex.split(benchmark_cmd)
         cmd_str = " ".join(cmd)
         logger.info(f"running: {cmd_str}")
+        batch_env = os.environ.copy()
+        batch_env["CUDA_VISIBLE_DEVICES"] = str(self.run_options["batch_cuda_device"])
         with subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             bufsize=1,
             universal_newlines=True,
+            env=batch_env
         ) as proc:
             for line in proc.stdout:
                 if line.strip():
@@ -280,8 +297,8 @@ class OpBuildExecutor(BuildExecutor):
                     "ncu_file": ncu_log_file,
                     "ncu_cmd_str": cmd_str,
                     "config": config,
-                    "start_run_id": f"{self.config_build_id}:{start_input_id}",
-                    "end_run_id": f"{self.config_build_id}:{end_input_id}",
+                    "start_run_id": f"{self.config_build_id}|{start_input_id}",
+                    "end_run_id": f"{self.config_build_id}|{end_input_id}",
                 }
             ),
             file=self.out_stream,
@@ -312,6 +329,8 @@ class OpBuildExecutor(BuildExecutor):
             benchmark_cmd += " -v"
         cmd = [nsys_bin] + shlex.split(nsys_options) + shlex.split(benchmark_cmd)
         cmd_str = " ".join(cmd)
+        batch_env = os.environ.copy()
+        batch_env["CUDA_VISIBLE_DEVICES"] = str(self.run_options["batch_cuda_device"])
         logger.info(f"running: {cmd_str}")
         with subprocess.Popen(
             cmd,
@@ -319,6 +338,7 @@ class OpBuildExecutor(BuildExecutor):
             stderr=subprocess.STDOUT,
             bufsize=1,
             universal_newlines=True,
+            env=batch_env
         ) as proc:
             for line in proc.stdout:
                 if line.strip():
@@ -330,8 +350,8 @@ class OpBuildExecutor(BuildExecutor):
                     "nsys_file": nsys_output_file,
                     "nsys_cmd_str": cmd_str,
                     "config": config,
-                    "start_run_id": f"{self.config_build_id}:{start_input_id}",
-                    "end_run_id": f"{self.config_build_id}:{end_input_id}",
+                    "start_run_id": f"{self.config_build_id}|{start_input_id}",
+                    "end_run_id": f"{self.config_build_id}|{end_input_id}",
                 }
             ),
             file=self.out_stream,
@@ -393,23 +413,36 @@ class MaterializedBuildExecutor(BuildExecutor):
             counter += 1
 
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
-        run_id = f"{self.config_build_id}:{input_id}"
+        run_id = f"{self.config_build_id}|{input_id}"
 
-        if self.should_skip(f"{self.op_config.name}:{run_id}"):
+        if self.should_skip(f"{self.op_config.name}|{run_id}"):
             return
 
         logger.info(f"run_id: [{run_id}]")
+        if self.run_options["device"].startswith("cuda"):
+            log_cuda_memory_usage()
         logger.debug(f"input_config: {input_config}")
 
-        # generate input data
-        input_data_gen = self.op_config.input_data_generator()
-        (input_args, input_kwargs) = input_data_gen.get_data(
-            input_config, self.run_options["device"]
-        )
+        # generate input data only if we actually need to run it
+        if self.run_options["warmup"] != 0 or self.run_options["iteration"] != 0:
+            input_data_gen = self.op_config.input_data_generator()
+            (input_args, input_kwargs) = input_data_gen.get_data(
+                input_config, self.run_options["device"]
+            )
 
-        op_exe = OpExecutor(self.op_config.name, self.op_config.op, self.run_options)
+            op_exe = OpExecutor(self.op_config.name, self.op_config.op, self.run_options)
 
-        metrics = op_exe.run(input_args, input_kwargs, run_id)
+            metrics = op_exe.run(input_args, input_kwargs, run_id)
+        else:
+            metrics = {}
+
+        # clean up inputs
+        input_args = None
+        input_kwargs = None
+        # Reset operator outputs to clear memory
+        self.op_config.op.cleanup()
+        free_torch_cuda_memory()
+
         # print(result)
         final_config = {
             "build": self.build_input_config["build"],
