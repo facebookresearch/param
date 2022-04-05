@@ -859,7 +859,7 @@ class commsCollBench(paramCommsBench):
         dequantTimeTensorList,
     ):
         # convernt num_elements to # of elements per rank
-        if commsParams.collective in ("all_to_all", "all_to_allv"):
+        if commsParams.collective in ("all_to_all", "all_to_allv", "reduce_scatter", "reduce_scatter_base", "all_gather", "all_gather_base"):
             results["numElements"] = int(
                 results["numElements"] // commsParams.comms_world_info.world_size
             )
