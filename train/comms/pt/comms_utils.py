@@ -122,8 +122,11 @@ def getSizes(beginSize, endSize, stepFactor):
 
 def fixBeginSize(commsParams, world_size):
     # ensures we will have atleast one member/rank
-    if (commsParams.collective == "all_to_all") or (
-        commsParams.collective == "all_to_allv"
+    if commsParams.collective in (
+        "all_to_all",
+        "all_to_allv",
+        "all_gather",
+        "all_gather_base",
     ):
         if (commsParams.beginSize / commsParams.element_size) < world_size:
             commsParams.beginSize = world_size * commsParams.element_size
