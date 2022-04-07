@@ -497,6 +497,10 @@ class PyTorchDistBackend(backendFunctions):
             ipTensor = torch.randint(
                 low=0, high=10, size=sizeArr, device=curRankDevice, dtype=dtype
             )
+        elif dtype == torch.bool:
+            ipTensor = torch.randint(
+                low=0, high=1, size=sizeArr, device=curRankDevice
+            )
         else:
             ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
         if (scaleFactor) != 0:

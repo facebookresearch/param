@@ -643,6 +643,7 @@ class paramCommsBench(ABC):
             "long": torch.long,
             "float16": torch.half,
             "float64": torch.double,
+            "bool": torch.bool,
         }
         self.supportedDtype = list(self.dtypeMap.keys())
         self.backendFuncs = ""

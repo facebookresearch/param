@@ -91,6 +91,7 @@ class commsTraceReplayBench(paramCommsBench):
             "Long": torch.long,
             "Double": torch.double,
             "Half": torch.half,
+            "Bool": torch.bool
         }
 
     def readArgs(self, parser):
