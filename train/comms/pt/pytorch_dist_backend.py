@@ -498,13 +498,13 @@ class PyTorchDistBackend(backendFunctions):
                 low=0, high=10, size=sizeArr, device=curRankDevice, dtype=dtype
             )
         elif dtype == torch.bool:
-            ipTensor = torch.randint(
-                low=0, high=1, size=sizeArr, device=curRankDevice
+            ipTensor = (
+                torch.rand(sizeArr, device=curRankDevice, dtype=torch.float32) < 0.5
             )
         else:
             ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
-        if (scaleFactor) != 0:
-            ipTensor = ipTensor / scaleFactor
+            if (scaleFactor) != 0:
+                ipTensor = ipTensor / scaleFactor
         return ipTensor
 
     def alloc_embedding_tables(self, n, m, curRankDevice, dtype):

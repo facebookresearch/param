@@ -651,7 +651,7 @@ class paramCommsBench(ABC):
         self.comm_size = 1
         self.global_rank = -1
         # update initVal to test difffernt value
-        self.initVal = 1.0
+        self.initVal = 1
 
     def isCudaAvail(self):
         return torch.cuda.is_available()
@@ -665,8 +665,12 @@ class paramCommsBench(ABC):
             self.backendFuncs.get_global_rank() == commsParams.srcOrDst
             and commsParams.collective == "reduce"
         ):
-            # NOTE: this is for sum op. and the inital value is "self.initVal"
-            expRes = self.collectiveArgs.world_size * self.initVal
+            # NOTE: for sum op. and the inital value is "self.initVal", for boolean type, self.initVal is always True
+            expRes = (
+                self.initVal
+                if tensor.dtype == torch.bool
+                else self.collectiveArgs.world_size * self.initVal
+            )
 
         if (
             # Check results for incast only on root
@@ -698,6 +702,9 @@ class paramCommsBench(ABC):
 
     def setTensorVal(self, tensor, useRandVal=True):
         newVal = random.random() if useRandVal else self.initVal
+        t = tensor[0] if isinstance(tensor, list) else tensor
+        if t.type == torch.bool:
+            newVal = newVal > 0.5
         # reset values
         if self.collectiveArgs.collective in ("all_reduce", "reduce"):
             # all processes use initVal to have predictable results
@@ -718,7 +725,18 @@ class paramCommsBench(ABC):
 
     # Collection of prepComm private methods
 
-    def _prep_all_to_allv(self, ipTensor, curComm, commsParams, numElementsIn, numElementsOut, world_size, curDevice, dtype, scaleFactor):
+    def _prep_all_to_allv(
+        self,
+        ipTensor,
+        curComm,
+        commsParams,
+        numElementsIn,
+        numElementsOut,
+        world_size,
+        curDevice,
+        dtype,
+        scaleFactor,
+    ):
         """Prepare the all_to_allv mode"""
 
         # all_to_allv requires two tensors
@@ -738,8 +756,18 @@ class paramCommsBench(ABC):
         )
         return (ipTensor, opTensor)
 
-    def _prep_all_to_all(self, ipTensor, curComm, commsParams, numElementsIn,
-                        numElementsOut, world_size, curDevice, dtype, scaleFactor):
+    def _prep_all_to_all(
+        self,
+        ipTensor,
+        curComm,
+        commsParams,
+        numElementsIn,
+        numElementsOut,
+        world_size,
+        curDevice,
+        dtype,
+        scaleFactor,
+    ):
         # all_to_all requires two tensor lists, e.g., List[torch.Tensor]
 
         ipTensor = []
@@ -748,14 +776,20 @@ class paramCommsBench(ABC):
             for _ in range(world_size):
                 ipTensor.append(
                     self.backendFuncs.alloc_ones(
-                        [(numElementsIn // world_size)], curDevice, commsParams.dtype, self.initVal
+                        [(numElementsIn // world_size)],
+                        curDevice,
+                        commsParams.dtype,
+                        self.initVal,
                     )
                 )
         else:
             for _ in range(world_size):
                 ipTensor.append(
                     self.backendFuncs.alloc_random(
-                        [(numElementsIn // world_size)], curDevice, commsParams.dtype, scaleFactor
+                        [(numElementsIn // world_size)],
+                        curDevice,
+                        commsParams.dtype,
+                        scaleFactor,
                     )
                 )
         for _ in range(world_size):
@@ -766,13 +800,26 @@ class paramCommsBench(ABC):
             )
         return (ipTensor, opTensor)
 
-    def _prep_all_gather(self, ipTensor, curComm, commsParams, numElementsIn,
-                        numElementsOut, world_size, curDevice, dtype, scaleFactor):
+    def _prep_all_gather(
+        self,
+        ipTensor,
+        curComm,
+        commsParams,
+        numElementsIn,
+        numElementsOut,
+        world_size,
+        curDevice,
+        dtype,
+        scaleFactor,
+    ):
         opTensor = []
 
         if commsParams.dcheck == 1:
             ipTensor = self.backendFuncs.alloc_ones(
-                [numElementsIn // world_size], curDevice, dtype, scaleFactor=self.initVal
+                [numElementsIn // world_size],
+                curDevice,
+                dtype,
+                scaleFactor=self.initVal,
             )
         else:
             ipTensor = self.backendFuncs.alloc_random(
@@ -787,12 +834,25 @@ class paramCommsBench(ABC):
             )
         return (ipTensor, opTensor)
 
-    def _prep_all_gather_base(self, ipTensor, curComm, commsParams, numElementsIn,
-                        numElementsOut, world_size, curDevice, dtype, scaleFactor):
+    def _prep_all_gather_base(
+        self,
+        ipTensor,
+        curComm,
+        commsParams,
+        numElementsIn,
+        numElementsOut,
+        world_size,
+        curDevice,
+        dtype,
+        scaleFactor,
+    ):
 
         if commsParams.dcheck == 1:
             ipTensor = self.backendFuncs.alloc_ones(
-                [numElementsIn // world_size], curDevice, dtype, scaleFactor=self.initVal
+                [numElementsIn // world_size],
+                curDevice,
+                dtype,
+                scaleFactor=self.initVal,
             )
         else:
             ipTensor = self.backendFuncs.alloc_random(
@@ -807,9 +867,18 @@ class paramCommsBench(ABC):
         )
         return (ipTensor, opTensor)
 
-
-    def _prep_incast(self, ipTensor, curComm, commsParams, numElementsIn,
-                        numElementsOut, world_size, curDevice, dtype, scaleFactor):
+    def _prep_incast(
+        self,
+        ipTensor,
+        curComm,
+        commsParams,
+        numElementsIn,
+        numElementsOut,
+        world_size,
+        curDevice,
+        dtype,
+        scaleFactor,
+    ):
         # incast requires a tensor list with length of src_ranks, e.g., List[torch.Tensor]
         opTensor = []
 
@@ -821,22 +890,38 @@ class paramCommsBench(ABC):
             )
         return (ipTensor, opTensor)
 
-    def _prep_reduce_scatter(self, ipTensor, curComm, commsParams, numElementsIn,
-                        numElementsOut, world_size, curDevice, dtype, scaleFactor):
+    def _prep_reduce_scatter(
+        self,
+        ipTensor,
+        curComm,
+        commsParams,
+        numElementsIn,
+        numElementsOut,
+        world_size,
+        curDevice,
+        dtype,
+        scaleFactor,
+    ):
 
         ipTensor = []
         if commsParams.dcheck == 1:
             for _ in range(world_size):
                 ipTensor.append(
                     self.backendFuncs.alloc_ones(
-                        [numElementsOut // world_size], curDevice, commsParams.dtype, self.initVal
+                        [numElementsOut // world_size],
+                        curDevice,
+                        commsParams.dtype,
+                        self.initVal,
                     )
                 )
         else:
             for _ in range(world_size):
                 ipTensor.append(
                     self.backendFuncs.alloc_random(
-                        [numElementsOut // world_size], curDevice, commsParams.dtype, scaleFactor
+                        [numElementsOut // world_size],
+                        curDevice,
+                        commsParams.dtype,
+                        scaleFactor,
                     )
                 )
         opTensor = self.backendFuncs.alloc_random(
@@ -844,9 +929,18 @@ class paramCommsBench(ABC):
         )
         return (ipTensor, opTensor)
 
-
-    def _prep_reduce_scatter_base(self, ipTensor, curComm, commsParams, numElementsIn,
-                        numElementsOut, world_size, curDevice, dtype, scaleFactor):
+    def _prep_reduce_scatter_base(
+        self,
+        ipTensor,
+        curComm,
+        commsParams,
+        numElementsIn,
+        numElementsOut,
+        world_size,
+        curDevice,
+        dtype,
+        scaleFactor,
+    ):
 
         ipTensor = []
         if commsParams.dcheck == 1:
@@ -868,8 +962,18 @@ class paramCommsBench(ABC):
         )
         return (ipTensor, opTensor)
 
-    def _prep_pt2pt(self, ipTensor, curComm, commsParams, numElementsIn,
-                        numElementsOut, world_size, curDevice, dtype, scaleFactor):
+    def _prep_pt2pt(
+        self,
+        ipTensor,
+        curComm,
+        commsParams,
+        numElementsIn,
+        numElementsOut,
+        world_size,
+        curDevice,
+        dtype,
+        scaleFactor,
+    ):
         # pt2pt or out-of-place collectives
         opTensor = self.backendFuncs.alloc_random(
             [numElementsOut],
@@ -878,7 +982,6 @@ class paramCommsBench(ABC):
             scaleFactor,
         )
         return (ipTensor, opTensor)
-
 
     def prepComm(self, curComm, commsParams):
         """Allocate the tensors for collective"""
@@ -913,20 +1016,29 @@ class paramCommsBench(ABC):
         # TODO: consider using this dictionary to check valid keywords rather than silently defaulting
 
         dispatchDict = {
-                "all_to_allv"         : self._prep_all_to_allv,
-                "all_to_all"          : self._prep_all_to_all,
-                "all_gather"          : self._prep_all_gather,
-                "all_gather_base"     : self._prep_all_gather_base,
-                "incast"              : self._prep_incast,
-                "reduce_scatter"      : self._prep_reduce_scatter,
-                "reduce_scatter_base" : self._prep_reduce_scatter_base,
-                "pt2pt"               : self._prep_pt2pt
+            "all_to_allv": self._prep_all_to_allv,
+            "all_to_all": self._prep_all_to_all,
+            "all_gather": self._prep_all_gather,
+            "all_gather_base": self._prep_all_gather_base,
+            "incast": self._prep_incast,
+            "reduce_scatter": self._prep_reduce_scatter,
+            "reduce_scatter_base": self._prep_reduce_scatter_base,
+            "pt2pt": self._prep_pt2pt,
         }
 
         function_to_call = dispatchDict.get(commOp)
         if function_to_call is not None:
-            ipTensor, opTensor = function_to_call(ipTensor, curComm, commsParams, numElementsIn, numElementsOut,
-                                                world_size, curDevice, dtype, scaleFactor)
+            ipTensor, opTensor = function_to_call(
+                ipTensor,
+                curComm,
+                commsParams,
+                numElementsIn,
+                numElementsOut,
+                world_size,
+                curDevice,
+                dtype,
+                scaleFactor,
+            )
         else:
             # in-place case for other collectives such as allreduce, reduce, broadcast
             opTensor = ipTensor
