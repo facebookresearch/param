@@ -153,24 +153,28 @@ class TorchScriptOp(OperatorInterface):
           return (%3)
         ```
         """
+
         def _extract_types(types_str: str):
-            types = [item for item in types_str.split(',')]
-            types = [item.strip().split(' ')[0] for item in types if '*' not in item]
-            types = [re.sub(r'\[[0-9]\]', '[]', t) for t in types] # e.g. int[2] -> int[]
-            var_types = [item if 'Tensor' not in item else 'Tensor' for item in types] # e.g. Tensor(float) -> Tensor
+            types = [item for item in types_str.split(",")]
+            types = [item.strip().split(" ")[0] for item in types if "*" not in item]
+            types = [
+                re.sub(r"\[[0-9]\]", "[]", t) for t in types
+            ]  # e.g. int[2] -> int[]
+            var_types = [
+                item if "Tensor" not in item else "Tensor" for item in types
+            ]  # e.g. Tensor(float) -> Tensor
             return var_types
 
         assert (
-            len(op_schema) > 0
+            op_schema
         ), f"TorchScriptOp {self.func_name} should have at non-empty op schema."
 
-        func_name, func_signature = op_schema.split('(', 1)
-        args_str, output_str = func_signature.split('->', 1)
-        args_str = args_str.strip("() ")
+        func_name, func_signature = op_schema.split("(", 1)
+        arg_str, output_str = func_signature.split("->", 1)
+        arg_str = arg_str.strip("() ")
         output_str = output_str.strip("() ")
-        arg_types = _extract_types(args_str)
+        arg_types = _extract_types(arg_str)
         output_types = _extract_types(output_str)
-
 
         graph_args = []
         func_args = []
