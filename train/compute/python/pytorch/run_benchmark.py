@@ -7,6 +7,7 @@ from datetime import datetime
 import torch
 from torch.autograd.profiler import record_function
 
+from ..lib import __version__
 from ..lib import pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
 from ..lib.init_helper import init_logging, load_modules
@@ -23,7 +24,7 @@ from ..workloads import pytorch as workloads_pytorch
 def main():
     parser = argparse.ArgumentParser(description="PyTorch Microbenchmarks")
     parser.add_argument(
-        "-c", "--config", type=str, required=True, help="The benchmark config file."
+        "-c", "--config", type=str, help="The benchmark config file."
     )
     parser.add_argument(
         "-w", "--warmup", type=int, default=1, help="Number of warm up iterations."
@@ -75,6 +76,18 @@ def main():
         help="NSight Compute extra command line options (metrics etc.).",
     )
     parser.add_argument(
+        "--ncu-warmup",
+        type=int,
+        default=None,
+        help="NSight Systems number of warmup runs.",
+    )
+    parser.add_argument(
+        "--ncu-iteration",
+        type=int,
+        default=None,
+        help="NSight Systems number of measured iteration runs.",
+    )
+    parser.add_argument(
         "--nsys", action="store_true", help="Run NSight Systems to collect metrics."
     )
     parser.add_argument(
@@ -87,6 +100,18 @@ def main():
         type=str,
         default=None,
         help="NSight Systems extra command line options (metrics etc.).",
+    )
+    parser.add_argument(
+        "--nsys-warmup",
+        type=int,
+        default=None,
+        help="NSight Systems number of warmup runs.",
+    )
+    parser.add_argument(
+        "--nsys-iteration",
+        type=int,
+        default=None,
+        help="NSight Systems number of measured iteration runs.",
     )
     parser.add_argument(
         "--run-batch-size",
@@ -124,10 +149,21 @@ def main():
     parser.add_argument(
         "-l", "--log-level", default="INFO", help="Log output verbosity."
     )
+    parser.add_argument(
+        "--version", action="store_true", help="Print version."
+    )
 
     args = parser.parse_args()
 
     logger = init_logging(getattr(logging, args.log_level.upper(), logging.INFO))
+
+    if args.version:
+        logger.info(f"PARAM train compute version: {__version__}")
+        return
+    elif not args.config:
+        parser.print_usage()
+        return
+
 
     # Load PyTorch implementations for data generator and operators.
     load_modules(lib_pytorch)
@@ -168,13 +204,20 @@ def main():
 
     if args.ncu_bin:
         run_options["ncu_bin"] = args.ncu_bin
-
-    if args.nsys_bin:
-        run_options["nsys_bin"] = args.nsys_bin
-
+    if args.ncu_warmup:
+        run_options["ncu_warmup"] = args.ncu_warmup
+    if args.ncu_iteration:
+        run_options["ncu_iteration"] = args.ncu_iteration
     if args.ncu_args_file:
         with open(args.ncu_args_file, "r") as ncu_file:
             run_options["ncu_args"] = ncu_file.read().strip()
+
+    if args.nsys_bin:
+        run_options["nsys_bin"] = args.nsys_bin
+    if args.nsys_warmup:
+        run_options["nsys_warmup"] = args.nsys_warmup
+    if args.nsys_iteration:
+        run_options["nsys_iteration"] = args.nsys_iteration
     if args.nsys_args_file:
         with open(args.nsys_args_file, "r") as nsys_file:
             run_options["nsys_args"] = nsys_file.read().strip()

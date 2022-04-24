@@ -12,7 +12,7 @@ import torch
 from torch.utils.collect_env import get_nvidia_driver_version
 from torch.utils.collect_env import run as run_cmd
 
-from ...lib import __version__ as param_bench_version
+from ...lib import __version__
 
 
 @enum.unique
@@ -132,7 +132,7 @@ def get_sys_info():
         "pid": os.getpid(),
         "cwd": os.getcwd(),
         "python_version": platform.python_version(),
-        "param_bench_version": param_bench_version,
+        "param_train_compute_version": __version__,
         "cuda_available": cuda_available,
         **cuda_info,
         "pytorch_version": torch.__version__,

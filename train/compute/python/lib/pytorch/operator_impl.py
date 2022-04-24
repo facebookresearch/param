@@ -130,7 +130,7 @@ class TorchScriptOp(OperatorInterface):
         self.fwd_out: torch.tensor = None
         self.grad_in: torch.tensor = None
 
-    def build(self, types: List[str]):
+    def build(self, schema_str: str):
         """
         Because TorchScript is in SSA form, we expect at least one element in
         types for the output. An example is:
