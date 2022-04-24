@@ -24,7 +24,7 @@ def _clear_cache():
     capability = torch.cuda.get_device_capability()
     device_type = capability[0] * 10 + capability[1]
 
-    with record_function("__param_bench__|_clear_cache"):
+    with record_function("[param|clear_cache]"):
         _ = torch.zeros(L2_cache_size[device_type] // 4).float() * 2
         del _
         torch.cuda.empty_cache()
@@ -52,6 +52,9 @@ class OpExecutor:
             OpExecutionMode.CONTINUOUS: self._benchmark_continuous,
             OpExecutionMode.CONTINUOUS_EVENTS: self._benchmark_continuous,
         }
+        self._label_template_fwd = f"[param|{self.name}|{{op_run_id}}|{{tag}}|{ExecutionPass.FORWARD.value}]"
+        self._label_template_bwd = f"[param|{self.name}|{{op_run_id}}|{{tag}}|{ExecutionPass.BACKWARD.value}]"
+        self._label_template_fwd_bwd = f"[param|{self.name}|{{op_run_id}}|{{tag}}|{ExecutionPass.FORWARD.value}_{ExecutionPass.BACKWARD.value}]"
 
     def run(
         self, input_args: List, input_kwargs: Dict[str, Any], op_run_id: str
@@ -61,21 +64,22 @@ class OpExecutor:
         if self.pass_type == ExecutionPass.BACKWARD:
             result[ExecutionPass.BACKWARD.value] = {}
 
-        # Warm up forward (and maybe backward depending on pass_type).
-        self._measure(
-            input_args, input_kwargs, self.warmup, "warmup", op_run_id, result
-        )
-        # Actual measurements.
-        self._measure(
-            input_args, input_kwargs, self.iteration, "measure", op_run_id, result
-        )
+        with record_function(f"[param|{self.name}|{op_run_id}]"):
+            # Warm up forward (and maybe backward depending on pass_type).
+            self._measure(
+                input_args, input_kwargs, self.warmup, "warmup", op_run_id, result
+            )
+            # Actual measurements.
+            self._measure(
+                input_args, input_kwargs, self.iteration, "measure", op_run_id, result
+            )
 
         return result
 
     def _benchmark_op(
-        self, op: Callable, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
+        self, op: Callable, args: List, kwargs: Dict[str, Any], tag: str, label_str: str
     ) -> Tuple[float, float]:
-        logger.debug(f"benchmarking {self.name} {tag} {op_run_id}")
+        logger.debug(f"benchmarking {label_str}")
         gpu_memory = 0
         timer = Timer(self.device)
 
@@ -86,15 +90,16 @@ class OpExecutor:
             # Reset to measure peak memory usage
             torch.cuda.reset_peak_memory_stats()
 
-        timer.start()
-        if self.use_cuda:
-            op_run_id_range = torch.cuda.nvtx.range_start(f"{self.name}|{tag}|{op_run_id}")
-        op(*args, **kwargs)
-        timer.stop()
-        if self.use_cuda:
-            torch.cuda.nvtx.range_end(op_run_id_range)
-            # Memory size in MB
-            gpu_memory = torch.cuda.max_memory_allocated() / (1048576)
+        with record_function(label_str):
+            timer.start()
+            if self.use_cuda:
+                op_run_id_range = torch.cuda.nvtx.range_start(label_str)
+            op(*args, **kwargs)
+            timer.stop()
+            if self.use_cuda:
+                torch.cuda.nvtx.range_end(op_run_id_range)
+                # Memory size in MB
+                gpu_memory = torch.cuda.max_memory_allocated() / (1048576)
 
         # Return result in milliseconds.
         return timer.elapsed_time_ms(), gpu_memory
@@ -102,25 +107,35 @@ class OpExecutor:
     def _benchmark_discrete(
         self, count: int, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
     ) -> Tuple[List[float], List[float], List[float], List[float]]:
+
+        logger.debug(f"benchmarking [{self.name}|{op_run_id}|{tag}]")
+
         fw_time_records = []
         bw_time_records = []
         fw_gpu_mem_records = []
         bw_gpu_mem_records = []
+
+        if self.pass_type == ExecutionPass.BACKWARD:
+            label_str = self._label_template_fwd_bwd.format(tag=tag, op_run_id=op_run_id)
+        else:
+            label_str = self._label_template_fwd.format(tag=tag, op_run_id=op_run_id)
+
         if self.use_cuda:
-            tag_range = torch.cuda.nvtx.range_start(f"param_bench|{tag}")
-        with record_function("__param_bench__|_benchmark_loop_"):
+            tag_range = torch.cuda.nvtx.range_start(f"[param|{tag}]")
+
+        with record_function(label_str):
             for _ in range(count):
-                op_run_pass = f"{op_run_id}|{ExecutionPass.FORWARD.value}"
+                label_str = self._label_template_fwd.format(tag=tag, op_run_id=op_run_id)
                 latency, peak_memory = self._benchmark_op(
-                    self.op.forward, args, kwargs, tag, op_run_pass
+                    self.op.forward, args, kwargs, tag, label_str
                 )
                 fw_time_records.append(latency)
                 fw_gpu_mem_records.append(peak_memory)
                 if self.pass_type == ExecutionPass.BACKWARD:
                     self.op.create_grad()
-                    op_run_pass = f"{op_run_id}|{ExecutionPass.BACKWARD.value}"
+                    label_str = self._label_template_bwd.format(tag=tag, op_run_id=op_run_id)
                     latency, peak_memory = self._benchmark_op(
-                        self.op.backward, [], {}, tag, op_run_pass
+                        self.op.backward, [], {}, tag, label_str
                     )
                     bw_time_records.append(latency)
                     bw_gpu_mem_records.append(peak_memory)
@@ -146,6 +161,7 @@ class OpExecutor:
         Using CUDA events to record is making the assumptions that we are running single stream.
         In this mode, we do not flush cache, assuming benefit from data in warmup.
         """
+        logger.debug(f"benchmarking [{self.name}|{op_run_id}|{tag}]")
 
         def create_cuda_start_stop_events(count: int):
             return [
@@ -169,15 +185,14 @@ class OpExecutor:
         bw_gpu_mem_records = []
 
 
-        tag_range = torch.cuda.nvtx.range_start(f"param_bench|{tag}")
+        tag_range = torch.cuda.nvtx.range_start(f"[param|{tag}]")
 
         fw_events = create_cuda_start_stop_events(count)
         torch.cuda.reset_peak_memory_stats()
         torch.cuda.synchronize()
-        with record_function("__param_bench__|_benchmark_loop_"):
-            op_run_id_range = torch.cuda.nvtx.range_start(
-                f"{self.name}|{tag}|{op_run_id}|{ExecutionPass.FORWARD.value}"
-            )
+        label_str = self._label_template_fwd.format(tag=tag, op_run_id=op_run_id)
+        with record_function(label_str):
+            op_run_id_range = torch.cuda.nvtx.range_start(label_str)
             for i in range(count):
                 fw_events[i][0].record()
                 self.op.forward(*args, **kwargs)
@@ -194,11 +209,10 @@ class OpExecutor:
 
             bw_events = create_cuda_start_stop_events(count)
             torch.cuda.reset_peak_memory_stats()
-            with record_function("__param_bench__|_benchmark_loop_"):
+            label_str = self._label_template_fwd_bwd.format(tag=tag, op_run_id=op_run_id)
+            with record_function(label_str):
                 torch.cuda.synchronize()
-                op_run_id_range = torch.cuda.nvtx.range_start(
-                    f"{self.name}|{tag}|{op_run_id}|{ExecutionPass.FORWARD.value}_{ExecutionPass.BACKWARD.value}",
-                )
+                op_run_id_range = torch.cuda.nvtx.range_start(label_str)
                 for i in range(count):
                     self.op.forward(*args, **kwargs)
                     bw_events[i][0].record()
@@ -223,24 +237,25 @@ class OpExecutor:
         tag: str,
         op_run_id: str,
     ) -> float:
+
+        logger.debug(f"benchmarking {self.name}|{op_run_id}|{tag}")
+
         fw_time_records = []
         bw_time_records = []
         fw_gpu_mem_records = []
         bw_gpu_mem_records = []
-        logger.debug(f"benchmarking {self.name} {tag} {op_run_id}")
-        tag_range = torch.cuda.nvtx.range_start(f"param_bench|{tag}")
+
+        tag_range = torch.cuda.nvtx.range_start(f"[param|{tag}]")
 
         fw_time = 0
         bw_time = 0
         # Always run forward.
         torch.cuda.reset_peak_memory_stats()
-
-        with record_function("__param_bench__|_benchmark_loop_"):
+        label_str = self._label_template_fwd.format(tag=tag, op_run_id=op_run_id)
+        with record_function(label_str):
             timer = Timer(self.device)
             timer.start()
-            op_run_id_range = torch.cuda.nvtx.range_start(
-                f"{self.name}|{tag}|{op_run_id}|{ExecutionPass.FORWARD.value}"
-            )
+            op_run_id_range = torch.cuda.nvtx.range_start(label_str)
             for _i in range(count):
                 self.op.forward(*args, **kwargs)
             timer.stop()
@@ -253,11 +268,10 @@ class OpExecutor:
         if self.pass_type == ExecutionPass.BACKWARD:
             self.op.create_grad()
             torch.cuda.reset_peak_memory_stats()
-            with record_function("__param_bench__|_benchmark_loop_"):
+            label_str = self._label_template_fwd_bwd.format(tag=tag, op_run_id=op_run_id)
+            with record_function(label_str):
                 timer.start()
-                op_run_id_range = torch.cuda.nvtx.range_start(
-                    f"{self.name}|{tag}|{op_run_id}|{ExecutionPass.FORWARD.value}_{ExecutionPass.BACKWARD.value}",
-                )
+                op_run_id_range = torch.cuda.nvtx.range_start(label_str)
                 for _i in range(count):
                     self.op.forward(*args, **kwargs)
                     self.op.backward()
@@ -283,22 +297,25 @@ class OpExecutor:
         tag: str,
         op_run_id: str,
     ) -> float:
-        logger.debug(f"benchmarking {self.name} {tag} {op_run_id}")
+        logger.debug(f"benchmarking [{self.name}|{op_run_id}|{tag}]")
 
         fw_time_records = []
         fw_gpu_mem_records = []
         bw_time_records = []
         bw_gpu_mem_records = []
         timer = Timer(self.device)
-        with record_function("__param_bench__|_benchmark_op"):
-            if self.pass_type == ExecutionPass.FORWARD:
+        if self.pass_type == ExecutionPass.FORWARD:
+            label_str = self._label_template_fwd.format(tag=tag, op_run_id=op_run_id)
+            with record_function(label_str):
                 for _i in range(count):
                     timer.start()
                     self.op.forward(*args, **kwargs)
                     timer.stop()
                     fw_time_records.append(timer.elapsed_time_ms())
 
-            elif self.pass_type == ExecutionPass.BACKWARD:
+        elif self.pass_type == ExecutionPass.BACKWARD:
+            label_str = self._label_template_fwd_bwd.format(tag=tag, op_run_id=op_run_id)
+            with record_function(label_str):
                 for _i in range(count):
                     self.op.forward(*args, **kwargs)
                     self.op.create_grad()
@@ -339,13 +356,12 @@ class OpExecutor:
         bw_time_records = []
         bw_mem_records = []
         if iteration > 0:
-            with record_function(f"__param_bench__:{tag}"):
-                (
-                    fw_time_records,
-                    fw_mem_records,
-                    bw_time_records,
-                    bw_mem_records,
-                ) = self.benchmark_func[self.exec_mode](iteration, args, kwargs, tag, op_run_id)
+            (
+                fw_time_records,
+                fw_mem_records,
+                bw_time_records,
+                bw_mem_records,
+            ) = self.benchmark_func[self.exec_mode](iteration, args, kwargs, tag, op_run_id)
 
         metric_name = tag + ".time"
         pass_name = ExecutionPass.FORWARD.value

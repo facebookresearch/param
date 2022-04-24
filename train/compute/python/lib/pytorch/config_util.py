@@ -65,6 +65,7 @@ def get_benchmark_options() -> Dict[str, Any]:
         "batch_cuda_device": 1,
         "batch_cmd": "python -m param_bench.train.compute.python.pytorch.run_batch",
         "resume_op_run_id": None,
+        "stop_op_run_id": None,
     }
 
     return options

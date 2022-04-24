@@ -3,6 +3,7 @@ from ..init_helper import get_logger
 logger = get_logger()
 
 import abc
+import enum
 import gc
 import json
 import logging
@@ -18,8 +19,20 @@ from typing import TextIO
 
 from ..config import OperatorConfig
 from .config_util import create_op_info, get_benchmark_options
-from .op_executor import OpExecutor
 from .cuda_util import free_torch_cuda_memory, log_cuda_memory_usage
+from .op_executor import OpExecutor
+
+
+@enum.unique
+class BenchmarkTransitionState(enum.Enum):
+    # Forward pass will always run (also required for backward pass).
+    RUN = "Run"
+    SKIP = "Skip"
+    STOP = "Stop"
+
+
+class StopBenchmarkException(Exception):
+    pass
 
 
 class BuildExecutor(metaclass=abc.ABCMeta):
@@ -45,8 +58,9 @@ class BuildExecutor(metaclass=abc.ABCMeta):
         return hasattr(subclass, "run") and callable(subclass.run) or NotImplemented
 
     def __init__(self):
-        self._skip_run = False
+        self._transition_state = BenchmarkTransitionState.RUN
         self._resume_op_run_id = None
+        self._stop_op_run_id = None
 
     # Loads arg configurations and generates the arg data for an op.
     @abc.abstractmethod
@@ -64,19 +78,31 @@ class BuildExecutor(metaclass=abc.ABCMeta):
         # If a valid resume_op_run_id is defined, skip runs by default until
         # a match op run id is found.
         if self._resume_op_run_id:
-            self._skip_run = True
+            self._transition_state = BenchmarkTransitionState.SKIP
         logger.debug(f"_resume_op_run_id: {self._resume_op_run_id}")
-        logger.debug(f"skip_run: {self._skip_run}")
+        logger.debug(f"_transition_state: {self._transition_state}")
 
-    def should_skip(self, op_run_id: str):
+    def set_stop_op_run_id(self, stop_op_run_id: str):
+        logger.debug(f"stop_op_run_id: {stop_op_run_id}")
+        self._stop_op_run_id = stop_op_run_id
+        logger.debug(f"_stop_op_run_id: {self._stop_op_run_id}")
+        logger.debug(f"_transition_state: {self._transition_state}")
+
+    def get_transition_state(self, op_run_id: str):
         # Check if we should skip the run, check if a matching run id is found.
-        if self._skip_run:
+        if self._transition_state == BenchmarkTransitionState.SKIP:
             if op_run_id == self._resume_op_run_id:
-                self._skip_run = False
+                self._transition_state = BenchmarkTransitionState.RUN
+                logger.info(f"Resume benchmark check matched [{op_run_id}]")
+        # If a valid stop_op_run_id is defined, check a match op run id is found
+        # to stop the run
+        if op_run_id == self._stop_op_run_id:
+            self._transition_state = BenchmarkTransitionState.STOP
+            logger.info(f"Stop benchmark check matched [{op_run_id}]")
+
         logger.debug(f"op_run_id: {op_run_id}")
-        logger.debug(f"resume_op_run_id: {self._resume_op_run_id}")
-        logger.debug(f"skip_run: {self._skip_run}")
-        return self._skip_run
+        logger.debug(f"_transition_state: {self._transition_state}")
+        return self._transition_state
 
 
 class OpBuildExecutor(BuildExecutor):
@@ -110,12 +136,18 @@ class OpBuildExecutor(BuildExecutor):
     ):
         def _run_nsight():
             if self.run_options["run_ncu"]:
-                shm, config = self._create_shm_config(warmup=self.run_options["ncu_warmup"], iteration=self.run_options["ncu_iteration"])
+                shm, config = self._create_shm_config(
+                    warmup=self.run_options["ncu_warmup"],
+                    iteration=self.run_options["ncu_iteration"],
+                )
                 self._run_ncu(shm, config)
                 shm.close()
                 shm.unlink()
             if self.run_options["run_nsys"]:
-                shm, config = self._create_shm_config(warmup=self.run_options["nsys_warmup"], iteration=self.run_options["nsys_iteration"])
+                shm, config = self._create_shm_config(
+                    warmup=self.run_options["nsys_warmup"],
+                    iteration=self.run_options["nsys_iteration"],
+                )
                 self._run_nsys(shm, config)
                 shm.close()
                 shm.unlink()
@@ -143,6 +175,14 @@ class OpBuildExecutor(BuildExecutor):
         )
 
         for (input_id, input_config) in generate_input_config:
+            config_run_id = f"{self.op_config.name}|{self.config_build_id}|{input_id}"
+            transition_state = self.get_transition_state(config_run_id)
+            if transition_state == BenchmarkTransitionState.SKIP:
+                continue
+            elif transition_state == BenchmarkTransitionState.STOP:
+                # break here to finsh the remaining work before raising the stop
+                # exception below
+                break
             # run for input, also fills the input_config_queue if there is a
             # need to run in nsight batch.
             self._run_for_input(input_id, input_config)
@@ -158,11 +198,12 @@ class OpBuildExecutor(BuildExecutor):
             _run_nsight()
             self.input_config_queue.clear()
 
+        # Raise exception if we need to stop running.
+        if transition_state == BenchmarkTransitionState.STOP:
+            raise StopBenchmarkException(f"Benchmark stopped at [{config_run_id}]")
+
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
         run_id = f"{self.config_build_id}|{input_id}"
-
-        if self.should_skip(f"{self.op_config.name}|{run_id}"):
-            return
 
         logger.info(f"input_id: [{input_id}]")
         if self.run_options["device"].startswith("cuda"):
@@ -175,7 +216,9 @@ class OpBuildExecutor(BuildExecutor):
             (input_args, input_kwargs) = input_data_gen.get_data(
                 input_config, self.run_options["device"]
             )
-            op_exe = OpExecutor(self.op_config.name, self.op_config.op, self.run_options)
+            op_exe = OpExecutor(
+                self.op_config.name, self.op_config.op, self.run_options
+            )
 
             metrics = op_exe.run(input_args, input_kwargs, run_id)
 
@@ -251,7 +294,7 @@ class OpBuildExecutor(BuildExecutor):
         return shm, config
 
     def _run_ncu(self, shm, config):
-        if not self.run_options['run_ncu']:
+        if not self.run_options["run_ncu"]:
             return
 
         ncu_bin = self.run_options["ncu_bin"]
@@ -284,7 +327,7 @@ class OpBuildExecutor(BuildExecutor):
             stderr=subprocess.STDOUT,
             bufsize=1,
             universal_newlines=True,
-            env=batch_env
+            env=batch_env,
         ) as proc:
             for line in proc.stdout:
                 if line.strip():
@@ -305,9 +348,8 @@ class OpBuildExecutor(BuildExecutor):
         )
         logger.info(f"ncu result: {ncu_log_file}")
 
-
     def _run_nsys(self, shm, config):
-        if not self.run_options['run_nsys']:
+        if not self.run_options["run_nsys"]:
             return
 
         nsys_bin = self.run_options["nsys_bin"]
@@ -317,9 +359,7 @@ class OpBuildExecutor(BuildExecutor):
         timestamp = int(datetime.timestamp(datetime.now()))
         nsys_output_file = f"{out_file_prefix}_{os.getpid()}_{timestamp}_nsys.nsys-rep"
         nsys_extra_args = self.run_options["nsys_args"]
-        nsys_options = (
-            f"profile -t cuda,nvtx -o {nsys_output_file} "
-        )
+        nsys_options = f"profile -t cuda,nvtx -o {nsys_output_file} "
         if nsys_extra_args:
             nsys_options += f" {nsys_extra_args}"
 
@@ -338,7 +378,7 @@ class OpBuildExecutor(BuildExecutor):
             stderr=subprocess.STDOUT,
             bufsize=1,
             universal_newlines=True,
-            env=batch_env
+            env=batch_env,
         ) as proc:
             for line in proc.stdout:
                 if line.strip():
@@ -408,15 +448,25 @@ class MaterializedBuildExecutor(BuildExecutor):
                 input_id = input_config["id"]
             else:
                 input_id = counter
+            counter += 1
+
+            config_run_id = f"{self.op_config.name}|{self.config_build_id}|{input_id}"
+            transition_state = self.get_transition_state(config_run_id)
+            if transition_state == BenchmarkTransitionState.SKIP:
+                continue
+            elif transition_state == BenchmarkTransitionState.STOP:
+                # break here to finsh the remaining work before raising the stop
+                # exception below
+                break
+
             self._run_for_input(input_id, input_config)
 
-            counter += 1
+        # Raise exception if we need to stop running.
+        if transition_state == BenchmarkTransitionState.STOP:
+            raise StopBenchmarkException(f"Benchmark stopped at [{config_run_id}]")
 
     def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
         run_id = f"{self.config_build_id}|{input_id}"
-
-        if self.should_skip(f"{self.op_config.name}|{run_id}"):
-            return
 
         logger.info(f"run_id: [{run_id}]")
         if self.run_options["device"].startswith("cuda"):
@@ -430,7 +480,9 @@ class MaterializedBuildExecutor(BuildExecutor):
                 input_config, self.run_options["device"]
             )
 
-            op_exe = OpExecutor(self.op_config.name, self.op_config.op, self.run_options)
+            op_exe = OpExecutor(
+                self.op_config.name, self.op_config.op, self.run_options
+            )
 
             metrics = op_exe.run(input_args, input_kwargs, run_id)
         else:
