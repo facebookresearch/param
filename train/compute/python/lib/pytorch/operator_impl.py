@@ -155,14 +155,14 @@ class TorchScriptOp(OperatorInterface):
         """
 
         def _extract_types(types_str: str):
+            # split into args in the form of "type_name var_name".
             types = [item for item in types_str.split(",")]
+            # separate betwen type and var name, keep types, skip *.
             types = [item.strip().split(" ")[0] for item in types if "*" not in item]
-            types = [
-                re.sub(r"\[[0-9]\]", "[]", t) for t in types
-            ]  # e.g. int[2] -> int[]
-            var_types = [
-                item if "Tensor" not in item else "Tensor" for item in types
-            ]  # e.g. Tensor(float) -> Tensor
+            # remove list length, e.g. int[2] -> int[].
+            types = [re.sub(r"\[[0-9]\]", "[]", t) for t in types]
+            # remove elem type for tensors, e.g. Tensor(float) -> Tensor
+            var_types = [item if "Tensor" not in item else "Tensor" for item in types]
             return var_types
 
         assert (
