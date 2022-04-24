@@ -8,25 +8,8 @@
           {
             "args": [
               {
-                "value": [
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  },
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  },
-                  {
-                    "type": "str",
-                    "value": "int"
-                  },
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  }
-                ],
-                "type": "genericlist"
+                "value": "aten::add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor",
+                "type": "str"
               }
             ]
           }
@@ -69,25 +52,8 @@
           {
             "args": [
               {
-                "value": [
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  },
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  },
-                  {
-                    "type": "str",
-                    "value": "int"
-                  },
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  }
-                ],
-                "type": "genericlist"
+                "value": "aten::add_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)",
+                "type": "str"
               }
             ]
           }
@@ -132,21 +98,8 @@
           {
             "args": [
               {
-                "value": [
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  },
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  },
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  }
-                ],
-                "type": "genericlist"
+                "value": "aten::matmul(Tensor self, Tensor other) -> Tensor",
+                "type": "str"
               }
             ]
           }
@@ -185,21 +138,8 @@
           {
             "args": [
               {
-                "value": [
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  },
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  },
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  }
-                ],
-                "type": "genericlist"
+                "value": "aten::mul.Tensor(Tensor self, Tensor other) -> Tensor",
+                "type": "str"
               }
             ]
           }
@@ -238,21 +178,8 @@
           {
             "args": [
               {
-                "value": [
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  },
-                  {
-                    "type": "str",
-                    "value": "NoneType"
-                  },
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  }
-                ],
-                "type": "genericlist"
+                "value": "aten::sum.dim_IntList(Tensor self, int[1] dim, bool keepdim=False, *, int? dtype=None) -> (Tensor)",
+                "type": "str"
               }
             ]
           }
@@ -286,25 +213,8 @@
           {
             "args": [
               {
-                "value": [
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  },
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  },
-                  {
-                    "type": "str",
-                    "value": "NoneType"
-                  },
-                  {
-                    "type": "str",
-                    "value": "Tensor"
-                  }
-                ],
-                "type": "genericlist"
+                "value": "aten::convolution_backward(Tensor grad_output, Tensor input, Tensor weight, int[]? bias_sizes, int[] stride, int[] padding, int[] dilation, bool transposed, int[] output_padding, int groups, bool[3] output_mask) -> (Tensor, Tensor, Tensor)",
+                "type": "str"
               }
             ]
           }

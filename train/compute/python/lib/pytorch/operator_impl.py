@@ -4,6 +4,8 @@ from ..init_helper import get_logger
 
 logger = get_logger()
 
+import re
+
 import torch
 
 from ..operator import OperatorInterface
@@ -65,13 +67,17 @@ class CallableOp(OperatorInterface):
         if not self.fwd_out.is_leaf:
             self.grad_in = torch.ones_like(self.fwd_out)
         else:
-            logger.debug(f"{self.constructor.__name__}: skipping create_grad() due to forward result is leaf tensor.")
+            logger.debug(
+                f"{self.constructor.__name__}: skipping create_grad() due to forward result is leaf tensor."
+            )
 
     def backward(self):
         if not self.fwd_out.is_leaf:
             self.fwd_out.backward(self.grad_in)
         else:
-            logger.debug(f"{self.constructor.__name__}: skipping backward() due to forward result is leaf tensor.")
+            logger.debug(
+                f"{self.constructor.__name__}: skipping backward() due to forward result is leaf tensor."
+            )
 
 
 class BuildableOp(OperatorInterface):
@@ -106,13 +112,17 @@ class BuildableOp(OperatorInterface):
         if not self.fwd_out.is_leaf:
             self.grad_in = torch.ones_like(self.fwd_out)
         else:
-            logger.debug(f"{self.constructor.__name__}: skipping create_grad() due to forward result is leaf tensor.")
+            logger.debug(
+                f"{self.constructor.__name__}: skipping create_grad() due to forward result is leaf tensor."
+            )
 
     def backward(self):
         if not self.fwd_out.is_leaf:
             self.fwd_out.backward(self.grad_in)
         else:
-            logger.debug(f"{self.constructor.__name__}: skipping backward() due to forward result is leaf tensor.")
+            logger.debug(
+                f"{self.constructor.__name__}: skipping backward() due to forward result is leaf tensor."
+            )
 
 
 class TorchScriptOp(OperatorInterface):
@@ -120,6 +130,7 @@ class TorchScriptOp(OperatorInterface):
     TorchScriptOp generates a graph IR that runs a specific PyTorch function in
     the SSA form.
     """
+
     def __init__(
         self,
         func_name: str,
@@ -130,7 +141,41 @@ class TorchScriptOp(OperatorInterface):
         self.fwd_out: torch.tensor = None
         self.grad_in: torch.tensor = None
 
-    def build(self, schema_str: str):
+
+    def _convert_jit_type(self, var_type: "torch._C.JitType") -> str:
+        extract_elem_type = re.compile(r"\[(\w+)\]")
+
+        def _extract_elem_type(type_str: str):
+            match = extract_elem_type.search(type_str)
+            if match:
+                return match.group(1)
+            else:
+                raise ValueError(
+                    f"Expecting JIT type with element type, but no match found for: {type_str}"
+                )
+
+        def convert_list(val_type: torch._C.ListType):
+            elem_type = _extract_elem_type(val_type.annotation_str)
+            print("elem type", elem_type)
+            return f"{elem_type}[]"
+
+        def convert_optional(val_type: torch._C.OptionalType):
+            elem_type = _extract_elem_type(val_type.annotation_str)
+            print("elem type", elem_type)
+            return f"{elem_type}?"
+
+        type_converter = {
+            "List": (torch._C.ListType, convert_list),
+            "Optional": (torch._C.OptionalType, convert_optional),
+        }
+        type_prefix = var_type.annotation_str.split("[", 1)
+        if type_prefix[0] in type_converter:
+            actual_type, converter = type_converter[type_prefix[0]]
+            return converter(actual_type(var_type))
+        else:
+            return var_type.annotation_str
+
+    def build(self, op_schema: str):
         """
         Because TorchScript is in SSA form, we expect at least one element in
         types for the output. An example is:
@@ -142,26 +187,68 @@ class TorchScriptOp(OperatorInterface):
           return (%3)
         ```
         """
-        assert len(types) > 0, f"TorchScriptOp {self.func_name} should have at least one type definition for output."
-        var_id = 0
+        def _extract_types(types_str: str):
+            print(types_str)
+            types = [item for item in types_str.split(',')]
+            print(types)
+            types = [item.strip().split(' ')[0] for item in types if '*' not in item]
+            print(types)
+            types = [re.sub(r'\[[0-9]\]', '[]', t) for t in types] # e.g. int[2] -> int[]
+            var_types = [item if 'Tensor' not in item else 'Tensor' for item in types] # e.g. Tensor(float) -> Tensor
+            print(var_types)
+            return var_types
+
+        assert (
+            len(op_schema) > 0
+        ), f"TorchScriptOp {self.func_name} should have at non-empty op schema."
+
+        func_name, func_signature = op_schema.split('(', 1)
+        args_str, output_str = func_signature.split('->', 1)
+        args_str = args_str.strip("() ")
+        output_str = output_str.strip("() ")
+        arg_types = _extract_types(args_str)
+        output_types = _extract_types(output_str)
+
+
         graph_args = []
         func_args = []
-        input_types = types[:-1]
-        output_type = types[-1]
-        for var_type in input_types:
-            graph_args.append(f"%{var_id} : {var_type}")
-            func_args.append(f"%{var_id}")
-            var_id += 1
 
-        output_var = f"%{var_id}"
+        # op_name, op_args = op_schema.split('(', 1)
+        func_schema = torch._C.parse_schema(op_schema)
+        register_id = 0
+        # for arg in func_schema.arguments:
+        for data_type in arg_types:
+            # print(arg.name, arg.type.annotation_str)
+            # data_type: str = self._convert_jit_type(arg.type)
+            graph_args.append(f"%{register_id} : {data_type}")
+            func_args.append(f"%{register_id}")
+            register_id += 1
+
+        func_outputs = []
+        func_output_vars = []
+        func_output_types = []
+        # for output in func_schema.returns:
+        for data_type in output_types:
+            # data_type: str = self._convert_jit_type(output.type)
+            func_outputs.append(f"%{register_id} : {data_type}")
+            func_output_vars.append(f"%{register_id}")
+            func_output_types.append(data_type)
+            output_var = f"%{register_id}"
+            register_id += 1
+        return_construct = ""
+        if len(func_outputs) > 1:
+            return_construct = f"%{register_id}: ({','.join(func_output_types)}) = prim::TupleConstruct({','.join(func_output_vars)})"
+            output_var = f"%{register_id}"
+        actual_func_name = func_schema.name
 
         ts_ir = f"""
             graph({",".join(graph_args)}):
-                {output_var} : {output_type} = {self.func_name}({",".join(func_args)})
+                {",".join(func_outputs)} = {actual_func_name}({",".join(func_args)})
+                {return_construct}
                 return ({output_var})
         """
         ts_graph = torch._C.parse_ir(ts_ir)
-        logger.debug(f"{self.func_name} TorchScript IR Graph: \n{ts_graph}")
+        logger.info(f"{self.func_name} TorchScript IR Graph: \n{ts_graph}")
         cu = torch._C.CompilationUnit()
         self.func = cu.create_function(self.func_name, ts_graph)
 
@@ -170,17 +257,21 @@ class TorchScriptOp(OperatorInterface):
         self.grad_in = None
 
     def forward(self, *args, **kwargs):
-        self.fwd_out = self.func(*args, **kwargs)
+        # self.fwd_out = self.func(*args, **kwargs)
         return self.fwd_out
 
     def create_grad(self):
         if not self.fwd_out.is_leaf:
             self.grad_in = torch.ones_like(self.fwd_out)
         else:
-            logger.debug(f"{self.func_name}: skipping create_grad() due to forward result is leaf tensor.")
+            logger.debug(
+                f"{self.func_name}: skipping create_grad() due to forward result is leaf tensor."
+            )
 
     def backward(self):
         if not self.fwd_out.is_leaf:
             self.fwd_out.backward(self.grad_in)
         else:
-            logger.debug(f"{self.func_name}: skipping backward() due to forward result is leaf tensor.")
+            logger.debug(
+                f"{self.func_name}: skipping backward() due to forward result is leaf tensor."
+            )
