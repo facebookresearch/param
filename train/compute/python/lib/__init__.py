@@ -2,7 +2,7 @@ import time
 
 __base_version__ = "0.1.0"
 
-def __generate_git_param_compute_version():
+def __generate_git_param_train_compute_version():
     # git hash
     commit_version = "-git"
     try:
@@ -16,7 +16,7 @@ def __generate_git_param_compute_version():
     commit_version = f"{commit_version}-{timestamp}"
     return f"{__base_version__}{commit_version}"
 
-def __generate_fbcode_param_compute_version():
+def __generate_fbcode_param_train_compute_version():
     # Meta build hash
     commit_version = "-fbcode"
     try:
@@ -25,6 +25,9 @@ def __generate_fbcode_param_compute_version():
             commit_version = f"{commit_version}-{fbmake['revision']}"
         if fbmake["time"]:
             commit_version = f"{commit_version}-{fbmake['epochtime']}"
+        else:
+            timestamp = int(time.time())
+            commit_version = f"{commit_version}-{timestamp}"
     except Exception:
         commit_version = "-local"
 
@@ -38,7 +41,7 @@ def __get_version():
     except Exception:
         pass
     # If failed try to get fbcode build version.
-    return __generate_fbcode_param_compute_version()
+    return __generate_fbcode_param_train_compute_version()
 
 
 __version__ = __get_version()
