@@ -179,13 +179,9 @@ class TorchScriptOp(OperatorInterface):
         graph_args = []
         func_args = []
 
-        # op_name, op_args = op_schema.split('(', 1)
         func_schema = torch._C.parse_schema(op_schema)
         register_id = 0
-        # for arg in func_schema.arguments:
         for data_type in arg_types:
-            # print(arg.name, arg.type.annotation_str)
-            # data_type: str = self._convert_jit_type(arg.type)
             graph_args.append(f"%{register_id} : {data_type}")
             func_args.append(f"%{register_id}")
             register_id += 1
@@ -193,9 +189,7 @@ class TorchScriptOp(OperatorInterface):
         func_outputs = []
         func_output_vars = []
         func_output_types = []
-        # for output in func_schema.returns:
         for data_type in output_types:
-            # data_type: str = self._convert_jit_type(output.type)
             func_outputs.append(f"%{register_id} : {data_type}")
             func_output_vars.append(f"%{register_id}")
             func_output_types.append(data_type)
@@ -214,7 +208,7 @@ class TorchScriptOp(OperatorInterface):
                 return ({output_var})
         """
         ts_graph = torch._C.parse_ir(ts_ir)
-        logger.info(f"{self.func_name} TorchScript IR Graph: \n{ts_graph}")
+        logger.debug(f"{self.func_name} TorchScript IR Graph: \n{ts_graph}")
         cu = torch._C.CompilationUnit()
         self.func = cu.create_function(self.func_name, ts_graph)
 
