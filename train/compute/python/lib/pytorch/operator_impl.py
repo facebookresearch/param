@@ -141,40 +141,6 @@ class TorchScriptOp(OperatorInterface):
         self.fwd_out: torch.tensor = None
         self.grad_in: torch.tensor = None
 
-
-    def _convert_jit_type(self, var_type: "torch._C.JitType") -> str:
-        extract_elem_type = re.compile(r"\[(\w+)\]")
-
-        def _extract_elem_type(type_str: str):
-            match = extract_elem_type.search(type_str)
-            if match:
-                return match.group(1)
-            else:
-                raise ValueError(
-                    f"Expecting JIT type with element type, but no match found for: {type_str}"
-                )
-
-        def convert_list(val_type: torch._C.ListType):
-            elem_type = _extract_elem_type(val_type.annotation_str)
-            print("elem type", elem_type)
-            return f"{elem_type}[]"
-
-        def convert_optional(val_type: torch._C.OptionalType):
-            elem_type = _extract_elem_type(val_type.annotation_str)
-            print("elem type", elem_type)
-            return f"{elem_type}?"
-
-        type_converter = {
-            "List": (torch._C.ListType, convert_list),
-            "Optional": (torch._C.OptionalType, convert_optional),
-        }
-        type_prefix = var_type.annotation_str.split("[", 1)
-        if type_prefix[0] in type_converter:
-            actual_type, converter = type_converter[type_prefix[0]]
-            return converter(actual_type(var_type))
-        else:
-            return var_type.annotation_str
-
     def build(self, op_schema: str):
         """
         Because TorchScript is in SSA form, we expect at least one element in
@@ -188,14 +154,10 @@ class TorchScriptOp(OperatorInterface):
         ```
         """
         def _extract_types(types_str: str):
-            print(types_str)
             types = [item for item in types_str.split(',')]
-            print(types)
             types = [item.strip().split(' ')[0] for item in types if '*' not in item]
-            print(types)
             types = [re.sub(r'\[[0-9]\]', '[]', t) for t in types] # e.g. int[2] -> int[]
             var_types = [item if 'Tensor' not in item else 'Tensor' for item in types] # e.g. Tensor(float) -> Tensor
-            print(var_types)
             return var_types
 
         assert (
@@ -257,7 +219,7 @@ class TorchScriptOp(OperatorInterface):
         self.grad_in = None
 
     def forward(self, *args, **kwargs):
-        # self.fwd_out = self.func(*args, **kwargs)
+        self.fwd_out = self.func(*args, **kwargs)
         return self.fwd_out
 
     def create_grad(self):

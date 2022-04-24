@@ -178,7 +178,7 @@
           {
             "args": [
               {
-                "value": "aten::sum.dim_IntList(Tensor self, int[1] dim, bool keepdim=False, *, int? dtype=None) -> (Tensor)",
+                "value": "aten::sum(Tensor self, *, ScalarType? dtype=None) -> Tensor",
                 "type": "str"
               }
             ]
@@ -213,7 +213,7 @@
           {
             "args": [
               {
-                "value": "aten::convolution_backward(Tensor grad_output, Tensor input, Tensor weight, int[]? bias_sizes, int[] stride, int[] padding, int[] dilation, bool transposed, int[] output_padding, int groups, bool[3] output_mask) -> (Tensor, Tensor, Tensor)",
+                "value": "aten::linear(Tensor input, Tensor weight, Tensor? bias=None) -> Tensor",
                 "type": "str"
               }
             ]
