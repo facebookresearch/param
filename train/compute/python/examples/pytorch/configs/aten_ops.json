@@ -1,0 +1,250 @@
+{
+  "aten::add": {
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "value": "aten::add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor",
+                "type": "str"
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              },
+              {
+                "value": 1,
+                "type": "int"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "aten::add_": {
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "value": "aten::add_.Tensor(Tensor(a!) self, Tensor other, *, Scalar alpha=1) -> Tensor(a!)",
+                "type": "str"
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor",
+                "requires_grad": false
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor",
+                "requires_grad": false
+              },
+              {
+                "value": 1,
+                "type": "int"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "aten::matmul": {
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "value": "aten::matmul(Tensor self, Tensor other) -> Tensor",
+                "type": "str"
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "aten::mul": {
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "value": "aten::mul.Tensor(Tensor self, Tensor other) -> Tensor",
+                "type": "str"
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "aten::sum": {
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "value": "aten::sum.dim_IntList(Tensor self, int[1] dim, bool keepdim=False, *, int? dtype=None) -> (Tensor)",
+                "type": "str"
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              },
+              {
+                "type": "none"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "aten::linear": {
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "build": [
+          {
+            "args": [
+              {
+                "value": "aten::linear(Tensor input, Tensor weight, Tensor? bias=None) -> Tensor",
+                "type": "str"
+              }
+            ]
+          }
+        ],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "float",
+                "shape": [
+                  4,
+                  4
+                ],
+                "type": "tensor"
+              },
+              {
+                "type": "none"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 from setuptools import setup
 
-from lib import __version__
+from lib import __generate_git_param_train_compute_version
 
 
 def main():
@@ -24,9 +24,13 @@ def main():
 
     packages = list(package_dir_map)
 
+    param_train_compute_version = __generate_git_param_train_compute_version()
+    with open("./lib/_version.py", "w") as version_out:
+        version_out.write(f"__param_train_compute_version='{param_train_compute_version}'")
+
     setup(
         name="parambench-train-compute",
-        version=__version__,
+        version=param_train_compute_version,
         python_requires=">=3.8",
         author="Louis Feng",
         author_email="lofe@fb.com",

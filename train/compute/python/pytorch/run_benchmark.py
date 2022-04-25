@@ -7,6 +7,7 @@ from datetime import datetime
 import torch
 from torch.autograd.profiler import record_function
 
+from ..lib import __version__
 from ..lib import pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
 from ..lib.init_helper import init_logging, load_modules
@@ -22,9 +23,7 @@ from ..workloads import pytorch as workloads_pytorch
 
 def main():
     parser = argparse.ArgumentParser(description="PyTorch Microbenchmarks")
-    parser.add_argument(
-        "-c", "--config", type=str, required=True, help="The benchmark config file."
-    )
+    parser.add_argument("-c", "--config", type=str, help="The benchmark config file.")
     parser.add_argument(
         "-w", "--warmup", type=int, default=1, help="Number of warm up iterations."
     )
@@ -52,21 +51,34 @@ def main():
         help="Define a resume op_run_id to continue benchmark, skip all previous configs.",
     )
     parser.add_argument(
+        "-s",
+        "--stop_id",
+        type=str,
+        default=None,
+        help="Define a stop op_run_id (exclusive) to stop benchmark, skip remaining configs.",
+    )
+    parser.add_argument(
         "-a",
         "--append",
         action="store_true",
         help="Append to output file, rather than overwrite.",
     )
     parser.add_argument(
+        "--cuda-l2-cache",
+        default="off",
+        nargs="?",
+        choices=["on", "off"],
+        help="Set option for CUDA GPU L2 cache between iterations in discrete mode.",
+    )
+    parser.add_argument(
         "--ncu", action="store_true", help="Run NSight Compute to collect metrics."
     )
     parser.add_argument(
-        "--exec-mode",
+        "--ncu-bin",
         type=str,
-        default="continuous",
-        help="Set execution mode of the operators (discrete, continuous, continuous_events).",
+        default=None,
+        help="Path to the NSight Compute (ncu) binary.",
     )
-
     parser.add_argument(
         "--ncu-args-file",
         type=str,
@@ -74,10 +86,69 @@ def main():
         help="NSight Compute extra command line options (metrics etc.).",
     )
     parser.add_argument(
-        "--ncu-batch",
+        "--ncu-warmup",
+        type=int,
+        default=None,
+        help="NSight Systems number of warmup runs.",
+    )
+    parser.add_argument(
+        "--ncu-iteration",
+        type=int,
+        default=None,
+        help="NSight Systems number of measured iteration runs.",
+    )
+    parser.add_argument(
+        "--nsys", action="store_true", help="Run NSight Systems to collect metrics."
+    )
+    parser.add_argument(
+        "--nsys-bin",
+        type=str,
+        default=None,
+        help="Path to the NSight Systems (nsys) binary.",
+    )
+    parser.add_argument(
+        "--nsys-args-file",
+        type=str,
+        default=None,
+        help="NSight Systems extra command line options (metrics etc.).",
+    )
+    parser.add_argument(
+        "--nsys-warmup",
+        type=int,
+        default=None,
+        help="NSight Systems number of warmup runs.",
+    )
+    parser.add_argument(
+        "--nsys-iteration",
+        type=int,
+        default=None,
+        help="NSight Systems number of measured iteration runs.",
+    )
+    parser.add_argument(
+        "--run-batch-size",
         type=int,
         default=50,
-        help="NSight Compute input batch size (number of input configs to run in one launch).",
+        help="Batch run input size (number of input configs to run in one launch), used by both NCU and NSYS.",
+    )
+    parser.add_argument(
+        "--batch-cuda-device",
+        type=int,
+        default=1,
+        help="CUDA GPU device ID to run batch job.",
+    )
+    parser.add_argument(
+        "--batch-cmd",
+        type=str,
+        default=None,
+        help="Run batch job command.",
+    )
+    parser.add_argument(
+        "--exec-mode",
+        type=str,
+        default="discrete",
+        nargs="?",
+        choices=["discrete", "continuous", "continuous_events"],
+        help="Set execution mode of the operators (discrete, continuous, continuous_events). Default=discrete",
     )
     parser.add_argument(
         "-p",
@@ -87,15 +158,20 @@ def main():
     )
 
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Increase log output verbosity."
+        "-l", "--log-level", default="INFO", help="Log output verbosity."
     )
+    parser.add_argument("--version", action="store_true", help="Print version.")
 
     args = parser.parse_args()
 
-    if args.verbose:
-        logger = init_logging(logging.DEBUG)
-    else:
-        logger = init_logging(logging.INFO)
+    logger = init_logging(getattr(logging, args.log_level.upper(), logging.INFO))
+
+    if args.version:
+        logger.info(f"PARAM train compute version: {__version__}")
+        return
+    elif not args.config:
+        parser.print_usage()
+        return
 
     # Load PyTorch implementations for data generator and operators.
     load_modules(lib_pytorch)
@@ -107,8 +183,11 @@ def main():
     run_options["warmup"] = args.warmup
     run_options["iteration"] = args.iteration
     run_options["device"] = args.device
+    run_options["cuda_l2_cache"] = args.cuda_l2_cache == "on"
     run_options["resume_op_run_id"] = args.resume_id
-    run_options["ncu_batch"] = args.ncu_batch
+    run_options["stop_op_run_id"] = args.stop_id
+    run_options["run_batch_size"] = args.run_batch_size
+    run_options["batch_cuda_device"] = args.batch_cuda_device
 
     if args.backward:
         run_options["pass_type"] = ExecutionPass.BACKWARD
@@ -116,8 +195,8 @@ def main():
         run_options["pass_type"] = ExecutionPass.FORWARD
 
     run_options["op_exec_mode"] = OpExecutionMode(args.exec_mode)
-    if args.ncu:
-        run_options["run_ncu"] = True
+    run_options["run_ncu"] = args.ncu
+    run_options["run_nsys"] = args.nsys
 
     pid = os.getpid()
 
@@ -129,10 +208,30 @@ def main():
 
     write_option = "a" if args.append else "w"
 
+    if args.batch_cmd:
+        run_options["batch_cmd"] = args.batch_cmd
+
+    if args.ncu_bin:
+        run_options["ncu_bin"] = args.ncu_bin
+    if args.ncu_warmup:
+        run_options["ncu_warmup"] = args.ncu_warmup
+    if args.ncu_iteration:
+        run_options["ncu_iteration"] = args.ncu_iteration
     if args.ncu_args_file:
         with open(args.ncu_args_file, "r") as ncu_file:
             run_options["ncu_args"] = ncu_file.read().strip()
-    run_options["benchmark_args"] = args.__dict__
+
+    if args.nsys_bin:
+        run_options["nsys_bin"] = args.nsys_bin
+    if args.nsys_warmup:
+        run_options["nsys_warmup"] = args.nsys_warmup
+    if args.nsys_iteration:
+        run_options["nsys_iteration"] = args.nsys_iteration
+    if args.nsys_args_file:
+        with open(args.nsys_args_file, "r") as nsys_file:
+            run_options["nsys_args"] = nsys_file.read().strip()
+
+    run_options["cmd_args"] = args.__dict__
 
     with open(out_file_name, write_option) as out_file:
         run_options["out_file_prefix"] = args.output_prefix
@@ -153,7 +252,7 @@ def main():
         with torch.autograd.profiler.profile(
             args.profile, use_cuda=use_cuda, use_kineto=True, record_shapes=False
         ) as prof:
-            with record_function("__param_bench__"):
+            with record_function(f"[param|{run_options['device']}]"):
                 benchmark.run()
 
         print(

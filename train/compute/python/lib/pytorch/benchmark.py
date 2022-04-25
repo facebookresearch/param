@@ -6,7 +6,7 @@ from typing import List
 from typing import Type
 
 from ..config import OperatorConfig, BenchmarkConfig
-from .build_executor import BuildExecutor, OpBuildExecutor
+from .build_executor import BuildExecutor, OpBuildExecutor, StopBenchmarkException
 from .config_util import init_pytorch
 
 
@@ -45,10 +45,14 @@ class Benchmark:
         # Construct a BuildExecutor
         self.build_executor = build_executor(self.run_options)
         self.build_executor.set_resume_op_run_id(self.run_options["resume_op_run_id"])
+        self.build_executor.set_stop_op_run_id(self.run_options["stop_op_run_id"])
 
     def run(self):
-        for op_config in self.bench_config.op_configs:
-            self.run_op(op_config)
+        try:
+            for op_config in self.bench_config.op_configs:
+                self.run_op(op_config)
+        except StopBenchmarkException as stop_event:
+            logger.info(stop_event)
 
     def run_op(self, op_config: OperatorConfig) -> List[str]:
         logger.info(f"### op: {op_config.name}")
@@ -76,7 +80,7 @@ class Benchmark:
                 for (build_id, build_config) in generate_build_config:
                     logger.info(f"build_id: [{build_id}]")
                     logger.debug(f"build_config: {build_config}")
-                    op_run_id = f"{op_run_id}:{build_id}"
+                    op_run_id = f"{op_run_id}|{build_id}"
                     build_input_config["build"] = build_config
                     build_input_config["input"] = config["input"]
                     self.build_executor.run(op_config, build_input_config, op_run_id)
@@ -85,7 +89,7 @@ class Benchmark:
                 build_config = config.get("build", None)
                 logger.info(f"build_id: [{build_id}]")
                 logger.debug(f"build_config: {build_config}")
-                op_run_id = f"{op_run_id}:{build_id}"
+                op_run_id = f"{op_run_id}|{build_id}"
                 build_input_config["build"] = build_config
                 build_input_config["input"] = config["input"]
                 self.build_executor.run(op_config, build_input_config, op_run_id)

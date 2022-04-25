@@ -1,7 +1,7 @@
-# PARAM Compute Benchmark
+# PARAM Training Compute Benchmark
 
 ## Overview
-The compute benchmarks have gone under development to support new use cases. The previous [standalone](../pt) benchmarks remain unchanged.
+The training compute benchmarks have gone under development to support new use cases. The previous [standalone](../pt) benchmarks remain unchanged.
 
 The general motivation and design philosophy for the new microbenchmarks are:
 * Support a wide variety of PyTorch operators and workloads.
@@ -33,7 +33,7 @@ The installed packages are under **`param_bench.train.compute.python`**.
 To use the [`FBGEMM_GPU`](https://github.com/pytorch/FBGEMM/tree/main/fbgemm_gpu) library and its operator benchmark workload ([`split_table_batched_embeddings_ops.py`](workloads/pytorch/split_table_batched_embeddings_ops.py)), please follow its set up instruction to download and install. It's not required for the compute benchmarks. During initialization, if an operator fail to import, it'll be ignored and will not affect other benchmarks.
 
 ## Usage
-The bundled tool scripts such as [`run_benchmark.py`](pytorch/run_benchmark.py) are written using relative import paths as part of the `parambench-train-compute` package, so they must be run as a module using the `python -m` option.
+The bundled tool scripts such as [`run_benchmark.py`](pytorch/run_benchmark.py) are written using relative import paths as part of the `parambench-train-compute` package, so they must be ran as a module using the `python -m` option.
 
 A reliable way to run the benchmarks is install `parambench-train-compute` as a package following the above instructions. Afterward, it can be ran as:
 ```shell
@@ -59,11 +59,12 @@ A complete example to generate benchmark config, run the benchmark, then get the
 
 ## PyTorch Benchmark Options
 ```
-> python -m param_bench.train.compute.python.pytorch.run_benchmark -h
-usage: run_benchmark.py [-h] -c CONFIG [-w WARMUP] [-i ITERATION] [-b] [-d DEVICE] [-o OUTPUT_PREFIX] [-r RESUME_ID] [-a] [--ncu]
-                        [--ncu-args-file NCU_ARGS_FILE] [--ncu-batch NCU_BATCH] [-v]
+=> python -m param_bench.train.compute.python.pytorch.run_benchmark -h
+usage: run_benchmark.py [-h] [-c CONFIG] [-w WARMUP] [-i ITERATION] [-b] [-d DEVICE] [-o OUTPUT_PREFIX] [-r RESUME_ID] [-s STOP_ID] [-a] [--cuda-l2-cache [{on,off}]] [--ncu] [--ncu-bin NCU_BIN] [--ncu-args-file NCU_ARGS_FILE] [--ncu-warmup NCU_WARMUP]
+                        [--ncu-iteration NCU_ITERATION] [--nsys] [--nsys-bin NSYS_BIN] [--nsys-args-file NSYS_ARGS_FILE] [--nsys-warmup NSYS_WARMUP] [--nsys-iteration NSYS_ITERATION] [--run-batch-size RUN_BATCH_SIZE] [--batch-cuda-device BATCH_CUDA_DEVICE]
+                        [--batch-cmd BATCH_CMD] [--exec-mode [{discrete,continuous,continuous_events}]] [-p] [-l LOG_LEVEL] [--version]
 
-Microbenchmarks
+PyTorch Microbenchmarks
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -80,13 +81,39 @@ optional arguments:
                         File name prefix to write benchmark results.
   -r RESUME_ID, --resume-id RESUME_ID
                         Define a resume op_run_id to continue benchmark, skip all previous configs.
+  -s STOP_ID, --stop_id STOP_ID
+                        Define a stop op_run_id (exclusive) to stop benchmark, skip remaining configs.
   -a, --append          Append to output file, rather than overwrite.
+  --cuda-l2-cache [{on,off}]
+                        Set option for CUDA GPU L2 cache between iterations in discrete mode.
   --ncu                 Run NSight Compute to collect metrics.
+  --ncu-bin NCU_BIN     Path to the NSight Compute (ncu) binary.
   --ncu-args-file NCU_ARGS_FILE
                         NSight Compute extra command line options (metrics etc.).
-  --ncu-batch NCU_BATCH
-                        NSight Compute input batch size (number of input configs to run in one launch).
-  -v, --verbose         Increase log output verbosity.
+  --ncu-warmup NCU_WARMUP
+                        NSight Systems number of warmup runs.
+  --ncu-iteration NCU_ITERATION
+                        NSight Systems number of measured iteration runs.
+  --nsys                Run NSight Systems to collect metrics.
+  --nsys-bin NSYS_BIN   Path to the NSight Systems (nsys) binary.
+  --nsys-args-file NSYS_ARGS_FILE
+                        NSight Systems extra command line options (metrics etc.).
+  --nsys-warmup NSYS_WARMUP
+                        NSight Systems number of warmup runs.
+  --nsys-iteration NSYS_ITERATION
+                        NSight Systems number of measured iteration runs.
+  --run-batch-size RUN_BATCH_SIZE
+                        Batch run input size (number of input configs to run in one launch), used by both NCU and NSYS.
+  --batch-cuda-device BATCH_CUDA_DEVICE
+                        CUDA GPU device ID to run batch job.
+  --batch-cmd BATCH_CMD
+                        Run batch job command.
+  --exec-mode [{discrete,continuous,continuous_events}]
+                        Set execution mode of the operators (discrete, continuous, continuous_events). Default=discrete
+  -p, --profile         Enable profiler and tracing.
+  -l LOG_LEVEL, --log-level LOG_LEVEL
+                        Log output verbosity.
+  --version             Print version.
 ```
 
 ## Benchmark Configuration File
