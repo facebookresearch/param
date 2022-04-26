@@ -260,6 +260,30 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    def scatter(self, collectiveArgs, retFlag=False, pair=False):
+        if pair:
+            ipTensors = collectiveArgs.ipTensor_pair
+            opTensors = collectiveArgs.opTensor_pair
+        else:
+            ipTensors = collectiveArgs.ipTensor
+            opTensors = collectiveArgs.opTensor
+
+        retObj = dist.scatter(
+            tensor=opTensors,
+            scatter_list=ipTensors
+            if (collectiveArgs.global_rank == collectiveArgs.srcOrDst)
+            else None,
+            src=collectiveArgs.srcOrDst,
+            group=collectiveArgs.group,
+            async_op=collectiveArgs.asyncOp,
+        )  # synchronicity is maintained in runColl
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
     def reduce_scatter(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist.reduce_scatter(
             output=collectiveArgs.opTensor,

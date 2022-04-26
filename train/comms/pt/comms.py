@@ -32,7 +32,8 @@ supportedCollectives = [
     "incast",
     "multicast",
     "gather",
-]  # , "scatter"]
+    "scatter",
+]
 pt2ptPatterns = [
     "one2one",
     "pairwise",

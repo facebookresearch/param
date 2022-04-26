@@ -358,6 +358,7 @@ class backendFunctions(ABC):
             "reduce": self.reduce,
             "reduce_scatter": self.reduce_scatter,
             "reduce_scatter_base": self.reduce_scatter_base,
+            "scatter": self.scatter,
             "barrier": self.barrier,
             "incast": self.incast,
             "multicast": self.multicast,
@@ -380,6 +381,7 @@ class backendFunctions(ABC):
             "all_gather",
             "reduce_scatter",
             "reduce_scatter_base",
+            "scatter",
             "all_gather_base",
         ):
             if collectiveArgs.world_size != 0:
@@ -1027,6 +1029,7 @@ class paramCommsBench(ABC):
             "incast": self._prep_incast,
             "reduce_scatter": self._prep_reduce_scatter,
             "reduce_scatter_base": self._prep_reduce_scatter_base,
+            "scatter": self._prep_reduce_scatter,
             "pt2pt": self._prep_pt2pt,
         }
 
