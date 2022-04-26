@@ -31,7 +31,8 @@ supportedCollectives = [
     "all_gather_base",
     "incast",
     "multicast",
-]  # , "scatter", "gather"]
+    "gather",
+]  # , "scatter"]
 pt2ptPatterns = [
     "one2one",
     "pairwise",

@@ -127,6 +127,7 @@ def fixBeginSize(commsParams, world_size):
         "all_to_allv",
         "all_gather",
         "all_gather_base",
+        "gather",
     ):
         if (commsParams.beginSize / commsParams.element_size) < world_size:
             commsParams.beginSize = world_size * commsParams.element_size
@@ -293,7 +294,7 @@ def paramToCommName(name, supported_comms=None):
 
 def ensureTensorFlush(tensors):
     x = None
-    if isinstance(tensors, list) and len(tensors) > 0:
+    if isinstance(tensors, list) and len(tensors) > 0 and len(tensors[-1]) > 0:
         # some collectives like allgather use a list of tensors
         x = tensors[-1][-1].item()  # to ensure collective won't be optimized away.
     elif isinstance(tensors, torch.Tensor) and tensors.nelement() > 0:
@@ -351,6 +352,7 @@ class backendFunctions(ABC):
             "all_to_allv": self.all_to_allv,
             "all_reduce": self.all_reduce,
             "broadcast": self.broadcast,
+            "gather": self.gather,
             "all_gather": self.all_gather,
             "all_gather_base": self.all_gather_base,
             "reduce": self.reduce,
@@ -374,6 +376,7 @@ class backendFunctions(ABC):
         elif collective in (
             "all_to_all",
             "all_to_allv",
+            "gather",
             "all_gather",
             "reduce_scatter",
             "reduce_scatter_base",
@@ -674,7 +677,7 @@ class paramCommsBench(ABC):
 
         if (
             # Check results for incast only on root
-            commsParams.collective in ("incast", "reduce")
+            commsParams.collective in ("incast", "reduce", "gather")
             and self.backendFuncs.get_global_rank() != commsParams.srcOrDst
         ) or (
             # Check results of multicast only for dst_ranks
@@ -1019,6 +1022,7 @@ class paramCommsBench(ABC):
             "all_to_allv": self._prep_all_to_allv,
             "all_to_all": self._prep_all_to_all,
             "all_gather": self._prep_all_gather,
+            "gather": self._prep_all_gather,
             "all_gather_base": self._prep_all_gather_base,
             "incast": self._prep_incast,
             "reduce_scatter": self._prep_reduce_scatter,
