@@ -11,22 +11,19 @@ import torch.nn.functional as F
 
 
 class Net(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, layer_num):
+    def __init__(self, layers_size):
         super(Net, self).__init__()
-        self.layer_num = layer_num
-        self.linear_in = nn.Linear(input_size, hidden_size)
-        self.linear_hid_list = nn.ModuleList(
-            [nn.Linear(hidden_size, hidden_size) for _ in range(self.layer_num)]
+        self.linear_layer_list = nn.ModuleList(
+            [
+                nn.Linear(layers_size[i], layers_size[i + 1])
+                for i in range(len(layers_size) - 1)
+            ]
         )
-        self.linear_out = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
-        x = self.linear_in(x)
-        x = F.relu(x)
-        for linear_hid in self.linear_hid_list:
-            x = linear_hid(x)
+        for layer in self.linear_layer_list:
+            x = layer(x)
             x = F.relu(x)
-        x = self.linear_out(x)
         x = F.softmax(x, dim=1)
         return x
 
@@ -172,7 +169,7 @@ def train(
     return elap, loss
 
 
-def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size):
+def run_single(args, layers_size, batch_size):
 
     device = args.device
     optimizer_type = args.optimizer_type
@@ -184,7 +181,7 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
 
     if device == "cpu":
         dev = torch.device("cpu")
-        model = Net(input_size, hidden_size, output_size, layer_num).to(dev)
+        model = Net(layers_size).to(dev)
         if optimizer_type == "sgd":
             optimizer = torch.optim.SGD(model.parameters(), lr=lr)
         else:
@@ -197,7 +194,7 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
         import apex
 
         dev = torch.device("cuda:0")
-        model = Net(input_size, hidden_size, output_size, layer_num).to(dev)
+        model = Net(layers_size).to(dev)
         if optimizer_type == "sgd":
             optimizer = apex.optimizers.FusedSGD(
                 model.parameters(), lr=lr, set_grad_none=True
@@ -222,14 +219,14 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
 
         dev = xm.xla_device()
         # print("Using device:", dev)
-        model = Net(input_size, hidden_size, output_size, layer_num).to(dev)
+        model = Net(layers_size).to(dev)
         if optimizer_type == "sgd":
             optimizer = torch.optim.SGD(model.parameters(), lr=lr)
         else:
             assert 0, "Unsupported optimizer type"
 
     elap, loss = train(
-        model, dev, optimizer, data_type, input_size, output_size, batch_size, args
+        model, dev, optimizer, data_type, layers_size[0], layers_size[-1], batch_size, args
     )
     return elap, loss
 
@@ -247,28 +244,30 @@ def run(args, dataset):
     )
 
     for i in range(len(dataset)):
-        layer_num, input_size, hidden_size, output_size, batch_size = dataset[i]
+        layers_size, batch_size = dataset[i]
         elap, loss = run_single(
-            args, layer_num, input_size, hidden_size, output_size, batch_size
+            args, layers_size, batch_size
         )
         elap /= args.steps
 
-        flops = batch_size * (
-            hidden_size * hidden_size * layer_num
-            + hidden_size * input_size
-            + hidden_size * output_size
-        )
+        flops = 0
+        for i in range(len(layers_size)-1):
+            flops += layers_size[i] * layers_size[i+1]
+        flops *= batch_size
+
         # Forward 2x and Backward 4x
         flops *= 6
 
         QPS = batch_size / elap
 
+        # The hidden layer size could vary, but for now keeping for backward
+        # compatibility
         print(
             "{0:6},  {1:6},  {2:6},  {3:6},  {4:6},  {5:10.6f},  {6:8.1f}, {7:10.1f}".format(
-                layer_num,
-                input_size,
-                hidden_size,
-                output_size,
+                len(layers_size),
+                layers_size[0],
+                layers_size[1],
+                layers_size[-1],
                 batch_size,
                 elap,
                 QPS,
@@ -276,10 +275,28 @@ def run(args, dataset):
             )
         )
 
+        print("layers size: {}".format(layers_size))
+
+
+def dash_separated_ints(value):
+    vals = value.split("-")
+    for val in vals:
+        try:
+            if val:
+                int(val)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                "%s is not a valid dash separated list of ints" % value
+            )
+
+    return value
+
 
 if __name__ == "__main__":
 
     import argparse
+
+    import numpy as np
 
     parser = argparse.ArgumentParser(description="Measure the performance of MLP")
     parser.add_argument("--device", required=True, choices=["cpu", "gpu", "tpu"])
@@ -300,8 +317,12 @@ if __name__ == "__main__":
     )
     parser.add_argument("--batch-size", type=int, default=512, help="Batch size")
     parser.add_argument("--input-size", type=int, default=1024, help="Input layer size")
+    parser.add_argument("--hidden-size", type=int, default=1024,help="Number of hidden_sizes per layer")
     parser.add_argument(
-        "--hidden-size", type=int, default=1024, help="Number of hidden_sizes per layer"
+        "--layers-size", #"1024-1024-1024-1024" for example
+        type=dash_separated_ints,
+        default="",
+        help="dash separated shape for all layers",
     )
     parser.add_argument(
         "--output-size", type=int, default=1024, help="Output layer size"
@@ -310,11 +331,19 @@ if __name__ == "__main__":
     parser.add_argument("--warmups", type=int, default=10)
 
     args = parser.parse_args()
-    layer_num = args.layer_num
     batch_size = args.batch_size
-    input_size = args.input_size
-    hidden_size = args.hidden_size
-    output_size = args.output_size
 
-    d = [(layer_num, input_size, hidden_size, output_size, batch_size)]
+    layers_size = []
+    if args.layers_size:
+        print("Using 'layers-size'")
+        layers_size = np.fromstring(args.layers_size, dtype=int, sep="-")
+        layers_size = [int(size) for size in layers_size]
+    else:
+        print("Using 'input_size', 'hidden_size' and 'output_size'.")
+        layers_size.append(args.input_size)
+        for _ in range(args.layer_num):
+            layers_size.append(args.hidden_size)
+        layers_size.append(args.output_size)
+
+    d = [(layers_size, batch_size)]
     run(args, d)
