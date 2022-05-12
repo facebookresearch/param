@@ -84,16 +84,6 @@ class commsTraceReplayBench(paramCommsBench):
 
         import torch
 
-        self.strToTorchDtype = {
-            "Byte": torch.uint8,
-            "Float": torch.float32,
-            "Int": torch.int32,
-            "Long": torch.long,
-            "Double": torch.double,
-            "Half": torch.half,
-            "Bool": torch.bool
-        }
-
     def readArgs(self, parser):
         # read the common/basic arguments
         super().readArgs(parser)
@@ -382,7 +372,7 @@ class commsTraceReplayBench(paramCommsBench):
                 f"shrink message sizes to curInNumElem {curComm['in_msg_size']}, curOutNumElem {curComm['out_msg_size']}"
             )
 
-        commsParams.dtype = self.strToTorchDtype[curComm["dtype"]]
+        commsParams.dtype = self.dtypeMap[curComm["dtype"]]
         # allocate and return tensors
         return super().prepComm(curComm, commsParams)
 
