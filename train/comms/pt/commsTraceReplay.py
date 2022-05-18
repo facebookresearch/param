@@ -379,14 +379,15 @@ class commsTraceReplayBench(paramCommsBench):
     def warmUpBench(self, commsParams):
         for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
             commEntry = curComm.copy()
-            if commEntry["comms"] not in self.allowList:
+            commName = paramToCommName(commEntry["comms"])
+            if commName not in self.allowList:
                 continue
             if self.backendFuncs.get_global_rank() == 0:
                 logger.debug(
                     f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(commEntry)}\n"
                 )
                 print(
-                    f"[Warm-up][{cnt} / {self.max_msg_cnt}] Replaying {commEntry['comms']:>10}...",
+                    f"[Warm-up][{cnt} / {self.max_msg_cnt}] Replaying {commName:>10}...",
                     end="\r",
                 )
 
@@ -396,8 +397,8 @@ class commsTraceReplayBench(paramCommsBench):
                 self.collectiveArgs.opTensor,
             ) = self.prepComms(commEntry, commsParams)
 
-            if commEntry["comms"] in self.backendFuncs.collectiveFunc.keys():
-                self.backendFuncs.collectiveFunc[commEntry["comms"]](self.collectiveArgs)
+            if commName in self.backendFuncs.collectiveFunc.keys():
+                self.backendFuncs.collectiveFunc[commName](self.collectiveArgs)
             # skip not supported ops
 
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)

@@ -655,6 +655,7 @@ class paramCommsBench(ABC):
             "Double": torch.double,
             "Half": torch.half,
             "Bool": torch.bool,
+            "Byte": torch.uint8,
         }
         self.supportedDtype = list(self.dtypeMap.keys())
         self.backendFuncs = ""
