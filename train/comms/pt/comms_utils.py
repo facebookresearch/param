@@ -556,6 +556,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.numWarmupIters = args.w
         self.numIters = args.n
         self.collective = args.collective
+        self.collective_list = args.collective.split(',')
         self.mode = args.mode
 
         self.kernel = args.kernel
