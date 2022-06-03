@@ -6,6 +6,7 @@ from datetime import datetime
 
 import torch
 from torch.autograd.profiler import record_function
+from torch.profiler import ExecutionGraphObserver
 
 from ..lib import __version__
 from ..lib import pytorch as lib_pytorch
@@ -156,6 +157,11 @@ def main():
         action="store_true",
         help="Enable profiler and tracing.",
     )
+    parser.add_argument(
+        "--eg",
+        action="store_true",
+        help="Collect execution graph.",
+    )
 
     parser.add_argument(
         "-l", "--log-level", default="INFO", help="Log output verbosity."
@@ -249,11 +255,24 @@ def main():
         use_cuda = False
         if run_options["device"].startswith("cuda"):
             use_cuda = True
+
+        eg = None
+        if args.eg:
+            eg_file = f"{out_file_prefix}_eg.json"
+            eg = ExecutionGraphObserver()
+            eg.register_callback(eg_file)
+            eg.start()
+
         with torch.autograd.profiler.profile(
             args.profile, use_cuda=use_cuda, use_kineto=True, record_shapes=False
         ) as prof:
             with record_function(f"[param|{run_options['device']}]"):
                 benchmark.run()
+
+        if eg:
+            eg.stop()
+            eg.unregister_callback()
+            logger.info(f"exeution graph: {eg_file}")
 
         print(
             json.dumps({"finish_time": datetime.now().isoformat(timespec="seconds")}),
