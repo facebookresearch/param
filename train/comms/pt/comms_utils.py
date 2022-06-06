@@ -1122,7 +1122,7 @@ class paramCommsBench(ABC):
             "--device",
             type=str,
             default=("cuda" if self.isCudaAvail() else "cpu"),
-            choices=["cpu", "cuda", "tpu"],
+            choices=["cpu", "cuda", "rocm", "tpu"],
             help="data placement",
         )  # device to place data for collective benchmarking
         parser.add_argument(

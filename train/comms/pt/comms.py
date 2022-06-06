@@ -222,6 +222,10 @@ class commsCollBench(paramCommsBench):
         if args.device == "cpu" and args.backend == "nccl":
             raise ValueError(f"NCCL is not supported for device type {args.device}")
 
+        # Overwrite user-input rocm device as we internally use cuda for both GPUs
+        if args.device == "rocm":
+            args.device = "cuda"
+
         reduce_ops = ["all_reduce", "reduce", "reduce_scatter"]
         if (
             args.c == 1
