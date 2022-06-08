@@ -44,6 +44,8 @@ def train_cpu(
         # data, target = data.to(device), target.to(device)
         if data_type == "float16":
             data = data.half()
+        elif data_type == "bfloat16":
+            data = data.bfloat16()
 
         optimizer.zero_grad()
         output = model(data).float()
@@ -65,6 +67,8 @@ def train_gpu(
 
     if data_type == "float16":
         model = apex.fp16_utils.network_to_half(model)
+    elif data_type == "bfloat16":
+        model = model.bfloat16()
 
     # model.train()
     torch.cuda.synchronize()
@@ -80,6 +84,8 @@ def train_gpu(
         # data, target = data.to(device), target.to(device)
         if data_type == "float16":
             data = data.half()
+        elif data_type == "bfloat16":
+            data = data.bfloat16()
 
         if i >= args.warmups:
             start_event.record()
