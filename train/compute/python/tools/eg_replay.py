@@ -23,6 +23,8 @@ class ExgrReplayManager:
         self.dependency_permanent = defaultdict(int)
         self.sorted_nodes = []
         self.funcs = {}
+        # Mark some intermediate tensors (output of operators) as unchangeable
+        self.unchangeable_intermediate_tensors = set()
 
         # Temporary
         self.tensor_registry = {}
@@ -114,14 +116,28 @@ class ExgrReplayManager:
                 if is_tensor(n, idx) and \
                         ip not in self.tensor_registry_permanent.keys() and \
                         ip in self.dependency_permanent.keys() and \
-                        ip not in intermediate: # Only take the first size
+                        (n.name == "aten::embedding_bag" or ip not in intermediate): # Only take the first size
                     try:
                         dtype, rng = TORCH_DTYPES_RNG[n.input_types[idx].lstrip('Tensor(').rstrip(')')]
                         self.tensor_registry_permanent[ip] = rng(n.input_shapes[idx]).to(dtype)
+                        # Mark offsets tensor for retrieving embedding table as unchangeable
+                        # since we want to specify its distribution
+                        if ip in intermediate:
+                            self.unchangeable_intermediate_tensors.add(ip)
                     except KeyError:
                         self.tensor_registry_permanent[ip] = None
                     # except:
                     #     print(n.name, n.id, ip, n.input_shapes[idx])
+            ######
+            # Workaround to match offsets for embedding table
+            # Currently assume a uniform distribution
+            if n.name == "aten::embedding_bag":
+                indices_tensor_shape = n.input_shapes[1][0]
+                offsets_tensor_shape = n.input_shapes[2][0]
+                nnz = indices_tensor_shape / offsets_tensor_shape
+                for i in range(offsets_tensor_shape):
+                   self.tensor_registry_permanent[n.inputs[2]][i] = i * nnz
+            ######
 
 
     def preprocess_graph(self):
@@ -177,7 +193,9 @@ class ExgrReplayManager:
                 del self.tensor_registry[input_id]
                 del self.dependency[input_id]
         for output_id, output in zip(node.outputs, outputs):
-            self.tensor_registry[output_id] = output
+            if output_id in self.dependency_permanent.keys():
+                if output_id not in self.unchangeable_intermediate_tensors:
+                    self.tensor_registry[output_id] = output
         # print("Tensor registry (count: {})".format(len(self.tensor_registry.keys())))
         # pprint(self.tensor_registry.keys())
         # print("Tensor dependency")
