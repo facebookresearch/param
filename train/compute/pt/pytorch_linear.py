@@ -59,6 +59,9 @@ def train_cpu(
 def train_gpu(
     model, device, optimizer, data_type, input_size, output_size, batch_size, args
 ):
+    if data_type == "tf32":
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cuda.matmul.allow_tf32 = True
     import apex
 
     loss_f = nn.CrossEntropyLoss().to(device)
@@ -310,7 +313,7 @@ if __name__ == "__main__":
         "--dtype",
         default="float",
         help="data type",
-        choices=["float", "float16", "bfloat16"],
+        choices=["float", "float16", "bfloat16", "tf32"],
     )
     parser.add_argument(
         "--layer-num", type=int, default=20, help="Number of Linear layers"

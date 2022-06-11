@@ -65,6 +65,9 @@ def run_single(args, m, n, k):
         dt = torch.float16
     elif (dtype == "bfloat16"):
         dt = torch.bfloat16
+    elif (dtype == "tf32"):
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cuda.matmul.allow_tf32 = True
 
     torch.manual_seed(0)
 
