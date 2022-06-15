@@ -21,6 +21,10 @@ def is_tensor(n, ip):
     return isinstance(ip, int) and 'Tensor' in n.input_types[ip]
 
 
+def is_output_tensor(n, ip):
+    return isinstance(ip, int) and 'Tensor' in n.output_types[ip]
+
+
 def is_op(node):
     return node.type == NodeType.OPERATOR # and (node.parent is not None and node.parent.type != NodeType.OPERATOR)
 
@@ -48,9 +52,7 @@ def is_qualified(op):
 
 
 def trace_handler(prof):
-    # print(prof.key_averages().table(
-    #     sort_by="self_cuda_time_total", row_limit=-1))
-    prof.export_chrome_trace("/tmp/test_trace_" + str(prof.step_num) + ".json")
+    prof.export_chrome_trace("/tmp/test_trace_replay.json")
 
 
 def another_trace_handler():

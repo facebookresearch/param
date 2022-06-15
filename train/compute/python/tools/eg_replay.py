@@ -7,7 +7,7 @@ from ..lib import pytorch as lib_pytorch
 from ..lib.init_helper import load_modules
 from ..workloads import pytorch as workloads_pytorch
 from .execution_graph import ExecutionGraph
-from .eg_replay_utils import is_tensor, is_qualified, another_trace_handler, TORCH_DTYPES_RNG, build_torchscript_func
+from .eg_replay_utils import is_tensor, is_output_tensor, is_qualified, trace_handler, TORCH_DTYPES_RNG, build_torchscript_func
 
 
 class ExgrReplayManager:
@@ -25,6 +25,21 @@ class ExgrReplayManager:
         self.funcs = {}
         # Mark some intermediate tensors (output of operators) as unchangeable
         self.unchangeable_intermediate_tensors = set()
+        # Unique tensors in execution graph identified by [tensor_id, storage_id, offset, num_elem, elem_bytes]
+        self.original_unique_tensors = set()
+        # Number Unique tensors in replay since unique tensors in eg may have multiple shapes and to accommodate that
+        # in replay we treat tensors with same identifier but different shapes as different tensors
+        self.replay_unique_tensor_num = 0
+        # Map unique tensor with the node id of its operation in eg to unique tensors in replay. We assume
+        # the shape of a tensor for an operation keeps the same (e.g., a tensor can be both input and output)
+        self.tensors_mapping = {}
+        # Dict that stores the shape of each unique tensor in replay
+        self.replay_tensors_shapes = {}
+        # Dict that stores the shapes of a tensor that has appeared, for the convenience of quickly determining whether
+        # to create a unique tensor in replay if the identifier is same but shape is different
+        self.tensor_shapes = defaultdict(set)
+        # Mark all intermediate tensors
+        self.intermediate = set()
 
         # Temporary
         self.tensor_registry = {}
@@ -95,39 +110,61 @@ class ExgrReplayManager:
         self.sorted_nodes = [(id, node) for id, node in sorted(self.sorted_nodes, key=lambda x: x[0])]
 
 
-    def allocate_tensors(self):
-        # Mark all intermediate tensors
-        intermediate = set()
-        input_set = set()
+    def analyze_tensors(self):
+
+        def add_unique_tensor(n, idx, ip, shape, add_to_intermediate=False):
+            # If we did not see this tensor before, add it as a unique tensor
+            if ip not in self.original_unique_tensors:
+                self.original_unique_tensors.add(ip)
+                self.replay_unique_tensor_num += 1
+                self.tensors_mapping[(n.id, ip)] = self.replay_unique_tensor_num
+                self.replay_tensors_shapes[self.tensors_mapping[(n.id, ip)]] = shape
+                self.tensor_shapes[ip].add((self.tensors_mapping[(n.id, ip)], tuple(shape)))
+                if add_to_intermediate:
+                    self.intermediate.add(self.tensors_mapping[(n.id, ip)])
+                return
+
+            # If we saw this tensor before but with a different shape, add it as a unique tensor
+            for (relay_id, pre_shape) in self.tensor_shapes[ip]:
+                if tuple(shape) == pre_shape:
+                    self.tensors_mapping[(n.id, ip)] = relay_id
+                    return
+
+            self.replay_unique_tensor_num += 1
+            self.tensors_mapping[(n.id, ip)] = self.replay_unique_tensor_num
+            self.replay_tensors_shapes[self.tensors_mapping[(n.id, ip)]] = shape
+            self.tensor_shapes[ip].add((self.tensors_mapping[(n.id, ip)], tuple(shape)))
+            if add_to_intermediate:
+                self.intermediate.add(self.tensors_mapping[(n.id, ip)])
+
         for _, n in self.sorted_nodes:
             for idx, ip in enumerate(n.inputs):
-                if is_tensor(n, idx) and ip in self.dependency_permanent.keys():
-                    input_set.add(ip)
+                if not is_tensor(n, idx) or ip not in self.dependency_permanent.keys():
+                    continue
+                add_unique_tensor(n, idx, ip, n.input_shapes[idx], add_to_intermediate=False)
+            for idx, ip in enumerate(n.outputs):
+                if not is_output_tensor(n, idx) or ip not in self.dependency_permanent.keys():
+                    continue
+                add_unique_tensor(n, idx, ip, n.output_shapes[idx], add_to_intermediate=True)
 
-            # Tensors occurred as inputs before are not to be removed
-            for o in n.outputs:
-                if o in self.dependency_permanent and \
-                        o not in input_set:
-                    intermediate.add(o)
 
+    def allocate_tensors(self):
         # Instantiation of tensors:
         for _, n in self.sorted_nodes:
             for idx, ip in enumerate(n.inputs):
                 if is_tensor(n, idx) and \
-                        ip not in self.tensor_registry_permanent.keys() and \
                         ip in self.dependency_permanent.keys() and \
-                        (n.name == "aten::embedding_bag" or ip not in intermediate): # Only take the first size
+                        self.tensors_mapping[(n.id, ip)] not in self.tensor_registry_permanent.keys() and \
+                        (n.name == "aten::embedding_bag" or self.tensors_mapping[(n.id, ip)] not in self.intermediate):
                     try:
                         dtype, rng = TORCH_DTYPES_RNG[n.input_types[idx].lstrip('Tensor(').rstrip(')')]
-                        self.tensor_registry_permanent[ip] = rng(n.input_shapes[idx]).to(dtype)
+                        self.tensor_registry_permanent[self.tensors_mapping[(n.id, ip)]] = rng(n.input_shapes[idx]).to(dtype)
                         # Mark offsets tensor for retrieving embedding table as unchangeable
                         # since we want to specify its distribution
-                        if ip in intermediate:
-                            self.unchangeable_intermediate_tensors.add(ip)
+                        if self.tensors_mapping[(n.id, ip)] in self.intermediate:
+                            self.unchangeable_intermediate_tensors.add(self.tensors_mapping[(n.id, ip)])
                     except KeyError:
-                        self.tensor_registry_permanent[ip] = None
-                    # except:
-                    #     print(n.name, n.id, ip, n.input_shapes[idx])
+                        self.tensor_registry_permanent[self.tensors_mapping[(n.id, ip)]] = None
             ######
             # Workaround to match offsets for embedding table
             # Currently assume a uniform distribution
@@ -136,9 +173,9 @@ class ExgrReplayManager:
                 offsets_tensor_shape = n.input_shapes[2][0]
                 nnz = indices_tensor_shape / offsets_tensor_shape
                 for i in range(offsets_tensor_shape):
-                   self.tensor_registry_permanent[n.inputs[2]][i] = i * nnz
+                   self.tensor_registry_permanent[self.tensors_mapping[(n.id, n.inputs[2])]][i] = i * nnz
             ######
-
+        # print(len(self.tensor_registry_permanent))
 
     def preprocess_graph(self):
         # Get root node
@@ -147,6 +184,15 @@ class ExgrReplayManager:
 
         # Parse graph
         self._dfs_traverse(root_node)
+
+        # Analyze tensors
+        self.analyze_tensors()
+
+        # tensor_with_multiple_shape_count = 0
+        # for tensor in self.tensor_shapes:
+        #     if len(self.tensor_shapes[tensor]) != 1:
+        #         tensor_with_multiple_shape_count += len(self.tensor_shapes[tensor])
+        # print("Tensor count with same identifier but different shapes: ", tensor_with_multiple_shape_count)
 
         # Allocate
         self.allocate_tensors()
@@ -159,7 +205,7 @@ class ExgrReplayManager:
         # print("-----")
         # print(node.name, node.inputs, node.outputs)
         inputs = [
-            self.tensor_registry[item] if is_tensor(node, idx) else \
+            self.tensor_registry[self.tensors_mapping[(node.id, item)]] if is_tensor(node, idx) else \
             (
                 None if item == '<None>' else item
             ) for idx, item in enumerate(node.inputs)
@@ -178,28 +224,10 @@ class ExgrReplayManager:
         else:
             outputs = func(*inputs)
 
-        # print("Dependency count")
-        # pprint(self.dependency)
-        for idx, input_id in enumerate(node.inputs):
-            # Only consider tensor id
-            if not is_tensor(node, idx):
-                continue
-            # print(input_id, self.dependency[input_id])
-            if input_id not in node.outputs:
-                self.dependency[input_id] -= 1
-            # print(input_id, self.dependency[input_id])
-            if self.dependency[input_id] == 0:
-                # print("delete tensor {}".format(input_id))
-                del self.tensor_registry[input_id]
-                del self.dependency[input_id]
         for output_id, output in zip(node.outputs, outputs):
             if output_id in self.dependency_permanent.keys():
-                if output_id not in self.unchangeable_intermediate_tensors:
-                    self.tensor_registry[output_id] = output
-        # print("Tensor registry (count: {})".format(len(self.tensor_registry.keys())))
-        # pprint(self.tensor_registry.keys())
-        # print("Tensor dependency")
-        # pprint(self.dependency)
+                if self.tensors_mapping[(node.id, output_id)] not in self.unchangeable_intermediate_tensors:
+                    self.tensor_registry[self.tensors_mapping[(node.id, output_id)]] = output
 
 
     def benchTime(self):
@@ -207,8 +235,20 @@ class ExgrReplayManager:
         total_time = 0.0
         event_1 = torch.cuda.Event(enable_timing=True)
         event_2 = torch.cuda.Event(enable_timing=True)
-        with torch.autograd.profiler.profile(
-            self.profile_replay, use_cuda=True, use_kineto=True, record_shapes=False
+
+        with torch.profiler.profile(
+            activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA,
+            ],
+            record_shapes=True,
+            # schedule=torch.profiler.schedule(
+            #     skip_first=10,
+            #     wait=10,
+            #     warmup=10,
+            #     active=10,
+            # ),
+            on_trace_ready=trace_handler,
         ) as prof:
             for iter in range(self.numWarmupIters + self.numIters):
                 event_1.record()
@@ -218,13 +258,14 @@ class ExgrReplayManager:
                 torch.cuda.synchronize()
                 if iter >= self.numWarmupIters:
                     total_time += event_1.elapsed_time(event_2)
-                self.reset_registry()
-            print("Replay time{}: {:.2f} ms".format(
-                " (profiled)" if self.profile_replay else "",
-                total_time / self.numIters
-            ))
-        if self.profile_replay:
-            another_trace_handler()(prof)
+                # Comment out this for now since it will introduce additional cudaMalloc
+                # self.reset_registry()
+                prof.step()
+
+        print("Replay time{}: {:.2f} ms".format(
+            " (profiled)" if self.profile_replay else "",
+            total_time / self.numIters
+        ))
 
 
 def main():
