@@ -16,14 +16,33 @@ from typing import Dict, List, Set
 
 import comms_utils
 import numpy as np
-from comms_utils import paramCommsBench, paramTimer, paramProfile, paramToCommName
+import torch
+from comms_utils import (
+    comms_world_info_holder,
+    commsParamsHolderBase,
+    paramCommsBench,
+    paramProfile,
+    paramTimer,
+    paramToCommName,
+)
 
 logger = logging.getLogger(__name__)
 
 # sleep for 20ms to wait for next collective
 LOOP_TIMER_S = .02
 
-def writeCommDetails(commsTracePerf, rank, folder="./"):
+def writeCommDetails(commsTracePerf: List, rank: int, folder: str ="./") -> None:
+    """
+    Writes the replayed comm details of the current rank.
+
+    Args:
+        commsTracePerf: List that contains the metrics of each replayed collective in the current rank.
+        rank: The current rank that the comm details will be written for.
+        folder: Directory path to where the comm details for all ranks will be written.
+                                If none, no output will be written.
+    Returns:
+        None
+    """
     if len(folder) == 0:
         # skip output if the path is explicitly set to ""
         return
@@ -31,7 +50,7 @@ def writeCommDetails(commsTracePerf, rank, folder="./"):
     logger.info(f"[Rank {rank:3}] Writing comms details to {comms_file}")
 
     saveToLocal = True
-    if "://" in comms_file:
+    if "://" in comms_file: # assume that "://" in directory path means remote store
         saveToLocal = False
         try:
             from internals import writeRemoteTrace as writeFbRemoteTrace
@@ -56,6 +75,13 @@ def writeCommDetails(commsTracePerf, rank, folder="./"):
 
 
 class commsTraceReplayBench(paramCommsBench):
+    """
+    A class to replay and benchmark generated traces for collective communications.
+
+    This class will read a provided trace and replay it based on runtime parameters specified in the command line.
+    At the end of a replay, the benchmarks for the run will be recorded in different JSON files in the specified out_path, if provided.
+    The goal of this class is to help scale AI training optimizations by studying the behaviours of AI backends.
+    """
     def __init__(self):
         super().__init__(supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu"])
         self.comms_trace = {}
@@ -90,9 +116,15 @@ class commsTraceReplayBench(paramCommsBench):
         # how long it took to finish all collectives in the trace
         self.totalTraceLatency = 0.0
 
-        import torch
+    def readArgs(self, parser: argparse.ArgumentParser) -> None:
+        """
+        Reads command line args to set runtime parameters for replay.
 
-    def readArgs(self, parser):
+        Args:
+            parser: ArgumentParser that will handle parsing command line arguments.
+        Returns:
+            Namespace containing a collection of parser arguments.
+        """
         # read the common/basic arguments
         super().readArgs(parser)
         parser.add_argument(
@@ -160,7 +192,15 @@ class commsTraceReplayBench(paramCommsBench):
         )
         return parser.parse_args()
 
-    def checkArgs(self, args):
+    def checkArgs(self, args: argparse.Namespace) -> None:
+        """
+        Validates command line args, will raise an error and gracefully exit if an invalid command line arg is found.
+
+        Args:
+            args: Namespace containing collection of args to validate.
+        Returns:
+            None
+        """
         super().checkArgs(args)
 
         if (not self.use_remote_trace) and (
@@ -168,11 +208,20 @@ class commsTraceReplayBench(paramCommsBench):
             or path.isfile(self.trace_file) is False
         ):
             raise ValueError(
-                f"Trace file {self.trace_file} not exist or not a file! Please specifiy the correct path using --trace-path"
+                f"Trace file {self.trace_file} does not exist or is not a file! Please specify the correct path by using --trace-path."
             )
             comms_utils.gracefulExit()
 
-    def reportBenchTime(self, commsParams):
+    def reportBenchTime(self):
+        """
+        Prints replay benchmarks for current rank. This should only be called after setBench() and benchTime()
+        to ensure that replay statistics are available to read.
+
+        Args:
+            None
+        Returns:
+            None
+        """
         # TODO:
         #   1) dry run: output some statistics, e.g., # of msgs, distribtuion of sizes (max, min, avg, p50, p95...ect)
         #   2) normal run: output 1) as well as perf. breakdown (e.g., a2a latencies at different phase, some percentages...ect)
@@ -295,6 +344,15 @@ class commsTraceReplayBench(paramCommsBench):
                 )
 
     def initTraceStat(self):
+        """
+        Do a first pass on the trace to gather statistics on msg count, msg sizes,
+        and record how many collectives each block has.
+
+        Args:
+            None
+        Returns:
+            None
+        """
         maxInMsgsize = 0
         maxOutMsgsize = 0
         self.num_msg = len(self.comms_trace)
@@ -340,7 +398,16 @@ class commsTraceReplayBench(paramCommsBench):
                             }
                         )
 
-    def prepComms(self, curComm, commsParams):
+    def prepComms(self, curComm: Dict, commsParams: commsParamsHolderBase) -> (torch.Tensor, torch.Tensor):
+        """
+        Prepares the appropriate tensors for the current collective communication.
+
+        Args:
+            curComm: The current communication that we are preparing the correct tensor for.
+            commsParams: Holds the comms param arguments that will determine tensor attributes.
+        Returns:
+            (ipTensor, opTensor) if the current communication requires tensors, None otherwise.
+        """
         commOp = paramToCommName(curComm["comms"])
         if commOp in ("wait", "barrier"):
             return ([], [])
@@ -405,7 +472,15 @@ class commsTraceReplayBench(paramCommsBench):
         # allocate and return tensors
         return super().prepComm(curComm, commsParams)
 
-    def warmUpBench(self, commsParams):
+    def warmUpBench(self, commsParams: commsParamsHolderBase) -> None:
+        """
+        Replays collectives without recording statistics to warm up devices.
+
+        Args:
+            commsParams (commsParamsHolderBase): Holds comms params to be passed into prepComms() for appropriate tensor allocation.
+        Returns:
+            None
+        """
         for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
             commEntry = curComm.copy()
             commName = paramToCommName(commEntry["comms"])
@@ -432,7 +507,17 @@ class commsTraceReplayBench(paramCommsBench):
 
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
-    def runComms(self, collName, curComm, curBlockStack):
+    def runComms(self, collName: str, curComm: Dict, curBlockStack: str) -> (float, float):
+        """
+        Replays collective communication operation and records metrics for benchmarking.
+
+        Args:
+            collName: Name of collective that is going to be replayed.
+            curComm: dict containing information on the current collective.
+            curBlockStack: str containg the marker_stack(s) that this collective is a part of
+        Returns:
+            (latency, global_latency), returns the timings of how long the replay or posting (if nonblocking) of the collective took.
+        """
         self.collectiveArgs.quant_time.reset()
         self.collectiveArgs.dequant_time.reset()
         collTimer = paramTimer()
@@ -478,19 +563,24 @@ class commsTraceReplayBench(paramCommsBench):
         return (latency, global_latency)
 
 
-    def benchTime(self, commsParams):
+    def benchTime(self, commsParams: commsParamsHolderBase) -> None:
         """
+        Run all collectives in current rank and record timing metrics for benchmarkng.
+
         The json format is expecting to be either
         {
             "startTime_ns": 0
             "timestamp": 12345
             "marker_stack": ["## all2all ##"]
             "comms": "all_to_allv",
+            "seqnum": 0
+            "req": 0
             "in_msg_size": 10357149,
             "out_msg_size": 23093760,
             "in_split": [],
             "out_split": [],
-            "dtype": "Int"
+            "dtype": Int
+            "world_size": 16
         },
         or w/o in/out_split
         {
@@ -498,20 +588,32 @@ class commsTraceReplayBench(paramCommsBench):
             "timestamp": 12345
             "marker_stack": ["## all2all ##"]
             "comms": "all_reduce",
+            "seqnum": 0
+            "req": 0
             "in_msg_size": 1048576,
             "out_msg_size": 1048576,
-            "dtype": "Int"
+            "dtype": Int,
+            "world_size": 16
         }
         or wait/barrier
         {
             "startTime_ns": 0
             "timestamp": 12345
             "marker_stack": ["## all2all ##"]
+            "seqnum": 0
+            "req": 0
             "comms": "wait",
+            "world_size": 16
         }
         NOTE:
             - this format is subject to be changed anytime
             - the unit of all size fields is # of elements (not bytes)
+
+        Args:
+            commsParams: Holds comms params to pass into prepComms() to aqcuire appropriate tensors
+                                                 and perform data validation in blocking runs.
+        Returns:
+            None
         """
         # warm-up
         if self.do_warm_up:
@@ -615,12 +717,19 @@ class commsTraceReplayBench(paramCommsBench):
         # cleanup any memory left in use
         self.backendFuncs.clear_memory(self.collectiveArgs)
 
-    def runBench(self, comms_world_info, commsParams):
-        """Run the comms-replay benchmark:
+    def runBench(self, comms_world_info: comms_world_info_holder, commsParams: commsParamsHolderBase) -> None:
+        """
+        Run the comms-replay benchmark:
         1) Each rank reads its trace
         2) First pass of the trace to ensure the format is valid and get basic stats
         3) Execute communication replay [Skip if on dry-run mode]
         4) report stats and performance (if not dry-run)
+
+        Args:
+            comms_world_info: Holds information on the current environment.
+            commsParams: Holds comms params to pass into inner functions.
+        Returns:
+            None
         """
         logger.info(
             f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}"
@@ -643,7 +752,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         # rank 0 reports statistics
         if comms_world_info.global_rank == 0:
-            self.reportBenchTime(commsParams)
+            self.reportBenchTime()
             # writeCommDetails(self.comms_blocks, rank=comms_world_info.global_rank)
 
         if not self.is_dry_run:
@@ -656,7 +765,16 @@ class commsTraceReplayBench(paramCommsBench):
             self.backendFuncs.barrier(self.collectiveArgs)
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
-    def setBench(self, comms_world_info, commsParams):
+    def setBench(self, comms_world_info: comms_world_info_holder, commsParams: commsParamsHolderBase) -> None:
+        """
+        Initializes the replay backend.
+
+        Args:
+            comms_world_info: Holds current environment information.
+            commsParams: Holds comms params to pass into backend for initialization.
+        Returns:
+            None
+        """
         # init process groups
         for curComm in self.comms_trace[: self.max_msg_cnt]:
             # record process group info
@@ -718,7 +836,16 @@ class commsTraceReplayBench(paramCommsBench):
             self.allowList = [paramToCommName(op) for op in self.allowList.split(",")]
 
 
-    def initBench(self, comms_world_info, commsParams, args):
+    def initBench(self, commsParams: commsParamsHolderBase, args: argparse.Namespace) -> None:
+        """
+        Initializes replay parameters.
+
+        Args:
+            commsParams: Holds bitwidth information to initialize quantized communication context.
+            args: Namespace containing command line args that we will set our parameters with.
+        Returns:
+            None
+        """
         self.is_dry_run = args.dry_run
         self.shrink = args.auto_shrink
         self.max_msg_cnt = args.max_msg_cnt
@@ -744,8 +871,16 @@ class commsTraceReplayBench(paramCommsBench):
         if "://" in args.trace_path:
             self.use_remote_trace = True
 
-    def readTrace(self, remotePath):
-        """Read trace file from remote server or local disk"""
+    def readTrace(self, remotePath: str) -> None:
+        """
+        Read trace file from remote server or local disk. This will also convert/parse traces files if needed.
+        Supports conversions from KinetoTrace and PyTorch EG trace conversion is coming soon.
+
+        Args:
+            remotePath: Path to read from remotely if use_remote_trace is enabled.
+        Returns:
+            None
+        """
         if self.use_remote_trace:
             protocol = remotePath.split("://", 2)[
                 0
@@ -780,8 +915,13 @@ class commsTraceReplayBench(paramCommsBench):
             )
 
 
-def main():
-
+def main() -> None:
+    """
+    1) Read environment variables.
+    2) Parse commmand line arguments.
+    3) Read and analyze trace file.
+    4) Run replay.
+    """
     comms_env_params = comms_utils.read_comms_env_vars()
 
     traceBench = commsTraceReplayBench()
@@ -799,7 +939,7 @@ def main():
         args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
     )
     commsParams = comms_utils.commsParamsHolderBase(args)
-    traceBench.initBench(comms_world_info, commsParams, args)
+    traceBench.initBench(commsParams, args)
     traceBench.runBench(comms_world_info, commsParams)
 
 
