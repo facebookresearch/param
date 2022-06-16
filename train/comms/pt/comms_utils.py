@@ -593,6 +593,7 @@ class collectiveArgsHolder:
         self.global_rank = -1
         self.backendFuncs = {}
         self.collective = ""
+        self.collectiveId = 0
         self.pt2pt = ""
         self.src_rank = -1
         self.dst_rank = -1
@@ -621,6 +622,7 @@ class collectiveArgsHolder:
         self.dataSize = 0
         self.numElements = 0
         self.waitObj = []
+        self.waitObjIds = {} # mapping of reqID to future of async collectives
 
         self.ipTensor_split_pair = []
         self.opTensor_split_pair = []

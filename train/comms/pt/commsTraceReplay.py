@@ -83,6 +83,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.comms_blocks: Dict[str, List] = {}
         self.traceWithPerf = []
         self.blockStack = []
+
         # for blocking collectives this is the sum of all the collective latencies
         # for nonblocking collectives this is the sum of how long each collective took to be sent to the device
         self.totalCommsLatency = 0.0
@@ -423,7 +424,7 @@ class commsTraceReplayBench(paramCommsBench):
 
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
-    def runComms(self, collName, curBlockStack):
+    def runComms(self, collName, curComm, curBlockStack):
         self.collectiveArgs.quant_time.reset()
         self.collectiveArgs.dequant_time.reset()
         collTimer = paramTimer()
@@ -436,13 +437,23 @@ class commsTraceReplayBench(paramCommsBench):
             timer=collTimer, description="# PARAM replay: " + curBlockStack
         ):
             if collName in self.backendFuncs.collectiveFunc.keys():
-                self.backendFuncs.collectiveFunc[collName](
+                # record collectiveID for wait ops
+                if "req" in curComm:
+                    self.collectiveArgs.collectiveId = curComm["req"]
+
+                retObj = self.backendFuncs.collectiveFunc[collName](
                     self.collectiveArgs, retFlag=True
                 )
             # skip not supported ops
 
             # if blocking, post outstanding ops and wait for them to complete. if nonblocking, just post op
             self.backendFuncs.complete_accel_ops(self.collectiveArgs, devSync=self.is_blocking)
+
+            # if nonblocking, then store the pair {reqID, future} so that we can wait on it later
+            # check if req id is recorded in trace for backwards compatibility
+            if "req" in curComm and not self.is_blocking and collName != "wait":
+                self.collectiveArgs.waitObjIds[curComm["req"]] = retObj
+
 
         # For non-blocking, latency and global_latency are the same
         global_latency = latency = collTimer.getTimeUS()
@@ -455,7 +466,6 @@ class commsTraceReplayBench(paramCommsBench):
 
             # We sync the global_latency for blocking
             global_latency = latency + (bt.intervalNS / 1e3)
-
 
         return (latency, global_latency)
 
@@ -546,7 +556,7 @@ class commsTraceReplayBench(paramCommsBench):
                             time.sleep(LOOP_TIMER_S)
 
             # send comm request to pytorch backend
-            (latency, global_latency) = self.runComms(collName, curBlockStack)
+            (latency, global_latency) = self.runComms(collName, curComm, curBlockStack)
 
             # perform data validation check on the final opTensor
             if self.is_blocking and commsParams.dcheck == 1 and collName not in ("wait","barrier"):

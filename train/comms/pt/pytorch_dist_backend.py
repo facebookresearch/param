@@ -439,13 +439,14 @@ class PyTorchDistBackend(backendFunctions):
             if waitReq is not None:
                 waitReq.wait()
         collectiveArgs.waitObj.clear()
+        collectiveArgs.waitObjIds.clear()
 
         if devSync:
             self.device_sync(collectiveArgs)
 
     # retFlag not used
     def complete_single_op(self, collectiveArgs, retFlag=False):
-        """only wait the first op in the queue"""
+        """only wait on the first op in the queue"""
         if len(collectiveArgs.waitObj) > 0:
             waitReq = collectiveArgs.waitObj.pop(0)
             if waitReq is not None:
@@ -453,6 +454,19 @@ class PyTorchDistBackend(backendFunctions):
 
             # to ensure GPU collective is completed
             self.device_sync(collectiveArgs)
+
+    def wait(self, collectiveArgs, retFlag=False):
+
+        # for backwards compatibility, use old wait functionality.
+        if len(collectiveArgs.waitObjIds) == 0:
+            self.complete_single_op(collectiveArgs)
+            return
+
+        """wait on op with the matching reqID"""
+        if collectiveArgs.collectiveId in collectiveArgs.waitObjIds:
+            waitObj = collectiveArgs.waitObjIds[collectiveArgs.collectiveId]
+            if waitObj is not None:
+                waitObj.wait()
 
     def barrier(self, collectiveArgs, name="dummy", retFlag=False):
         retObj = dist.barrier(collectiveArgs.group, async_op=collectiveArgs.asyncOp)
@@ -636,7 +650,7 @@ class PyTorchDistBackend(backendFunctions):
         self.comms_world_info = comms_world_info
         self.commsParams = commsParams
         # extra ops supported (Note these are not supported in pytorch_tpu_backend.py)
-        self.collectiveFunc["wait"] = self.complete_single_op
+        self.collectiveFunc["wait"] = self.wait # a noop until all collective operations can post a wait operation or specify async vs not async
         self.collectiveFunc["send"] = self.send
         self.collectiveFunc["recv"] = self.recv
         self.collectiveFunc["isend"] = self.isend
