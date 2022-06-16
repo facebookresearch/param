@@ -151,6 +151,9 @@ class PyTorchTPUBackend(backendFunctions):
     def get_groups(self):
         pass
 
+    def get_num_pgs(self):
+        pass
+
     # Init functions
     def __init__(self, comms_world_info, commsParams):
         self.comms_world_info = comms_world_info

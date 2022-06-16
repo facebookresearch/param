@@ -500,6 +500,10 @@ class backendFunctions(ABC):
     def get_groups(self):
         pass
 
+    @abstractmethod
+    def get_num_pgs(self):
+        pass
+
     # Init functions
     @abstractmethod
     def initialize_backend(self, master_ip, master_port, backend="gloo"):
@@ -535,7 +539,7 @@ class commsParamsHolderBase:
         self.quant_a2a_embedding_dim = args.quant_a2a_embedding_dim
         self.quant_threshold = args.quant_threshold
         self.dcheck = args.c
-        self.num_pgs = 1
+        self.groupRanks = {} # record what ranks each process group will work on {pg_id, ranks}
 
 
 class commsParamsHolder(commsParamsHolderBase):
@@ -583,7 +587,7 @@ class collectiveArgsHolder:
     def __init__(self):
         # A holding object for all the parameters related to a collective operation/experiment.
         self.group = None
-        self.groups = []
+        self.groups = {} # {pg_id, pg}
         self.num_pgs = 0
         self.device = {}
         self.world_size = 0

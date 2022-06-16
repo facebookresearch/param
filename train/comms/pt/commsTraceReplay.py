@@ -345,9 +345,17 @@ class commsTraceReplayBench(paramCommsBench):
         if commOp in ("wait", "barrier"):
             return ([], [])
 
+        # prep process group for hard-coded traces
+        if "pg_id" in curComm and not self.shrink:
+            self.collectiveArgs.group = self.collectiveArgs.groups[curComm["pg_id"]]
+            self.collectiveArgs.world_size = curComm["world_size"] # match world size to the size of the current PG
+        else: # use default process group if no pg_id is provided or shrink is enabled
+            self.collectiveArgs.group = self.backendFuncs.get_default_group()
+
         # for all_to_allv, we can shrink the size if running on smaller scale
         # this is for sanity test or debug purpose only since we don't always get to run very large scale
         if self.shrink:
+
             cur_world_size = self.collectiveArgs.world_size
             real_world_size = cur_world_size
 
@@ -649,6 +657,12 @@ class commsTraceReplayBench(paramCommsBench):
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
     def setBench(self, comms_world_info, commsParams):
+        # init process groups
+        for curComm in self.comms_trace[: self.max_msg_cnt]:
+            # record process group info
+            if curComm["comms"] == "init":
+                commsParams.groupRanks[curComm["pg_id"]] = curComm["global_ranks"]
+
         # init backend and corresponding function pointers
         if commsParams.nw_stack == "pytorch-dist":
             from pytorch_dist_backend import PyTorchDistBackend
@@ -681,7 +695,9 @@ class commsTraceReplayBench(paramCommsBench):
             self.backendFuncs
         )  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes
 
-        self.collectiveArgs.group = group
+        self.collectiveArgs.group = group # default group
+        self.collectiveArgs.groups = self.backendFuncs.get_groups()
+        self.collectiveArgs.num_pgs = self.backendFuncs.get_num_pgs()
         self.collectiveArgs.device = curDevice
         self.collectiveArgs.world_size = world_size
         self.collectiveArgs.global_rank = global_rank
@@ -700,6 +716,7 @@ class commsTraceReplayBench(paramCommsBench):
             self.allowList = self.backendFuncs.collectiveFunc.keys()
         else:
             self.allowList = [paramToCommName(op) for op in self.allowList.split(",")]
+
 
     def initBench(self, comms_world_info, commsParams, args):
         self.is_dry_run = args.dry_run
