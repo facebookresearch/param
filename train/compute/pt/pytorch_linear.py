@@ -66,9 +66,6 @@ def train_gpu(
 
     loss_f = nn.CrossEntropyLoss().to(device)
 
-    if data_type == "float16":
-        model = apex.fp16_utils.network_to_half(model)
-
     # model.train()
     torch.cuda.synchronize()
     start_event = torch.cuda.Event(enable_timing=True)
@@ -81,8 +78,6 @@ def train_gpu(
             output_size, [batch_size], device=device, dtype=torch.long
         )
         # data, target = data.to(device), target.to(device)
-        if data_type == "float16":
-            data = data.half()
 
         if i >= args.warmups:
             start_event.record()
@@ -90,7 +85,8 @@ def train_gpu(
         optimizer.zero_grad()
         output = model(data).float()
         loss = loss_f(output, target)
-        loss.backward()
+        with apex.amp.scale_loss(loss, optimizer) as scaled_loss:
+            scaled_loss.backward()
         optimizer.step()
         if i >= args.warmups:
             end_event.record()
