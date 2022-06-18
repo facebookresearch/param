@@ -31,6 +31,10 @@ class Net(nn.Module):
 def train_cpu(
     model, device, optimizer, data_type, input_size, output_size, batch_size, args
 ):
+    if data_type != "float":
+        print("Only FP32 supported on CPU.")
+        import sys
+        sys.exit(0)
     loss_f = nn.CrossEntropyLoss()
 
     # model.train()
@@ -42,9 +46,6 @@ def train_cpu(
             output_size, [batch_size], device=device, dtype=torch.long
         )
         # data, target = data.to(device), target.to(device)
-        if data_type == "float16":
-            data = data.half()
-
         optimizer.zero_grad()
         output = model(data).float()
         loss = loss_f(output, target)
@@ -56,38 +57,44 @@ def train_cpu(
     return time.time() - start_time, loss
 
 
-def train_gpu(
+def convert_to_datatype(input_obj, data_type):
+    if data_type == "float16":
+        input_obj = input_obj.half()
+    if data_type == "bfloat16":
+        input_obj = input_obj.bfloat16()
+    return input_obj
+
+
+def train_gpu_with_explicit_cast(
     model, device, optimizer, data_type, input_size, output_size, batch_size, args
 ):
-    if data_type == "tf32":
-        torch.backends.cudnn.allow_tf32 = True
-        torch.backends.cuda.matmul.allow_tf32 = True
-    import apex
-
+    if data_type == "float16" or data_type == "bfloat16":
+        print("Converting weights explicitly to ", data_type, " data type")
+        model = convert_to_datatype(model, data_type)
     loss_f = nn.CrossEntropyLoss().to(device)
-
-    # model.train()
     torch.cuda.synchronize()
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
     total_time = 0.0
-
     for i in range(args.steps + args.warmups):
         data = torch.randn(batch_size, input_size, device=device)
         target = torch.randint(
             output_size, [batch_size], device=device, dtype=torch.long
         )
-        # data, target = data.to(device), target.to(device)
-
+        data = convert_to_datatype(data, data_type)
+        
         if i >= args.warmups:
             start_event.record()
-
-        optimizer.zero_grad()
-        output = model(data).float()
-        loss = loss_f(output, target)
-        with apex.amp.scale_loss(loss, optimizer) as scaled_loss:
-            scaled_loss.backward()
-        optimizer.step()
+        
+        output = model(data)
+        loss = None
+        if not args.fw_only:
+            optimizer.zero_grad(set_to_none=args.set_to_none)
+            loss = loss_f(output, target)
+            loss.backward()
+            if args.optimizer:
+                optimizer.step()
+        
         if i >= args.warmups:
             end_event.record()
             torch.cuda.synchronize()
@@ -96,6 +103,74 @@ def train_gpu(
     return total_time, loss
 
 
+def train_gpu_with_autocast(
+    model, device, optimizer, data_type, input_size, output_size, batch_size, args
+):
+    print("Running with 32-bit weights using autocast to ", data_type, " data type")
+    dtype_map = {"float16": torch.float16, "float": torch.float32, "tf32": torch.float32, "bfloat16": torch.bfloat16}
+    dt = dtype_map[data_type]
+    loss_f = nn.CrossEntropyLoss().to(device)
+    from torch.cuda.amp import autocast
+
+    torch.cuda.synchronize()
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+    total_time = 0.0
+    for i in range(args.steps + args.warmups):
+        data = torch.randn(batch_size, input_size, device=device)
+        target = torch.randint(
+            output_size, [batch_size], device=device, dtype=torch.long
+        )
+        
+        if i >= args.warmups:
+            start_event.record()
+        
+        loss = None
+        if not args.fw_only:
+            optimizer.zero_grad(set_to_none=args.set_to_none)
+        with autocast(dtype=dt):
+            output = model(data)
+            if not args.fw_only:
+                loss = loss_f(output, target)
+        if not args.fw_only:
+            loss.backward()
+            if args.optimizer:
+                optimizer.step()
+        
+        if i >= args.warmups:
+            end_event.record()
+            torch.cuda.synchronize()
+            total_time += start_event.elapsed_time(end_event) * 1.0e-3
+
+    return total_time, loss
+
+
+def train_gpu(
+    model, device, optimizer, data_type, input_size, output_size, batch_size, args
+):
+    if data_type == "tf32":
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cuda.matmul.allow_tf32 = True
+    
+    if args.fw_only:
+        print("Running FW only")
+    elif args.optimizer:
+        print("Running FW+BW+optimizer")
+    else:
+        print("Running FW+BW only")
+    
+    if args.set_to_none:
+        print("Running with set_to_none as True in zero_grad")
+    else:
+        print("Running with set_to_none as False in zero_grad")
+
+    if args.explicit_cast:
+        time, loss = train_gpu_with_explicit_cast(model, device, optimizer, data_type, input_size, output_size, batch_size, args) 
+    else:
+        time, loss = train_gpu_with_autocast(model, device, optimizer, data_type, input_size, output_size, batch_size, args) 
+ 
+    return time, loss
+   
 def train_tpu(
     model, device, optimizer, data_type, input_size, output_size, batch_size, args
 ):
@@ -190,23 +265,18 @@ def run_single(args, layers_size, batch_size):
 
         assert torch.cuda.is_available(), "cuda not available"
 
-        import apex
-
         dev = torch.device("cuda:0")
         model = Net(layers_size).to(dev)
         if optimizer_type == "sgd":
-            optimizer = apex.optimizers.FusedSGD(
-                model.parameters(), lr=lr, set_grad_none=True
+            optimizer = torch.optim.SGD(
+                model.parameters(), lr=lr
             )
-        elif optimizer_type == "lamb":
-            optimizer = apex.optimizers.FusedLAMB(
-                model.parameters(), lr=lr, set_grad_none=True
+        elif optimizer_type == "adagrad":
+            optimizer = torch.optim.Adagrad(
+                model.parameters(), lr=lr
             )
         else:
             assert 0, "Unsupported optimizer type"
-
-        if data_type == "float16":
-            apex.amp.initialize(model, optimizer, opt_level="O2", verbosity=0)
 
     elif device == "tpu":
 
@@ -255,7 +325,7 @@ def run(args, dataset):
         flops *= batch_size
 
         # Forward 2x and Backward 4x
-        flops *= 6
+        flops *= 2 if args.fw_only else 6 
 
         QPS = batch_size / elap
 
@@ -263,7 +333,7 @@ def run(args, dataset):
         # compatibility
         print(
             "{0:6},  {1:6},  {2:6},  {3:6},  {4:6},  {5:10.6f},  {6:8.1f}, {7:10.1f}".format(
-                len(layers_size),
+                len(layers_size)-1,
                 layers_size[0],
                 layers_size[1],
                 layers_size[-1],
@@ -299,11 +369,23 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Measure the performance of MLP")
     parser.add_argument("--device", required=True, choices=["cpu", "gpu", "tpu"])
+    parser.add_argument('--fw-only', action='store_true')
+    parser.add_argument('--no-fw-only', dest='fw_only', action='store_false')
+    parser.set_defaults(fw_only=False)
+    parser.add_argument('--optimizer', action='store_true')
+    parser.add_argument('--no-optimizer', dest='optimizer', action='store_false')
+    parser.set_defaults(optimizer=True)
+    parser.add_argument('--explicit-cast', action='store_true')
+    parser.add_argument('--no-explicit-cast', dest='explicit_cast', action='store_false')
+    parser.set_defaults(explicit_cast=True)
+    parser.add_argument('--set-to-none', action='store_true')
+    parser.add_argument('--no-set-to-none', dest='set_to_none', action='store_false')
+    parser.set_defaults(set_to_none=False)
     parser.add_argument(
         "--optimizer-type",
         default="sgd",
         help="Optimizer: SGD",
-        choices=["sgd", "lamb"],
+        choices=["sgd", "adagrad"],
     )
     parser.add_argument(
         "--dtype",
