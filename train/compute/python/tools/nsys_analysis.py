@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import sqlite3
+import sys
 from typing import List, Dict, Tuple, Any
 
 from ..lib.init_helper import init_logging, get_logger
@@ -90,27 +91,31 @@ class OperatorEvent:
         return self.event_data
 
 
-def find_overlap_intervals(r1, r2):
-    overlaps = []
-    i = 0
-    j = 0
-    n = len(r1)
-    m = len(r2)
-    while i < n and j < m:
-        # find overlap
-        left = max(r1[i][0], r2[j][0])
-        right = min(r1[i][1], r2[j][1])
-        if left < right:
-            overlaps.append([left, right])
+def merge_overlap_intervals(intervals: List[Tuple[int,int]]):
+    # Expecting a list of tuples in the form of (start, end)
+    if not intervals:
+        return []
 
-        # go to next interval
-        if r1[i][1] < r2[j][1]:
-            i += 1
+    # Sort by start time
+    intervals.sort(key = lambda x: x[0])
+
+    # Init first.
+    prev_interval = list(intervals[0])
+
+    merged = []
+    for i in range(len(intervals)):
+        interval = intervals[i]
+        if interval[0] <= prev_interval[1]:
+            # merge
+            prev_interval[1] = interval[1]
         else:
-            j += 1
+            # record merged and reset to new interval
+            merged.append(prev_interval)
+            prev_interval = list(interval)
+    # Add last interval
+    merged.append(prev_interval)
 
-    return overlaps
-
+    return merged
 
 class CustomEncoder(json.JSONEncoder):
     def default(self, o):
@@ -118,9 +123,13 @@ class CustomEncoder(json.JSONEncoder):
             return o.to_json()
         return json.JSONEncoder.default(self, o)
 
+PARAM_MEASURE_EVENT_LABEL = "[param|measure]"
+PARAM_WARMUP_EVENT_LABEL = "[param|warmup]"
+PARAM_WARMUP_EVENT_PATTERN = "[%|warmup|%]"
+CUDA_SYNC_EVENT_PATTERN = "%cudaDeviceSynchronize%"
 
 queries: Dict[str, str] = {
-    "cuda_kernel": """
+    "cuda_kernel": f"""
     SELECT NVTX_EVENTS.rangeId,
         NVTX_EVENTS.text,
         NVTX_EVENTS.start,
@@ -142,12 +151,12 @@ queries: Dict[str, str] = {
         JOIN StringIds AS RUNTIME_NAME ON RUNTIME_NAME.id = CUPTI_ACTIVITY_KIND_RUNTIME.nameId
         WHERE
             CUPTI_ACTIVITY_KIND_KERNEL.correlationId == CUPTI_ACTIVITY_KIND_RUNTIME.correlationId AND
-            NVTX_EVENTS.text <> "param_bench|measure" AND
-            NVTX_EVENTS.text <> "param_bench|warmup" AND
-            NVTX_EVENTS.text NOT LIKE "%|warmup|%"
+            NVTX_EVENTS.text <> "{PARAM_MEASURE_EVENT_LABEL}" AND
+            NVTX_EVENTS.text <> "{PARAM_WARMUP_EVENT_LABEL}" AND
+            NVTX_EVENTS.text NOT LIKE "{PARAM_WARMUP_EVENT_PATTERN}"
         ORDER BY CUPTI_ACTIVITY_KIND_KERNEL.start
     """,
-    "cuda_sync": """
+    "cuda_sync": f"""
     SELECT NVTX_EVENTS.rangeId,
        NVTX_EVENTS.text,
        NVTX_EVENTS.start,
@@ -164,10 +173,10 @@ queries: Dict[str, str] = {
         NVTX_EVENTS.end >= CUPTI_ACTIVITY_KIND_RUNTIME.end
         JOIN StringIds AS RUNTIME_NAME ON CUPTI_ACTIVITY_KIND_RUNTIME.nameId=RUNTIME_NAME.id
     WHERE
-        NVTX_EVENTS.text <> "param_bench|measure" AND
-        NVTX_EVENTS.text <> "param_bench|warmup" AND
-        NVTX_EVENTS.text NOT LIKE "%|warmup|%" AND
-        RUNTIME_NAME.value LIKE "%cudaDeviceSynchronize%"
+        NVTX_EVENTS.text <> "{PARAM_MEASURE_EVENT_LABEL}" AND
+        NVTX_EVENTS.text <> "{PARAM_WARMUP_EVENT_LABEL}" AND
+        NVTX_EVENTS.text NOT LIKE "{PARAM_WARMUP_EVENT_PATTERN}" AND
+        RUNTIME_NAME.value LIKE "{CUDA_SYNC_EVENT_PATTERN}"
     ORDER BY NVTX_EVENTS.start
     """,
 }
@@ -194,13 +203,21 @@ def create_op_event_range(
     return op_events[op_name][id]
 
 
+def parse_nvtx_info(label: str) -> List[str]:
+    # nvtx_label format: [param|<op_name>|<config_id>|<build_id>|<input_id>|<label>|<fwd/bwd>]
+    # nvtx_label exmaple: [param|aten::threshold_backward|0|0|0|measure|forward]
+    label = label.strip("[]")
+    logger.debug(label)
+    return label.split("|")
+
+
 def parse_kernel_events(
     event_info: List[Tuple[Any]], op_events: Dict[str, Dict[str, OperatorEvent]]
 ):
     for event in event_info:
         range_id = event[0]
         nvtx_label = event[1]
-        op_info = nvtx_label.split("|")
+        op_info = parse_nvtx_info(nvtx_label)
         op_name = op_info[0]
         stage = op_info[1]
         id = f"{op_info[2]}|{op_info[3]}|{op_info[4]}"
@@ -246,7 +263,7 @@ def parse_sync_events(
     for event in event_info:
         range_id = event[0]
         nvtx_label = event[1]
-        op_info = nvtx_label.split("|")
+        op_info = parse_nvtx_info(nvtx_label)
         op_name = op_info[0]
         stage = op_info[1]
         id = f"{op_info[2]}|{op_info[3]}|{op_info[4]}"
@@ -292,10 +309,14 @@ def analyze_events(op_events):
                 T4.append(op_end - last_kernel_event["end"])
                 T5.append(last_sync_event["end"] - last_sync_event["start"])
                 total_kernel_time = 0
+                kernel_events = []
                 for cuda_event in data["cuda_kernel"]:
                     (_, kernel_event, _) = cuda_event
-                    total_kernel_time += kernel_event["end"] - kernel_event["start"]
+                    kernel_events.append((kernel_event["start"], kernel_event["end"]))
+                merged_intervals = merge_overlap_intervals(kernel_events)
+                total_kernel_time = sum([x[1] - x[0] for x in merged_intervals])
                 T3.append(total_kernel_time)
+                assert total_kernel_time <= last_kernel_event["end"] - first_kernel_event["start"]
 
 
 def main():
@@ -304,7 +325,7 @@ def main():
         description="Microbenchmarks NSight System Analysis"
     )
     parser.add_argument(
-        "-f", "--file", type=str, default=None, help="The nsys sqlite file."
+        "-f", "--file", type=str, required=True, default=None, help="The nsys sqlite file."
     )
     parser.add_argument("-l", "--log_level", default="INFO", help="Log level")
     parser.add_argument(
