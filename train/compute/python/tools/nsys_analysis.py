@@ -254,8 +254,6 @@ def parse_kernel_events(
             event[10],
         )
 
-    return op_event
-
 
 def parse_sync_events(
     event_info: List[Tuple[Any]], op_events: Dict[str, Dict[str, OperatorEvent]]
@@ -284,8 +282,6 @@ def parse_sync_events(
             event[6],
             event[7],
         )
-
-    return op_event
 
 
 def analyze_events(op_events):
