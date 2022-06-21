@@ -302,6 +302,28 @@ def ensureTensorFlush(tensors):
 
     return x
 
+def startProfiler(rank, device, numWarmupIters, numIters):
+    try:
+        from internals import fbInitProfiler, fbStartProfiler
+        fbInitProfiler(
+            rank=rank,
+            device=device,
+            warmup=numWarmupIters,
+            iters=numIters,
+        )
+        fbStartProfiler()
+        return True
+    except ImportError:
+        logger.debug("Internal profiler is not avialable, skip...")
+    else:
+        return False
+
+def sampleProfiler(stop=False):
+    try:
+        from internals import fbSampleProfiler
+        fbSampleProfiler(stop)
+    except ImportError:
+        logger.debug("Internal profiler is not avialable, skip...")
 
 @dataclass
 class paramTimer:
@@ -582,6 +604,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.dst_ranks = parseRankList(args.dst_ranks, "dst_ranks", comms_world_info)
         self.comms_world_info = comms_world_info
 
+        self.size_start_profiler = args.size_start_profiler
 
 class collectiveArgsHolder:
     def __init__(self):
@@ -643,6 +666,7 @@ class collectiveArgsHolder:
         self.quant_threshold = 0
         self.quant_time = paramTimer()
         self.dequant_time = paramTimer()
+        self.enable_profiler = False
 
 
 class paramCommsBench(ABC):
@@ -669,7 +693,7 @@ class paramCommsBench(ABC):
         self.collectiveArgs = collectiveArgsHolder()
         self.comm_size = 1
         self.global_rank = -1
-        # update initVal to test difffernt value
+        # update initVal to test differnt value
         self.initVal = 1
 
     def isCudaAvail(self):

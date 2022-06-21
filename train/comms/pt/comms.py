@@ -190,6 +190,12 @@ class commsCollBench(paramCommsBench):
             default=100,
             help="window size for pt2pt throughput test",
         )  # optional:  point to point throughput test window size
+        parser.add_argument(
+            "--size-start-profiler",
+            type=str,
+            default=None,
+            help="execute pytorch profiler at specified size",
+        )  # execute pytorch profiler at specified size if applicable
 
         return parser.parse_known_args()
 
@@ -230,7 +236,7 @@ class commsCollBench(paramCommsBench):
         if (
             args.c == 1
             and args.z == 0
-            and any(coll in args.collective.split(',') for coll in reduce_ops)
+            and any(coll in args.collective.split(",") for coll in reduce_ops)
         ):
             logger.warning(
                 f"Data validation is not supported for {reduce_ops} in non-blocking mode, disabled and continue"
@@ -243,7 +249,7 @@ class commsCollBench(paramCommsBench):
                 logger.error(
                     f"collective quantization may not be fully supported for {args.device}"
                 )
-            for coll in args.collective.split(','):
+            for coll in args.collective.split(","):
                 comms_utils.checkQuantArgs(
                     coll,
                     args.dtype,
@@ -251,6 +257,9 @@ class commsCollBench(paramCommsBench):
                     args.quant_a2a_embedding_dim,
                     args.z,
                 )
+
+        if args.size_start_profiler:
+            args.size_start_profiler = comms_utils.parsesize(args.size_start_profiler)
 
     def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None, dcheck=False):
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
@@ -278,6 +287,8 @@ class commsCollBench(paramCommsBench):
         for nIter in range(
             self.collectiveArgs.numWarmupIters + self.collectiveArgs.numIters
         ):
+            if self.collectiveArgs.enable_profiler:
+                comms_utils.sampleProfiler()
             if nIter == self.collectiveArgs.numWarmupIters:
                 # Flush non-blocking ops to ensure warmup is really complete
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
@@ -1107,9 +1118,7 @@ class commsCollBench(paramCommsBench):
             ):  # comms specific initializations if not in compute-only mode
                 # set corresponding function pointers
                 if commsParams.collective != "pt2pt":
-                    collectiveFunc = backendFuncs.collectiveFunc[
-                        commsParams.collective
-                    ]
+                    collectiveFunc = backendFuncs.collectiveFunc[commsParams.collective]
 
                 (
                     self.collectiveArgs.ipTensor,
@@ -1155,6 +1164,14 @@ class commsCollBench(paramCommsBench):
                     commsParams=commsParams,
                 )
 
+            if commsParams.size_start_profiler == curSize:
+                self.collectiveArgs.enable_profiler = comms_utils.startProfiler(
+                    rank=self.backendFuncs.get_global_rank(),
+                    device=self.collectiveArgs.device,
+                    numWarmupIters=self.collectiveArgs.numWarmupIters,
+                    numIters=self.collectiveArgs.numIters,
+                )
+
             # self.collectiveArgs has all the information on the experiment.
             if commsParams.collective == "pt2pt":
                 results.update(self.runPt2Pt())
@@ -1180,6 +1197,11 @@ class commsCollBench(paramCommsBench):
                     )
                 )
                 timeUsElapsedList = [results["timeUS"]]
+
+            # stop profiler if used
+            if self.collectiveArgs.enable_profiler:
+                comms_utils.sampleProfiler(stop=True)
+                self.collectiveArgs.enable_profiler = False
 
             # perfom data validation check on the final opTensor
             if commsParams.dcheck == 1:
