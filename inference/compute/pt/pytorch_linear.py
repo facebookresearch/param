@@ -99,9 +99,18 @@ def infer_gpu(
         model_final = model.half()
         if args.use_trt:
             print("Creating TRT model")
-            import torch2trt
-            model_final = torch2trt.torch2trt(
-                model_final, (data,), max_batch_size=batch_size, max_workspace_size=1 << 20, fp16_mode=True)
+            from torch_tensorrt.fx.lower import (
+                lower_to_trt,
+            )
+            from torch_tensorrt.fx.utils import LowerPrecision
+            model_final =  lower_to_trt(
+                model_final,
+                [data],
+                max_batch_size=batch_size,
+                explicit_batch_dimension=False,
+                max_workspace_size=4 << 30,
+                lower_precision=LowerPrecision.FP16,
+            )
     else:
         model_final = model
 
