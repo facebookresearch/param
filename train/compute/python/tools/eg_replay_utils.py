@@ -50,16 +50,21 @@ def is_backward_aten(op):
 def is_qualified(op):
     return is_backward_aten(op) or is_op(op)
 
+def get_tmp_trace_filename():
+    import datetime
+    import uuid
+    trace_fn = "tmp_" + datetime.datetime.today().strftime("%Y%m%d")+ "_" + uuid.uuid4().hex[:7] + ".json"
+    return trace_fn
 
 def trace_handler(prof):
-    prof.export_chrome_trace("/tmp/test_trace_replay.json")
+    prof.export_chrome_trace("/tmp/" + get_tmp_trace_filename())
 
 
 def another_trace_handler():
     def handle_fn(prof):
         # print(prof.key_averages().table(
         #     sort_by="self_cuda_time_total", row_limit=-1))
-        prof.export_chrome_trace("/tmp/test_trace_replay.json")
+        prof.export_chrome_trace("/tmp/" + get_tmp_trace_filename())
     return handle_fn
 
 
