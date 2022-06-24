@@ -753,7 +753,6 @@ class commsCollBench(paramCommsBench):
             collectiveArgs.opTensor = timeList
 
         collectiveArgs.ipTensor = timeElapsedTensor
-        collectiveArgs.asyncOp = False
         collectiveArgs.dataSize = (
             timeElapsedTensor.nelement() * timeElapsedTensor.element_size()
         )
