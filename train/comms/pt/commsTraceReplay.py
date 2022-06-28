@@ -477,7 +477,7 @@ class commsTraceReplayBench(paramCommsBench):
         Replays collectives without recording statistics to warm up devices.
 
         Args:
-            commsParams (commsParamsHolderBase): Holds comms params to be passed into prepComms() for appropriate tensor allocation.
+            commsParams: Holds comms params to be passed into prepComms() for appropriate tensor allocation.
         Returns:
             None
         """
