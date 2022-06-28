@@ -317,7 +317,10 @@ class OpExecutor:
             label_str = self._label_template_fwd_bwd.format(tag=tag, op_run_id=op_run_id)
             with record_function(label_str):
                 for _i in range(count):
+                    timer.start()
                     self.op.forward(*args, **kwargs)
+                    timer.stop()
+                    fw_time_records.append(timer.elapsed_time_ms())
                     self.op.create_grad()
                     timer.start()
                     self.op.backward()
