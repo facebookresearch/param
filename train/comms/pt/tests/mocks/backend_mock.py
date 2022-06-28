@@ -19,6 +19,7 @@ class MockBackendFunction: # Mock backend function
         self.world_size = 1
         self.local_rank = 0
         self.global_rank = 0
+        self.group = "default"
 
     def noop(self, collectiveArgs=None, retFlag=False, pair=False):
         """no-op for the case we want to skip comms/compute"""
@@ -98,7 +99,7 @@ class MockBackendFunction: # Mock backend function
         return self.device
 
     def get_default_group(self):
-        pass
+        return self.group
 
     def get_groups(self):
         pass

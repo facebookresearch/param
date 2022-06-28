@@ -32,3 +32,13 @@ class commsParamsTest:
         self.quant_threshold = 1
         self.dcheck = 1
         self.num_pgs = 1
+
+class comms_world_info_test:
+    def __init__(self):
+        self.global_rank = 0
+        self.local_rank = 0
+        self.world_size = 16
+
+        self.master_ip = "localhost"
+        self.master_port = "25555"
+        self.num_tpu_cores = 16
