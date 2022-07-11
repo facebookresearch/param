@@ -83,6 +83,12 @@ class commsCollBench(paramCommsBench):
             "--f", type=int, default=2, help="multiplication factor between sizes"
         )  # COMMS mode, multiplication factor.
         parser.add_argument(
+            "--sb",
+            type=int,
+            default=0,
+            help="step bytes between sizes, 0 value disables step increment and uses multiplication factor instead",
+        )  # COMMS mode, additive step bytes for sizes.
+        parser.add_argument(
             "--collective",
             "--collectives",
             type=str,
@@ -224,6 +230,11 @@ class commsCollBench(paramCommsBench):
             logger.warning(
                 f"the begin-size (--b {args.b}) is larger than the end-size (--e {args.e})"
             )
+
+        element_size = torch.ones([1], dtype=args.dtype).element_size()
+        if args.sb % element_size != 0:
+            logger.error("Step size bytes must be a multiple of element size")
+            comms_utils.gracefulExit()
 
         if args.device == "cpu" and args.backend == "nccl":
             raise ValueError(f"NCCL is not supported for device type {args.device}")
@@ -636,7 +647,10 @@ class commsCollBench(paramCommsBench):
             commsParams, world_size
         )  # Ensuring that all-reduce and all-to-all has atleast one member per rank.
         allSizes = comms_utils.getSizes(
-            commsParams.beginSize, commsParams.endSize, commsParams.stepFactor
+            commsParams.beginSize,
+            commsParams.endSize,
+            commsParams.stepFactor,
+            commsParams.stepBytes,
         )  # Given the begin-size, end-size, step-factor what are the message sizes to iterate on.
 
         self.collectiveArgs.group = group

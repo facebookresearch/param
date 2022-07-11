@@ -140,7 +140,7 @@ def getAlgBW(elapsedTimeNS: float, dataSize: int , numIters: int) -> (float, flo
     return (avgIterNS, algBW)
 
 
-def getSizes(beginSize: int, endSize: int, stepFactor: int) -> List[int]:
+def getSizes(beginSize: int, endSize: int, stepFactor: int, stepBytes: int) -> List[int]:
     """
     Gets the sizes of each iteration.
 
@@ -157,7 +157,7 @@ def getSizes(beginSize: int, endSize: int, stepFactor: int) -> List[int]:
     allSizes = []
     while curSize <= endSize:
         allSizes.append(curSize)
-        curSize = curSize * stepFactor
+        curSize = curSize * stepFactor if stepBytes == 0 else curSize + stepBytes
         numIters = numIters + 1
         if numIters > 100:
             logger.error(
@@ -755,6 +755,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.endSize = args.e
         self.maxSize = int(args.e // self.element_size)
         self.stepFactor = args.f
+        self.stepBytes = args.sb
         self.srcOrDst = args.root
         self.quant_threshold = max(
             self.endSize, self.quant_threshold
