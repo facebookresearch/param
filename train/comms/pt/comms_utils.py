@@ -3,7 +3,13 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from __future__ import absolute_import, division, print_function, unicode_literals, annotations
+from __future__ import (
+    absolute_import,
+    annotations,
+    division,
+    print_function,
+    unicode_literals,
+)
 
 import logging
 import os
@@ -11,15 +17,15 @@ import random
 import sys
 import time
 from abc import ABC, abstractmethod
+from argparse import ArgumentParser, Namespace
 from collections import OrderedDict
 from dataclasses import dataclass
 from io import StringIO
+from typing import Any, Callable, Dict, List, Union
 
 import torch
-from torch.autograd.profiler import record_function
-from typing import Callable, Union, Dict, List, Any
 from torch._C._distributed_c10d import ProcessGroup
-from argparse import ArgumentParser, Namespace
+from torch.autograd.profiler import record_function
 
 random.seed()
 
@@ -29,7 +35,7 @@ default_master_ip = "127.0.0.1"
 default_master_port = "29500"
 
 
-def gracefulExit(args: Any=0) -> None:
+def gracefulExit(args: Any = 0) -> None:
     """
     Use this function to gracefully exit if any fatal errors are encountered.
 
@@ -83,7 +89,9 @@ def parsesize(ipValue: str) -> int:
     return int(size)
 
 
-def parseRankList(ipStr: str, ipName: str, comms_world_info: comms_world_info_holder) -> List[int]:
+def parseRankList(
+    ipStr: str, ipName: str, comms_world_info: comms_world_info_holder
+) -> List[int]:
     """
     Parses a string into a rank list.
 
@@ -119,7 +127,7 @@ def parseRankList(ipStr: str, ipName: str, comms_world_info: comms_world_info_ho
     return rankList
 
 
-def getAlgBW(elapsedTimeNS: float, dataSize: int , numIters: int) -> (float, float):
+def getAlgBW(elapsedTimeNS: float, dataSize: int, numIters: int) -> (float, float):
     """
     Similar to how algorithmic bandwidth is computed in nccl-tests.
 
@@ -140,7 +148,9 @@ def getAlgBW(elapsedTimeNS: float, dataSize: int , numIters: int) -> (float, flo
     return (avgIterNS, algBW)
 
 
-def getSizes(beginSize: int, endSize: int, stepFactor: int, stepBytes: int) -> List[int]:
+def getSizes(
+    beginSize: int, endSize: int, stepFactor: int, stepBytes: int
+) -> List[int]:
     """
     Gets the sizes of each iteration.
 
@@ -205,7 +215,9 @@ def fixBeginSize(commsParams: commsParamsHolder, world_size: int) -> None:
             commsParams.beginSize = commsParams.element_size
 
 
-def get_rank_details(backendFuncs: backendFunctions) -> (int, int, int, ProcessGroup, str, str):
+def get_rank_details(
+    backendFuncs: backendFunctions,
+) -> (int, int, int, ProcessGroup, str, str):
     """
     Returns the details of the rank for the current backendFunction.
 
@@ -224,7 +236,7 @@ def get_rank_details(backendFuncs: backendFunctions) -> (int, int, int, ProcessG
     return (local_rank, global_rank, world_size, group, curDevice, curHwDevice)
 
 
-def env2int(env_list: List[str], default: int=-1) -> int:
+def env2int(env_list: List[str], default: int = -1) -> int:
     """
     Takes environment variables list and returns the first value found.
 
@@ -303,7 +315,9 @@ def commonUrlRead(remotePath: str) -> StringIO:
     return StringIO(contents.decode("utf-8"))
 
 
-def initQuantCommCtx(collectiveArgs: collectiveArgsHolder, commsParams: commsParamsHolderBase) -> None:
+def initQuantCommCtx(
+    collectiveArgs: collectiveArgsHolder, commsParams: commsParamsHolderBase
+) -> None:
     """
     Initialize quantization handlers.
 
@@ -325,7 +339,13 @@ def initQuantCommCtx(collectiveArgs: collectiveArgsHolder, commsParams: commsPar
         pass
 
 
-def checkQuantArgs(collective: str, dtype: torch.dtype, beginSize: int, quant_a2a_embedding_dim: int, blockingFlag: bool) -> None:
+def checkQuantArgs(
+    collective: str,
+    dtype: torch.dtype,
+    beginSize: int,
+    quant_a2a_embedding_dim: int,
+    blockingFlag: bool,
+) -> None:
     """
     Checks quantized args passed in parameter list to make sure they are supported, will exit if not.
 
@@ -378,7 +398,7 @@ def clearQuantCommCtx(collectiveArgs: collectiveArgsHolder) -> None:
         pass
 
 
-def paramToCommName(name: str, supported_comms: List[str]=None) -> str:
+def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
     """
     Map any possible creative collective names to the internal name.
     Validate the `name` if `supported_comms` is provided.
@@ -434,6 +454,7 @@ def ensureTensorFlush(tensors: Union[List[torch.Tensor], torch.Tensor]) -> float
 
     return x
 
+
 def startProfiler(rank: int, device: str, numWarmupIters: int, numIters: int) -> bool:
     """
     Starts internal profiler with given parameters.
@@ -448,6 +469,7 @@ def startProfiler(rank: int, device: str, numWarmupIters: int, numIters: int) ->
     """
     try:
         from internals import fbInitProfiler, fbStartProfiler
+
         fbInitProfiler(
             rank=rank,
             device=device,
@@ -461,7 +483,8 @@ def startProfiler(rank: int, device: str, numWarmupIters: int, numIters: int) ->
     else:
         return False
 
-def sampleProfiler(stop: bool=False) -> None:
+
+def sampleProfiler(stop: bool = False) -> None:
     """
     Starts internal sample profiler.
 
@@ -472,18 +495,21 @@ def sampleProfiler(stop: bool=False) -> None:
     """
     try:
         from internals import fbSampleProfiler
+
         fbSampleProfiler(stop)
     except ImportError:
         logger.debug("Internal profiler is not available, skip...")
+
 
 @dataclass
 class paramTimer:
     """
     Timer for param profiler.
     """
+
     elapsedTimeNS: float = 0.0  # keeping time in NS
 
-    def reset(self, newTime: float=0.0) -> None:
+    def reset(self, newTime: float = 0.0) -> None:
         self.elapsedTimeNS = newTime
 
     def incrTimeNS(self, timeNS: float) -> None:
@@ -499,7 +525,7 @@ class paramTimer:
 class paramProfile(record_function):
     """Inherit from PyTorch profiler to enable autoguard profiling while measuring the time interval in PARAM"""
 
-    def __init__(self, timer: paramTimer=None, description: str="") -> None:
+    def __init__(self, timer: paramTimer = None, description: str = "") -> None:
         self.description = description
         self.timer = timer
         super().__init__(name=description)
@@ -541,7 +567,9 @@ class backendFunctions(ABC):
             "noop": self.noop,
         }
 
-    def getBusBW(self, collective: str, algBW: float, collectiveArgs: collectiveArgsHolder) -> float:
+    def getBusBW(
+        self, collective: str, algBW: float, collectiveArgs: collectiveArgsHolder
+    ) -> float:
         """
         Calculate bus bandwidth for collective.
 
@@ -584,7 +612,11 @@ class backendFunctions(ABC):
         return busBW
 
     def alloc_ones(
-        self, sizeArr: int, curRankDevice: str="cuda", dtype: torch.dtype=torch.float32, scaleFactor: float=1.0
+        self,
+        sizeArr: int,
+        curRankDevice: str = "cuda",
+        dtype: torch.dtype = torch.float32,
+        scaleFactor: float = 1.0,
     ) -> torch.Tensor:
         """
         Create a tensor filled with 1s of size sizeArr, and return the tensor multiplied by the scaleFactor.
@@ -602,41 +634,50 @@ class backendFunctions(ABC):
             ipTensor = ipTensor * scaleFactor
         return ipTensor
 
-    def noop(self, collectiveArgs: collectiveArgsHolder=None, retFlag: bool=False, pair: bool=False) -> None:
+    def noop(
+        self,
+        collectiveArgs: collectiveArgsHolder = None,
+        retFlag: bool = False,
+        pair: bool = False,
+    ) -> None:
         """no-op for the case we want to skip comms/compute"""
         pass
 
     @abstractmethod
-    def sayHello(self, global_rank: int, local_rank: int, world_size: int, master_ip: str) -> None:
+    def sayHello(
+        self, global_rank: int, local_rank: int, world_size: int, master_ip: str
+    ) -> None:
         """Print startup information of the backend."""
         pass
 
     # Collectives, if you would like more detailed documentation about the behavior of these collectives, visit https://pytorch.org/docs/stable/_modules/torch/distributed/distributed_c10d.html.
     @abstractmethod
-    def all_reduce(self, collectiveArgs: collectiveArgsHolder, retFlag: bool=False):
+    def all_reduce(self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False):
         pass
 
     @abstractmethod
-    def reduce(self, collectiveArgs: collectiveArgsHolder, retFlag: bool=False):
+    def reduce(self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False):
         pass
 
     @abstractmethod
-    def all_to_all(self, collectiveArgs: collectiveArgsHolder, retFlag: bool=False):
+    def all_to_all(self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False):
         pass
 
     @abstractmethod
-    def all_to_allv(self, collectiveArgs: collectiveArgsHolder, retFlag: bool=False):
+    def all_to_allv(self, collectiveArgs: collectiveArgsHolder, retFlag: bool = False):
         pass
 
     @abstractmethod
-    def complete_accel_ops(self, collectiveArgs: collectiveArgsHolder, initOp: bool=False):
+    def complete_accel_ops(
+        self, collectiveArgs: collectiveArgsHolder, initOp: bool = False
+    ):
         pass
 
     @abstractmethod
-    def barrier(self, collectiveArgs: collectiveArgsHolder, name: str="dummy"):
+    def barrier(self, collectiveArgs: collectiveArgsHolder, name: str = "dummy"):
         pass
 
-    def sync_barrier(self, collectiveArgs: collectiveArgsHolder, desc: str="world"):
+    def sync_barrier(self, collectiveArgs: collectiveArgsHolder, desc: str = "world"):
         self.barrier(collectiveArgs, name=desc)
 
     @abstractmethod
@@ -655,17 +696,27 @@ class backendFunctions(ABC):
         pass
 
     @abstractmethod
-    def alloc_random(self, sizeArr: int, curRankDevice: str, dtype: torch.dtype, scaleFactor: float=1.0) -> torch.Tensor:
+    def alloc_random(
+        self,
+        sizeArr: int,
+        curRankDevice: str,
+        dtype: torch.dtype,
+        scaleFactor: float = 1.0,
+    ) -> torch.Tensor:
         """Allocate tensor of random values according to parameters."""
         pass
 
     @abstractmethod
-    def alloc_embedding_tables(self, n: int, m: int, curRankDevice: str, dtype: torch.dtype):
+    def alloc_embedding_tables(
+        self, n: int, m: int, curRankDevice: str, dtype: torch.dtype
+    ):
         """Allocate embedding table based on parameters."""
         pass
 
     @abstractmethod
-    def alloc_empty(self, sizeArr: int, dtype: torch.dtype, curRankDevice: str) -> torch.Tensor:
+    def alloc_empty(
+        self, sizeArr: int, dtype: torch.dtype, curRankDevice: str
+    ) -> torch.Tensor:
         """Allocate tensor with uninitialized data based on parameters."""
         pass
 
@@ -709,7 +760,9 @@ class backendFunctions(ABC):
 
     # Init functions
     @abstractmethod
-    def initialize_backend(self, master_ip: str, master_port: str, backend: str="gloo") -> None:
+    def initialize_backend(
+        self, master_ip: str, master_port: str, backend: str = "gloo"
+    ) -> None:
         pass
 
     @abstractmethod
@@ -719,7 +772,14 @@ class backendFunctions(ABC):
 
 class comms_world_info_holder:
     """Class holding communication-world related parameters."""
-    def __init__(self, master_ip: str, master_port: str, num_tpu_cores: int, comms_env_params: Dict[str, int]) -> None:
+
+    def __init__(
+        self,
+        master_ip: str,
+        master_port: str,
+        num_tpu_cores: int,
+        comms_env_params: Dict[str, int],
+    ) -> None:
         self.global_rank = comms_env_params["global_rank"]
         self.local_rank = comms_env_params["local_rank"]
         self.world_size = comms_env_params["world_size"]
@@ -731,6 +791,7 @@ class comms_world_info_holder:
 
 class commsParamsHolderBase:
     """Class holding object for common input parameters"""
+
     def __init__(self, args: Namespace) -> None:
         self.nw_stack = args.nw_stack
         self.dtype = args.dtype
@@ -742,12 +803,21 @@ class commsParamsHolderBase:
         self.quant_a2a_embedding_dim = args.quant_a2a_embedding_dim
         self.quant_threshold = args.quant_threshold
         self.dcheck = args.c
-        self.groupRanks = {} # record what ranks each process group will work on {pg_id, ranks}
+        self.groupRanks = (
+            {}
+        )  # record what ranks each process group will work on {pg_id, ranks}
 
 
 class commsParamsHolder(commsParamsHolderBase):
     """Class holding object for the input parameters from collective benchmark."""
-    def __init__(self, args, comms_world_info: comms_world_info_holder, element_size: int, benchTime: Callable) -> None:
+
+    def __init__(
+        self,
+        args,
+        comms_world_info: comms_world_info_holder,
+        element_size: int,
+        benchTime: Callable,
+    ) -> None:
         super().__init__(args)
 
         self.element_size = element_size
@@ -764,7 +834,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.numWarmupIters = args.w
         self.numIters = args.n
         self.collective = args.collective
-        self.collective_list = args.collective.split(',')
+        self.collective_list = args.collective.split(",")
         self.mode = args.mode
 
         self.kernel = args.kernel
@@ -788,11 +858,13 @@ class commsParamsHolder(commsParamsHolderBase):
 
         self.size_start_profiler = args.size_start_profiler
 
+
 class collectiveArgsHolder:
     """Class holding object for all the parameters related to a collective operation/experiment."""
+
     def __init__(self) -> None:
         self.group = None
-        self.groups = {} # {pg_id, pg}
+        self.groups = {}  # {pg_id, pg}
         self.num_pgs = 0
         self.device = {}
         self.world_size = 0
@@ -831,7 +903,7 @@ class collectiveArgsHolder:
         self.dataSize = 0
         self.numElements = 0
         self.waitObj = []
-        self.waitObjIds = {} # mapping of reqID to future of async collectives
+        self.waitObjIds = {}  # mapping of reqID to future of async collectives
 
         self.ipTensor_split_pair = []
         self.opTensor_split_pair = []
@@ -853,7 +925,8 @@ class collectiveArgsHolder:
 
 class paramCommsBench(ABC):
     """Abstract class for any param comms benchmark."""
-    def __init__(self, supportedNwstacks: List[str]=None) -> None:
+
+    def __init__(self, supportedNwstacks: List[str] = None) -> None:
         self.supportedNwstacks = supportedNwstacks
         self.supported_tpu_core_valuses = [1, 8]
         self.dtypeMap = {
@@ -882,8 +955,10 @@ class paramCommsBench(ABC):
     def isCudaAvail(self) -> bool:
         return torch.cuda.is_available()
 
-    def dcheck(self, commsParams: commsParamsHolderBase, curSize: int, tensor: torch.Tensor) -> None:
-        """"
+    def dcheck(
+        self, commsParams: commsParamsHolderBase, curSize: int, tensor: torch.Tensor
+    ) -> None:
+        """ "
         Data validaton check for collectives, will raise an exception if invalid.
 
         Args:
@@ -936,7 +1011,7 @@ class paramCommsBench(ABC):
                             f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{index}] = {tensor[index]}, expected {expRes}\n {tensor}"
                         )
 
-    def setTensorVal(self, tensor: torch.Tensor, useRandVal: bool=True) -> None:
+    def setTensorVal(self, tensor: torch.Tensor, useRandVal: bool = True) -> None:
         """
         Set tensor value, use initVal if useRandVal is false.
 
@@ -1228,7 +1303,9 @@ class paramCommsBench(ABC):
         )
         return (ipTensor, opTensor)
 
-    def prepComm(self, curComm: Dict[str, Any], commsParams: commsParamsHolderBase) -> (torch.Tensor, torch.Tensor):
+    def prepComm(
+        self, curComm: Dict[str, Any], commsParams: commsParamsHolderBase
+    ) -> (torch.Tensor, torch.Tensor):
         """
         Allocate the tensors for collective.
 
