@@ -1398,14 +1398,18 @@ class paramCommsBench(ABC):
         parser.add_argument(
             "--master-ip",
             type=str,
-            default=default_master_ip,
-            help="The master-IP to coordinate",
+            default=default_master_ip
+            if "MASTER_ADDR" not in os.environ
+            else os.environ["MASTER_ADDR"],
+            help="The master-IP to coordinate for Pytorch distributed stack",
         )  # The master-IP to coordinate.
         parser.add_argument(
             "--master-port",
             type=str,
-            default=default_master_port,
-            help="The master-port to coordinate",
+            default=default_master_port
+            if "MASTER_PORT" not in os.environ
+            else os.environ["MASTER_PORT"],
+            help="The master-port to coordinate for Pytorch distributed stack",
         )  # The master-port to coordinate.
         parser.add_argument(
             "--nw-stack",
