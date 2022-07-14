@@ -26,7 +26,7 @@ NodeType = Enum("NodeType", "OPERATOR LABEL")
 
 
 # Label markers
-LABEL_MARKERS = ["##", "__", "module::", "DLRM ", "DistributedDataParallel", "Profiler"]
+LABEL_MARKERS = ["##", "__", "module::", "DLRM ", "DistributedDataParallel", "Profiler", "[pytorch|", "forward", "backward", "Optimizer.zero_grad"]
 
 
 """
@@ -269,16 +269,20 @@ class ExecutionGraph:
                 self.proc_group[pid][tid] = id
 
             # build tensor reference table
-            for (type, t_id, shape) in input_tensors:
+            for (t_type, t_id, shape) in input_tensors:
+                if type(t_id) != tuple:
+                    t_id = tuple(t_id)
                 if t_id not in self.tensors:
-                    dtype = type[7:-1]
+                    dtype = t_type[7:-1]
                     self.tensors[t_id] = TensorNode(t_id, dtype)
                 self.tensors[t_id].add_sink(id)
                 self.tensors[t_id].add_shape(shape)
 
-            for (type, t_id, shape) in output_tensors:
+            for (t_type, t_id, shape) in output_tensors:
+                if type(t_id) != tuple:
+                    t_id = tuple(t_id)
                 if t_id not in self.tensors:
-                    dtype = type[7:-1]
+                    dtype = t_type[7:-1]
                     self.tensors[t_id] = TensorNode(t_id, dtype)
                 self.tensors[t_id].add_source(id)
                 self.tensors[t_id].add_shape(shape)
@@ -287,8 +291,9 @@ class ExecutionGraph:
         for n in self.nodes.values():
             # skip root node
             if n.id != 1:
-                self.nodes[n.parent_id].add_child(n)
-                n.set_parent(self.nodes[n.parent_id])
+                if n.parent_id in self.nodes:
+                    self.nodes[n.parent_id].add_child(n)
+                    n.set_parent(self.nodes[n.parent_id])
         # sort children nodes by id
         for n in self.nodes.values():
             n.sort_children()
@@ -505,7 +510,7 @@ class ExecutionGraph:
     def remove_dataloader_ops(self):
         def check_parent(node):
             tmp = node
-            while tmp.id != tmp.parent_id: # while not the final root
+            while tmp and tmp.id != tmp.parent_id: # while not the final root
                 if "DataLoader" in tmp.name:
                     return True
                 tmp = tmp.parent

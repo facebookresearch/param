@@ -4,16 +4,17 @@ import json
 import re
 from .execution_graph import NodeType
 
-
 # TODO: Add all torch dtypes to here
 TORCH_DTYPES_RNG = {
+    "bool": (torch.bool, torch.ones),
     "int8": (torch.int8, torch.ones),
     "half": (torch.half, torch.ones),
     "int": (torch.int, torch.ones),
     "long": (torch.int64, torch.ones),
     "long int": (torch.int64, torch.ones),
     "float": (torch.float32, torch.randn),
-    "double": (torch.float64, torch.randn)
+    "double": (torch.float64, torch.randn),
+    "unsigned char": (torch.int8, torch.ones)
 }
 
 
@@ -25,8 +26,13 @@ def is_output_tensor(n, ip):
     return isinstance(ip, int) and 'Tensor' in n.output_types[ip]
 
 
-def is_op(node):
-    return node.type == NodeType.OPERATOR # and (node.parent is not None and node.parent.type != NodeType.OPERATOR)
+def is_op(node, strict=False):
+    if not strict:
+        return node.type == NodeType.OPERATOR
+    return node.type == NodeType.OPERATOR and (
+                node.parent is not None and \
+                node.parent.type != NodeType.OPERATOR\
+            )
 
 
 def has_backward_parent(op):
@@ -39,7 +45,7 @@ def has_backward_parent(op):
 
 def is_backward_parent(op):
     return "autograd::engine::evaluate_function: " in op.name or \
-            "Optimizer" in op.name
+            "Optimizer.step" in op.name
 
 
 def is_backward_aten(op):
@@ -87,13 +93,23 @@ def build_torchscript_func(n):
     input_count = len(n.input_types)
     output_count = len(n.output_types)
 
-    tmp = n.op_schema.split('->')
-    types = [item for item in tmp[0].split(' ') if ',' not in item]
-    types = [re.sub(r'\[[0-9]\]', '[]', t) for t in types][:-2] # e.g. int[2] -> int[]
-    input_types = [t if 'Tensor' not in t else 'Tensor' for t in types] # e.g. Tensor(float) -> Tensor
-    input_types[0] = re.sub(r'^.*?\(', '', input_types[0]) # Strip the op name
+    if "pyspeech" in n.op_schema or n.op_schema == "":
+        return None, None
+
+    tmp = n.op_schema.split(') -> ')
+    # items = [item for item in tmp[0].split(',') if item != ' *']
+    types = [item for item in tmp[0].split(' ') if ',' not in item][:-1]
+    # print(n.name, n.id, types)
+    types = [re.sub(r'\[[0-9]\]', '[]', t) for t in types] # e.g. int[2] -> int[]
+    # print(n.name, n.id, types)
+    input_types = ['Tensor' if 'Tensor(' in t else t for t in types if ('*)' not in t and '->' not in t)] # e.g. Tensor(float) -> Tensor; exception: aten::unbind(Tensor(a -> *) self, ...
+    # print(n.name, n.id, input_types)
+    input_types[0] = re.sub(r'^.*?\(', '', input_types[0]) # Strip the op name, e.g. aten::zeros(int[] -> int[]
+    # print(n.name, n.id, input_types)
     output_types = tmp[-1].lstrip(' (').rstrip(')').split(', ') # e.g. (Tensor, Tensor) -> [Tensor, Tensor]
-    output_types = [t if 'Tensor' not in t else 'Tensor' for t in output_types]
+    # print(n.id, input_types, output_types)
+    output_types = [t if t == 'Tensor[]' or 'Tensor' not in t else 'Tensor' for t in output_types]
+    # print(n.id, input_types, output_types)
 
     inputStr = """
         graph({}):
@@ -111,9 +127,15 @@ def build_torchscript_func(n):
             ", ".join(["%{}".format(idx + input_count) for idx in range(output_count)])
         ) if output_count > 1 else "",
     )
+
     # print(inputStr)
     # print("=============")
-    graph = torch._C.parse_ir(inputStr)
-    cu = torch._C.CompilationUnit()
-    func = cu.create_function(n.name, graph)
+
+    try:
+        graph = torch._C.parse_ir(inputStr)
+        cu = torch._C.CompilationUnit()
+        func = cu.create_function(n.name, graph)
+    except Exception as e:
+        print("TorchScript error: ", n.id, e, input_types, "\n", inputStr)
+        return None, None
     return func, output_count
