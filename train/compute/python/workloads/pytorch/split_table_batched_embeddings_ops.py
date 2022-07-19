@@ -8,6 +8,7 @@ from typing import (
 )
 from typing import List
 from typing import Tuple
+from typing import Union
 
 import numpy as np
 import torch
@@ -252,8 +253,8 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
     def build(
         self,
         num_tables: int,
-        rows: int,
-        dims: int,
+        rows: Union[int, list],
+        dims: Union[int, list],
         pooling: int,
         weighted: bool,
         weights_precision: str,
@@ -262,12 +263,8 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
         logger.debug(
             f"build: [{num_tables}, {rows}, {dims}, {pooling}, {weighted}, {weights_precision}, {optimizer}]"
         )
-        if num_tables == 1:
-            rows_list = [rows]
-            dims_list = [dims]
-        else:
-            rows_list = rows
-            dims_list = dims
+        rows_list = rows if isinstance(rows, list) else [rows]
+        dims_list = dims if isinstance(dims, list) else [dims]
         if self.device.startswith("cpu"):
             compute_device = ComputeDevice.CPU
             location = EmbeddingLocation.HOST
