@@ -891,7 +891,8 @@ class commsCollBench(paramCommsBench):
         dequant_p95 = np.percentile(dequantLatencyAcrossRanks, 95)
 
         print(
-            "\tCOMMS-RES-QUANT\t{:>15}{:>18}{:>25}{:>15}{:>15}{:>15}".format(
+            "\tCOMMS-RES-QUANT-{}\t{:>15}{:>18}{:>25}{:>15}{:>15}{:>15}".format(
+                self.collectiveArgs.collective,
                 results["memSize"],
                 str("%d" % (results["numElements"])),
                 str("%.1f" % (quant_p95)),
@@ -981,11 +982,12 @@ class commsCollBench(paramCommsBench):
 
         if not self.collectiveArgs.pair:
             fmt = (
-                "\tCOMMS-RES{:>15}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
+                "\tCOMMS-RES-{}{:>15}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
                 + tflops_fmt
             )
             print(
                 fmt.format(
+                    self.collectiveArgs.collective,
                     results["memSize"],
                     str("%d" % (results["numElements"])),
                     str("%.1f" % (p50)),
@@ -1006,11 +1008,12 @@ class commsCollBench(paramCommsBench):
                     // commsParams.comms_world_info.world_size
                 )
             fmt = (
-                "\tCOMMS-RES{:>15}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
+                "\tCOMMS-RES-{}{:>15}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
                 + tflops_fmt
             )
             print(
                 fmt.format(
+                    self.collectiveArgs.collective,
                     results["memSize"],
                     str("%d" % (results["numElements"])),
                     str("%d" % (results["numElements_pair"])),
@@ -1080,7 +1083,8 @@ class commsCollBench(paramCommsBench):
         ping_pong_p95 = np.percentile(pingPongLatencyAcrossCommRanks, 95)
 
         print(
-            "\tCOMMS-RES{:>15}{:>20}{:>10}{:>10}{:>25}{:>10}{:>10}{:>15}{:>15}{:>18}{:>18}".format(
+            "\tCOMMS-RES-{}{:>15}{:>20}{:>10}{:>10}{:>25}{:>10}{:>10}{:>15}{:>15}{:>18}{:>18}".format(
+                self.collectiveArgs.collective,
                 results["memSize"],
                 str("%.1f" % (ping_p50)),
                 str("%.1f" % (ping_p75)),
@@ -1305,11 +1309,12 @@ def main():
     if comms_env_params["global_rank"] == 0:
         print("\t MPI environment: %s " % (str(comms_env_params)))
         print(
-            "\t backend: %s nw-stack: %s mode: %s args.b: %d args.e: %d args.f: %d args.z: %s args.master_ip: %s "
+            "\t backend: %s nw-stack: %s mode: %s args.dtype: %s args.b: %d args.e: %d args.f: %d args.z: %s args.master_ip: %s "
             % (
                 args.backend,
                 args.nw_stack,
                 args.mode,
+                args.dtype,
                 args.b,
                 args.e,
                 args.f,
