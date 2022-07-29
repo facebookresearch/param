@@ -112,6 +112,8 @@ class commsTraceReplayBench(paramCommsBench):
         self.traceWithPerf = []
         self.blockStack = []
 
+        self.rebalance_policy = ""
+
         # for blocking collectives this is the sum of all the collective latencies
         # for nonblocking collectives this is the sum of how long each collective took to be sent to the device
         self.totalCommsLatency = 0.0
@@ -187,10 +189,16 @@ class commsTraceReplayBench(paramCommsBench):
             help="Toggle to set number of consecutive collectives in a batch. This also enables per batch latency stats.",
         )
         parser.add_argument(
-           "--use_timestamp",
+           "--use-timestamp",
             action="store_true",
             default=self.use_timestamp,
             help="Toggle to use time-based replay.",
+        )
+        parser.add_argument(
+           "--rebalance-policy",
+            type=str,
+            default="",
+            help="Balancing policy for all_to_allv splits, this will occur during warm-up. Supported policies:['equal']. Unsupported policies will be ignored.",
         )
         return parser.parse_args()
 
@@ -400,6 +408,35 @@ class commsTraceReplayBench(paramCommsBench):
                             }
                         )
 
+    def rebalanceSplit(self, curComm: commsArgs) -> None:
+        """
+        Policy-based rebalancing function for all_to_allv splits.
+
+        Args:
+           curComm: Contains info for collective. Will be modified in place.
+        Returns:
+            None
+        """
+        if self.rebalance_policy == "equal":
+            # Equally split sizes across ranks.
+
+            self.collectiveArgs.ipTensor = torch.tensor([curComm.inMsgSize], dtype=torch.int, device=self.collectiveArgs.device)
+            self.backendFuncs.collectiveFunc["all_reduce"](self.collectiveArgs)
+            self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+            # in and out sizes are the same for equal splits.
+            newInSize = self.collectiveArgs.ipTensor[0].item()
+            newInSize = (self.collectiveArgs.world_size * self.collectiveArgs.world_size) * round(
+                newInSize / (self.collectiveArgs.world_size * self.collectiveArgs.world_size)
+            )
+            curComm.inMsgSize = newInSize // self.collectiveArgs.world_size
+            curComm.outMsgSize = curComm.inMsgSize
+            curComm.inSplit = [
+                    (curComm.inMsgSize // self.collectiveArgs.world_size) for _ in range(self.collectiveArgs.world_size)
+                ]
+            curComm.outSplit = curComm.inSplit
+        else:
+            logger.error("Unsupported balancing policy. Ignoring.")
+
     def prepComms(self, curComm: commsArgs, commsParams: commsParamsHolderBase) -> (torch.Tensor, torch.Tensor):
         """
         Prepares the appropriate tensors for the current collective communication.
@@ -504,6 +541,19 @@ class commsTraceReplayBench(paramCommsBench):
                 self.collectiveArgs.ipTensor,
                 self.collectiveArgs.opTensor,
             ) = self.prepComms(commEntry, commsParams)
+
+            # Rebalance all_to_allv if a policy is specified.
+            if commName in self.backendFuncs.collectiveFunc.keys() and commName == "all_to_allv" and len(self.rebalance_policy) > 0:
+                # We need to set world_size correctly for rebalancing.
+                self.collectiveArgs.world_size = self.backendFuncs.get_world_size() if commEntry.pgId is None or self.shrink else commEntry.worldSize
+                # Pass in curComm to modify it in the trace, instead of the copy.
+                self.rebalanceSplit(curComm)
+
+                # Rebalancing invalidated tensors, prep them again.
+                (
+                    self.collectiveArgs.ipTensor,
+                    self.collectiveArgs.opTensor,
+                ) = self.prepComms(commEntry, commsParams)
 
             if commName in self.backendFuncs.collectiveFunc.keys():
                 self.backendFuncs.collectiveFunc[commName](self.collectiveArgs)
@@ -864,6 +914,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.out_path = args.output_path
         self.colls_per_batch = args.colls_per_batch
         self.use_timestamp = args.use_timestamp
+        self.rebalance_policy = args.rebalance_policy.lower()
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)

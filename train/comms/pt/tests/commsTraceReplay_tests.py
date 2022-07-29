@@ -1,10 +1,17 @@
 import unittest
+from unittest import mock
+
+import torch
 
 from comms_utils import commsArgs
 
 from param_bench.train.comms.pt.commsTraceReplay import commsTraceReplayBench
 from param_bench.train.comms.pt.tests.mocks.backend_mock import MockBackendFunction
-from param_bench.train.comms.pt.tests.test_utils import commsParamsTest, testArgs, createCommsArgs
+from param_bench.train.comms.pt.tests.test_utils import (
+    commsParamsTest,
+    createCommsArgs,
+    testArgs,
+)
 
 class TestPrepComms(unittest.TestCase):
     """
@@ -192,6 +199,58 @@ class TestInitBench(unittest.TestCase):
         self.assertEqual(1000, args.num_msg, testBench.max_msg_cnt)
         self.assertEqual(False, args.auto_shrink, testBench.shrink)
         self.assertEqual(False, args.no_warm_up, not testBench.do_warm_up)
+
+class TestRebalanceSplit(unittest.TestCase):
+    """
+    Test rebalance split function based on different policies.
+    """
+
+    def test_equal_policy(self):
+        testBench = commsTraceReplayBench()
+        testBench.collectiveArgs.device = "cpu"
+        testBench.collectiveArgs.world_size = 2
+        testBench.rebalance_policy = "equal"
+
+        testComm = commsArgs()
+        testComm.comms = "all_to_allv"
+        testComm.inMsgSize = 5
+        testComm.outMsgSize = 3
+        testComm.inSplit = [3, 2]
+        testComm.outSplit = [1, 2]
+
+        ipTensor = torch.tensor([16], dtype=torch.int) # Mock a second rank to have inMsgSize 11
+        testBench.backendFuncs = MockBackendFunction()
+        testBench.backendFuncs.mock_collective = mock.MagicMock(side_effect=(lambda collectiveArgs: setattr(collectiveArgs, "ipTensor", ipTensor)))
+
+        testBench.rebalanceSplit(testComm)
+        # Mock all_reduce wil return 16, so inMsgSize, outMsgSize should be equal to 8 since we are assuming world_size = 2.
+        # inSplit and outSplit should be [4, 4]
+        print(f"ipTensor after: {testBench.collectiveArgs.ipTensor}")
+        self.assertEqual(8, testComm.inMsgSize)
+        self.assertEqual(8, testComm.outMsgSize)
+        self.assertEqual([4,4], testComm.inSplit)
+        self.assertEqual([4,4], testComm.outSplit)
+
+
+    def test_unsupported_policy(self):
+        testBench = commsTraceReplayBench()
+        testBench.rebalance_policy = "unsupported" # any str that isn't in supported is considered unsupported
+
+        testComm = commsArgs()
+        testComm.comms = "all_to_allv"
+        testComm.inMsgSize = 5
+        testComm.outMsgSize = 3
+        testComm.worldSize = 2
+        testComm.inSplit = [3, 2]
+        testComm.outSplit = [1, 2]
+
+        testBench.rebalanceSplit(testComm)
+
+        # should be no change
+        self.assertEqual(5, testComm.inMsgSize)
+        self.assertEqual(3, testComm.outMsgSize)
+        self.assertEqual([3,2], testComm.inSplit)
+        self.assertEqual([1,2], testComm.outSplit)
 
 if __name__ == '__main__':
     unittest.main()

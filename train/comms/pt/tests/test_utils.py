@@ -18,6 +18,7 @@ class testArgs: # default args to run tests with
         self.output_path = "/tmp/paramReplayedTrace"
         self.colls_per_batch = -1
         self.use_timestamp = False
+        self.rebalance_policy = ""
 
 class commsParamsTest:
     def __init__(self):

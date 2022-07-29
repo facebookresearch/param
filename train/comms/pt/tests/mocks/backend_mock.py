@@ -30,34 +30,38 @@ class MockBackendFunction: # Mock backend function
 
     # Collectives
     def all_gather(self, collectiveArgs, retFlag=False):
-        pass
+        self.mock_collective(collectiveArgs)
 
     def all_reduce(self, collectiveArgs, retFlag=False):
-        pass
+        self.mock_collective(collectiveArgs)
 
     def broadcast(self, collectiveArgs, retFlag=False):
-        pass
+        self.mock_collective(collectiveArgs)
 
     def reduce(self, collectiveArgs, retFlag=False):
-        pass
+        self.mock_collective(collectiveArgs)
 
     def all_to_all(self, collectiveArgs, retFlag=False):
-        pass
+        self.mock_collective(collectiveArgs)
 
     def all_to_allv(self, collectiveArgs, retFlag=False):
-        pass
+        self.mock_collective(collectiveArgs)
 
     def recv(self, collectiveArgs, retFlag=False):
-        pass
+        self.mock_collective(collectiveArgs)
 
     def complete_accel_ops(self, collectiveArgs, devSync=False):
-        pass
+        self.mock_collective(collectiveArgs)
 
     def barrier(self, collectiveArgs, name="dummy"):
-        pass
+        self.mock_collective(collectiveArgs)
 
     def sync_barrier(self, collectiveArgs, desc="world"):
         self.barrier(collectiveArgs, name=desc)
+
+    def mock_collective(self, collectiveArgs):
+        # Mock this function to change collectiveArgs values.
+        return collectiveArgs
 
     def get_reduce_op(self, opName):
         pass

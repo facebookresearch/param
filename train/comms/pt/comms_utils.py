@@ -579,6 +579,10 @@ class commsArgs():
             commData["in_msg_size"] = self.inMsgSize
             commData["out_msg_size"] = self.outMsgSize
             commData["dtype"] = self.dtype
+        if self.inSplit is not None:
+            commData["in_split"] = self.inSplit
+        if self.outSplit is not None:
+            commData["out_split"] = self.outSplit
         if self.startTimeNs is not None:
             commData["startTime_ns"] = self.startTimeNs
         if self.pgId is not None:
