@@ -99,6 +99,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.out_path = "/tmp/paramReplayedTrace"
         self.colls_per_batch = -1
         self.use_timestamp = False
+        self.num_replays = 1
 
         self.collInMsgSizes: Dict[str, List] = {}
         self.collInUniMsgSizes: Dict[str, Set] = {}
@@ -199,6 +200,12 @@ class commsTraceReplayBench(paramCommsBench):
             type=str,
             default="",
             help="Balancing policy for all_to_allv splits, this will occur during warm-up. Supported policies:['equal']. Unsupported policies will be ignored.",
+        )
+        parser.add_argument(
+            "--num-replays",
+            type=int,
+            default=1,
+            help="Number of times to replay the given trace, used to get more accurate replay for small traces.",
         )
         return parser.parse_args()
 
@@ -657,10 +664,6 @@ class commsTraceReplayBench(paramCommsBench):
             "comms": "wait",
             "worldSize": 16
         }
-        or init (pg creation)
-        {
-
-        }
         NOTE:
             - this format is subject to be changed anytime
             - the unit of all size fields is # of elements (not bytes)
@@ -685,89 +688,93 @@ class commsTraceReplayBench(paramCommsBench):
             for coll, sizes in self.collInMsgSizes.items():
                 logger.info(f"\t{coll}: {len(sizes)}")
 
-        coll_in_batch_num = 0
-        startTime = time.monotonic_ns()
-        for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
-            collName = paramToCommName(curComm.comms)
-            if collName not in self.allowList:
-                continue
-
-            curBlocks = curComm.markerStack if curComm.markerStack is not None else []
-            curBlockStack = (
-                " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
-            )
-
+        for i in range(self.num_replays):
             if self.backendFuncs.get_global_rank() == 0:
-                logger.debug(
-                    f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(curComm.comms)}\n"
-                )
-                print(f"[{cnt} / {self.max_msg_cnt}]", end="\r")
+                print(f"Replay #{i}")
 
-            # read fields and prepare the tensors
-            (
-                self.collectiveArgs.ipTensor,
-                self.collectiveArgs.opTensor,
-            ) = self.prepComms(curComm, commsParams)
+            coll_in_batch_num = 0
+            startTime = time.monotonic_ns()
+            for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
+                collName = paramToCommName(curComm.comms)
+                if collName not in self.allowList:
+                    continue
 
-            if self.colls_per_batch > 0 and coll_in_batch_num == 0:
-                batch_begin = time.monotonic()
-
-            # sleep for until it is time for the next collective to run
-            # if the collective is less than LOOP_TIMER_S (.02s) away, continue looping for the duration. This is because of time.sleep()'s accuracy.
-            if self.use_timestamp:
-                if curComm.startTimeNs is not None: # for backwards compatibility
-                    while(time.monotonic_ns() - startTime <= curComm.startTimeNs):
-                        timeDiff = curComm.startTimeNs - (time.monotonic_ns() - startTime)
-                        if(timeDiff/1e9 >= LOOP_TIMER_S): # make it seconds
-                            time.sleep(LOOP_TIMER_S)
-
-            # send comm request to pytorch backend
-            (latency, global_latency) = self.runComms(collName, curComm, curBlockStack)
-
-            # perform data validation check on the final opTensor
-            if self.is_blocking and commsParams.dcheck == 1 and collName not in ("wait","barrier"):
-                commsParams.collective = collName
-                commsParams.srcOrDst = curComm.root if curComm.root is not None else 0
-                self.dcheck(commsParams, curComm.outMsgSize, self.collectiveArgs.opTensor)
-
-            # calculating batch latency (batch defined by --colls-per-batch)
-            if collName == "wait" and self.colls_per_batch > 0:
-                coll_in_batch_num += 1
-                if coll_in_batch_num == self.colls_per_batch:
-                    batch_latency = (
-                        time.monotonic() - batch_begin
-                    ) * 1e3  # make it millisecond
-                    coll_in_batch_num = 0
-                    self.batchLat.append(batch_latency)
-
-            # record comm metrics
-            self.collLat[collName].append(latency)
-            self.totalCommsLatency += latency
-
-            recordComm = curComm.toDict()
-
-            recordComm["marker_stack"] = curBlockStack
-            recordComm["quant_us"] = self.collectiveArgs.quant_time.getTimeUS()
-            recordComm["dequant_us"] = self.collectiveArgs.dequant_time.getTimeUS()
-            recordComm["latency_us"] = latency
-            recordComm["global_latency_us"] = global_latency
-
-            # record comm block metrics
-            # categorized by the marker
-            for curBlock in curBlocks:
-                # elem_size = self.collectiveArgs.ipTensor.element_size()
-                self.comms_blocks[curBlock].append(recordComm)
-
-            # Keep a copy of trace with performance (latency) and seqnum
-            self.traceWithPerf.append(recordComm)
-
-            if self.backendFuncs.get_global_rank() == 0:
-                logger.info(
-                    f"[{cnt} / {self.max_msg_cnt}] Replayed {collName} in block [{curBlockStack}]... {global_latency:.2f} us"
+                curBlocks = curComm.markerStack if curComm.markerStack is not None else []
+                curBlockStack = (
+                    " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
                 )
 
-        # make sure all ops are completed, in the case of nonblocking, this will enqueue all remaining operations that did not have a wait op
-        self.backendFuncs.sync_barrier(self.collectiveArgs)
+                if self.backendFuncs.get_global_rank() == 0:
+                    logger.debug(
+                        f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(curComm.comms)}\n"
+                    )
+                    print(f"[{cnt} / {self.max_msg_cnt}]", end="\r")
+
+                # read fields and prepare the tensors
+                (
+                    self.collectiveArgs.ipTensor,
+                    self.collectiveArgs.opTensor,
+                ) = self.prepComms(curComm, commsParams)
+
+                if self.colls_per_batch > 0 and coll_in_batch_num == 0:
+                    batch_begin = time.monotonic()
+
+                # sleep for until it is time for the next collective to run
+                # if the collective is less than LOOP_TIMER_S (.02s) away, continue looping for the duration. This is because of time.sleep()'s accuracy.
+                if self.use_timestamp:
+                    if curComm.startTimeNs is not None: # for backwards compatibility
+                        while(time.monotonic_ns() - startTime <= curComm.startTimeNs):
+                            timeDiff = curComm.startTimeNs - (time.monotonic_ns() - startTime)
+                            if(timeDiff/1e9 >= LOOP_TIMER_S): # make it seconds
+                                time.sleep(LOOP_TIMER_S)
+
+                # send comm request to pytorch backend
+                (latency, global_latency) = self.runComms(collName, curComm, curBlockStack)
+
+                # perform data validation check on the final opTensor
+                if self.is_blocking and commsParams.dcheck == 1 and collName not in ("wait","barrier"):
+                    commsParams.collective = collName
+                    commsParams.srcOrDst = curComm.root if curComm.root is not None else 0
+                    self.dcheck(commsParams, curComm.outMsgSize, self.collectiveArgs.opTensor)
+
+                # calculating batch latency (batch defined by --colls-per-batch)
+                if collName == "wait" and self.colls_per_batch > 0:
+                    coll_in_batch_num += 1
+                    if coll_in_batch_num == self.colls_per_batch:
+                        batch_latency = (
+                            time.monotonic() - batch_begin
+                        ) * 1e3  # make it millisecond
+                        coll_in_batch_num = 0
+                        self.batchLat.append(batch_latency)
+
+                # record comm metrics
+                self.collLat[collName].append(latency)
+                self.totalCommsLatency += latency
+
+                recordComm = curComm.toDict()
+
+                recordComm["marker_stack"] = curBlockStack
+                recordComm["quant_us"] = self.collectiveArgs.quant_time.getTimeUS()
+                recordComm["dequant_us"] = self.collectiveArgs.dequant_time.getTimeUS()
+                recordComm["latency_us"] = latency
+                recordComm["global_latency_us"] = global_latency
+
+                # record comm block metrics
+                # categorized by the marker
+                for curBlock in curBlocks:
+                    # elem_size = self.collectiveArgs.ipTensor.element_size()
+                    self.comms_blocks[curBlock].append(recordComm)
+
+                # Keep a copy of trace with performance (latency) and seqnum
+                self.traceWithPerf.append(recordComm)
+
+                if self.backendFuncs.get_global_rank() == 0:
+                    logger.info(
+                        f"[{cnt} / {self.max_msg_cnt}] Replayed {collName} in block [{curBlockStack}]... {global_latency:.2f} us"
+                    )
+
+            # make sure all ops are completed, in the case of nonblocking, this will enqueue all remaining operations that did not have a wait op
+            self.backendFuncs.sync_barrier(self.collectiveArgs)
 
         # record how long it took for trace-replay to complete
         endTime = time.monotonic_ns()
@@ -915,6 +922,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.colls_per_batch = args.colls_per_batch
         self.use_timestamp = args.use_timestamp
         self.rebalance_policy = args.rebalance_policy.lower()
+        self.num_replays = args.num_replays
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
