@@ -29,10 +29,12 @@ class TestPrepComms(unittest.TestCase):
         curComm = commsArgs()
         curComm.comms = "wait"
         (iptensor, optensor) = testBench.prepComms(curComm, None)
-        self.assertEqual(0, len(iptensor), len(optensor))
+        self.assertEqual(0, len(iptensor))
+        self.assertEqual(0, len(optensor))
         curComm.comms = "barrier"
         (iptensor, optensor) = testBench.prepComms(curComm, None)
-        self.assertEqual(0, len(iptensor), len(optensor))
+        self.assertEqual(0, len(iptensor))
+        self.assertEqual(0, len(optensor))
 
     def test_tensor_no_shrink(self):
         testBench = commsTraceReplayBench()
@@ -45,9 +47,11 @@ class TestPrepComms(unittest.TestCase):
         testBench.collectiveArgs.world_size = 1
         (iptensor, optensor) = testBench.prepComms(curComm, commsParams)
         # tensor length needs to match world_size
-        self.assertEqual(1, len(iptensor), len(optensor))
+        self.assertEqual(1, len(iptensor))
+        self.assertEqual(1, len(optensor))
         # both input and output tensors should be equal to 1
-        self.assertEqual(1, iptensor[0], optensor[0])
+        self.assertEqual(1, iptensor[0])
+        self.assertEqual(1, optensor[0])
 
     def test_tensor_shrink_alltoallv(self):
         testBench = commsTraceReplayBench()
@@ -60,9 +64,11 @@ class TestPrepComms(unittest.TestCase):
         testBench.collectiveArgs.world_size = 1
         (iptensor, optensor) = testBench.prepComms(curComm, commsParams)
         # tensor length should shrink to world size
-        self.assertEqual(1, len(iptensor), len(optensor))
+        self.assertEqual(1, len(iptensor))
+        self.assertEqual(1, len(optensor))
         # both input and output tensors should be equal to 1 for all_to_allv
-        self.assertEqual(1, iptensor[0], optensor[0])
+        self.assertEqual(1, iptensor[0])
+        self.assertEqual(1, optensor[0])
 
     def test_tensor_shrink_allgather(self):
         testBench = commsTraceReplayBench()
@@ -75,7 +81,8 @@ class TestPrepComms(unittest.TestCase):
         testBench.collectiveArgs.world_size = 1
         (iptensor, optensor) = testBench.prepComms(curComm, commsParams)
         # tensor length should shrink to world size
-        self.assertEqual(1, len(iptensor), len(optensor))
+        self.assertEqual(1, len(iptensor))
+        self.assertEqual(1, len(optensor))
 
 class TestWarmUpBench(unittest.TestCase):
     """
@@ -147,16 +154,17 @@ class TestinitTraceStat(unittest.TestCase):
         testBench.is_dry_run = True
         testBench.initTraceStat()
         # Only 2 messages had msg sizes
-        self.assertEqual(2, len(testBench.collInMsgSizes),
-                        len(testBench.collOutMsgSizes))
+        self.assertEqual(2, len(testBench.collInMsgSizes))
+        self.assertEqual(2, len(testBench.collOutMsgSizes))
         # The sum of the sizes of all all_gather msgs is 2 for in and out
-        self.assertEqual(2, sum(testBench.collInMsgSizes["all_gather"]),
-                        sum(testBench.collOutMsgSizes["all_gather"]))
+        self.assertEqual(2, sum(testBench.collInMsgSizes["all_gather"]))
+        self.assertEqual(2, sum(testBench.collOutMsgSizes["all_gather"]))
         # Dry run records comm blocks. We have two colls in test_stack
         self.assertEqual(2, len(testBench.comms_blocks["test_stack"]))
         # check values of comm_blocks
         self.assertEqual("test", testBench.comms_blocks["test_stack"][0]["comms"]) # first comm in "test_stack" is test
-        self.assertEqual(1, testBench.comms_blocks["test_stack"][0]["in_msg_size"], testBench.comms_blocks["test_stack"][0]["out_msg_size"])
+        self.assertEqual(1, testBench.comms_blocks["test_stack"][0]["in_msg_size"])
+        self.assertEqual(1, testBench.comms_blocks["test_stack"][0]["out_msg_size"])
 
         self.assertEqual("wait", testBench.comms_blocks["test_stack"][1]["comms"]) # second comm in "test_stack" is wait
 
@@ -172,11 +180,11 @@ class TestinitTraceStat(unittest.TestCase):
         testBench.comms_trace = test_trace
         testBench.initTraceStat()
         # Only 2 messages had msg sizes
-        self.assertEqual(2, len(testBench.collInMsgSizes),
-                        len(testBench.collOutMsgSizes))
+        self.assertEqual(2, len(testBench.collInMsgSizes))
+        self.assertEqual(2, len(testBench.collOutMsgSizes))
         # The sum of the sizes of all all_gather msgs is 2 for in and out
-        self.assertEqual(2, sum(testBench.collInMsgSizes["all_gather"]),
-                        sum(testBench.collOutMsgSizes["all_gather"]))
+        self.assertEqual(2, sum(testBench.collInMsgSizes["all_gather"]))
+        self.assertEqual(2, sum(testBench.collOutMsgSizes["all_gather"]))
         # Not dry run does not record comm blocks.
         self.assertEqual(0, len(testBench.comms_blocks["test_stack"]))
 
