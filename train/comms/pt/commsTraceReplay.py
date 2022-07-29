@@ -909,17 +909,14 @@ class commsTraceReplayBench(paramCommsBench):
             with open(self.trace_file) as f:
                 self.comms_trace = json.load(f)
 
-        # additional check the trace format and convert it if needed
+        # Convert trace to comms trace.
         try:
-            from internals import fbTraceParser
+            import commsTraceParser
         except ImportError:
-            logger.info("FB internals not present, skipping Kineto fbTraceParser")
+            logger.info("FB internals not present, using base parser.")
+            self.comms_trace = extractCommsInfo(self.comms_trace)
         else:
-            self.comms_trace = fbTraceParser(
-                self.comms_trace, target_rank=self.global_rank
-            )
-
-        self.comms_trace = extractCommsInfo(self.comms_trace)
+            self.comms_trace = commsTraceParser.parseTrace(self.comms_trace, self.global_rank)
 
 def extractCommsInfo(in_trace: List[Dict] ) -> List[commsArgs]:
     """
