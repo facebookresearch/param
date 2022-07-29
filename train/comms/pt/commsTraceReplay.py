@@ -420,6 +420,7 @@ class commsTraceReplayBench(paramCommsBench):
             self.collectiveArgs.world_size = curComm.worldSize # match world size to the size of the current PG
         else: # use default process group if no pg_id is provided or shrink is enabled
             self.collectiveArgs.group = self.backendFuncs.get_default_group()
+            self.world_size = self.backendFuncs.get_world_size()
 
         # for all_to_allv, we can shrink the size if running on smaller scale
         # this is for sanity test or debug purpose only since we don't always get to run very large scale
@@ -570,43 +571,45 @@ class commsTraceReplayBench(paramCommsBench):
         """
         Run all collectives in current rank and record timing metrics for benchmarkng.
 
-        The json format is expecting to be either
+        The comms trace format is expecting to be either:
+        all_to_allv
         {
-            "startTime_ns": 0
-            "timestamp": 12345
-            "marker_stack": ["## all2all ##"]
+            "startTimeNs": 0
+            "markerStack": ["## all2all ##"]
             "comms": "all_to_allv",
             "seqnum": 0
             "req": 0
-            "in_msg_size": 10357149,
-            "out_msg_size": 23093760,
-            "in_split": [],
-            "out_split": [],
+            "inMsgSize": 10357149,
+            "outMsgSize": 23093760,
+            "inSplit": [],
+            "outSplit": [],
             "dtype": Int
-            "world_size": 16
+            "worldSize": 16
         },
         or w/o in/out_split
         {
-            "startTime_ns": 0
-            "timestamp": 12345
-            "marker_stack": ["## all2all ##"]
+            "startTimeNs": 0
+            "markerStack": ["## all2all ##"]
             "comms": "all_reduce",
             "seqnum": 0
             "req": 0
-            "in_msg_size": 1048576,
-            "out_msg_size": 1048576,
+            "inMsgSize": 1048576,
+            "outMsgSize": 1048576,
             "dtype": Int,
-            "world_size": 16
+            "worldSize": 16
         }
         or wait/barrier
         {
-            "startTime_ns": 0
-            "timestamp": 12345
-            "marker_stack": ["## all2all ##"]
+            "startTimeNs": 0
+            "markerStack": ["## all2all ##"]
             "seqnum": 0
             "req": 0
             "comms": "wait",
-            "world_size": 16
+            "worldSize": 16
+        }
+        or init (pg creation)
+        {
+
         }
         NOTE:
             - this format is subject to be changed anytime
