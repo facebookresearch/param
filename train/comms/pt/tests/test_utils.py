@@ -2,6 +2,7 @@
 This file contains test classes with default values for comms unit tests.
 Feel free to add additional classes or modify existing ones as needed for new tests.
 """
+from comms_utils import commsArgs
 
 class testArgs: # default args to run tests with
     def __init__(self):
@@ -42,3 +43,13 @@ class comms_world_info_test:
         self.master_ip = "localhost"
         self.master_port = "25555"
         self.num_tpu_cores = 16
+
+def createCommsArgs(**kwargs) -> commsArgs:
+    """
+    Test utility to create comms args from a dict of values.
+    """
+    curComm = commsArgs()
+    for key, value in kwargs.items():
+        setattr(curComm, key, value)
+
+    return curComm

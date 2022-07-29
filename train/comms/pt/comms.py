@@ -1136,16 +1136,16 @@ class commsCollBench(paramCommsBench):
                 # set corresponding function pointers
                 if commsParams.collective != "pt2pt":
                     collectiveFunc = backendFuncs.collectiveFunc[commsParams.collective]
+                    commsArgs = comms_utils.commsArgs()
+                    commsArgs.inMsgSize = numElements
+                    commsArgs.outMsgSize = numElements
+                    commsArgs.worldSize = world_size
 
                 (
                     self.collectiveArgs.ipTensor,
                     self.collectiveArgs.opTensor,
                 ) = self.prepComm(
-                    curComm={
-                        "in_msg_size": numElements,
-                        "out_msg_size": numElements,
-                        "world_size": world_size,
-                    },
+                    curComm=commsArgs,
                     commsParams=commsParams,
                 )
 
@@ -1169,15 +1169,15 @@ class commsCollBench(paramCommsBench):
                     self.collectiveArgs.dataSize_pair // commsParams.element_size
                 )
                 results["numElements_pair"] = self.collectiveArgs.numElements_pair
+                commsArgs = comms_utils.commsArgs()
+                commsArgs.inMsgSize = self.collectiveArgs.numElements_pair
+                commsArgs.outMsgSize = self.collectiveArgs.numElements_pair
+                commsArgs.worldSize = world_size
                 (
                     self.collectiveArgs.ipTensor_pair,
                     self.collectiveArgs.opTensor_pair,
                 ) = self.prepComm(
-                    curComm={
-                        "in_msg_size": self.collectiveArgs.numElements_pair,
-                        "out_msg_size": self.collectiveArgs.numElements_pair,
-                        "world_size": world_size,
-                    },
+                    curComm=commsArgs,
                     commsParams=commsParams,
                 )
 

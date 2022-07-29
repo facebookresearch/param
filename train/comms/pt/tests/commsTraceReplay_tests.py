@@ -1,8 +1,10 @@
 import unittest
 
+from comms_utils import commsArgs
+
 from param_bench.train.comms.pt.commsTraceReplay import commsTraceReplayBench
-from param_bench.train.comms.pt.tests.test_utils import testArgs, commsParamsTest
 from param_bench.train.comms.pt.tests.mocks.backend_mock import MockBackendFunction
+from param_bench.train.comms.pt.tests.test_utils import commsParamsTest, testArgs, createCommsArgs
 
 class TestPrepComms(unittest.TestCase):
     """
@@ -17,11 +19,11 @@ class TestPrepComms(unittest.TestCase):
         commsParams = commsParamsTest()
         commsParams.dcheck = 1
         commsParams.device = "cpu"
-        curComm = {}
-        curComm["comms"] = "wait"
+        curComm = commsArgs()
+        curComm.comms = "wait"
         (iptensor, optensor) = testBench.prepComms(curComm, None)
         self.assertEqual(0, len(iptensor), len(optensor))
-        curComm["comms"] = "barrier"
+        curComm.comms = "barrier"
         (iptensor, optensor) = testBench.prepComms(curComm, None)
         self.assertEqual(0, len(iptensor), len(optensor))
 
@@ -31,11 +33,7 @@ class TestPrepComms(unittest.TestCase):
         commsParams = commsParamsTest()
         commsParams.dcheck = 1
         commsParams.device = "cpu"
-        curComm = {}
-        curComm["comms"] = "recv"
-        curComm["dtype"] = "Int"
-        curComm["in_msg_size"] = 1
-        curComm["out_msg_size"] = 1
+        curComm = commsArgs(comms="recv", dtype="Int", inMsgSize=1, outMsgSize=1)
         testBench.shrink = False
         testBench.collectiveArgs.world_size = 1
         (iptensor, optensor) = testBench.prepComms(curComm, commsParams)
@@ -50,14 +48,7 @@ class TestPrepComms(unittest.TestCase):
         commsParams = commsParamsTest()
         commsParams.dcheck = 1
         commsParams.device = "cpu"
-        curComm = {}
-        curComm["comms"] = "all_to_allv"
-        curComm["dtype"] = "Int"
-        curComm["in_msg_size"] = 4
-        curComm["out_msg_size"] = 4
-        curComm["in_split"] = [1, 1, 1, 1]
-        curComm["out_split"] = [1, 1, 1, 1]
-        curComm["world_size"] = 4
+        curComm = commsArgs(comms="all_to_allv", dtype="Int", inMsgSize=4, outMsgSize=4, inSplit=[1, 1, 1, 1], outSplit=[1, 1, 1, 1], worldSize=4)
         testBench.shrink = True
         testBench.collectiveArgs.world_size = 1
         (iptensor, optensor) = testBench.prepComms(curComm, commsParams)
@@ -72,12 +63,7 @@ class TestPrepComms(unittest.TestCase):
         commsParams = commsParamsTest()
         commsParams.dcheck = 1
         commsParams.device = "cpu"
-        curComm = {}
-        curComm["comms"] = "all_gather"
-        curComm["dtype"] = "Int"
-        curComm["in_msg_size"] = 4
-        curComm["out_msg_size"] = 4
-        curComm["world_size"] = 4
+        curComm = commsArgs(comms="all_gather", dtype="Int", inMsgSize=4, outMsgSize=4, worldSize=4)
         testBench.shrink = True
         testBench.collectiveArgs.world_size = 1
         (iptensor, optensor) = testBench.prepComms(curComm, commsParams)
@@ -92,11 +78,11 @@ class TestWarmUpBench(unittest.TestCase):
 
     def test_warm_up_bench(self):
         test_trace = [
-                        {"comms": "test", "in_msg_size": 1,
-                         "out_msg_size": 1, "marker_stack": ["test_stack"]},
-                        {"comms": "all_gather", "in_msg_size": 2,
-                         "out_msg_size": 2},
-                        {"comms": "wait", "marker_stack": ["test_stack"]}
+                        createCommsArgs(comms="test", inMsgSize=1,
+                         outMsgSize=1, markerStack=["test_stack"]),
+                        createCommsArgs(comms="all_gather", inMsgSize=2,
+                         outmsgSize=2),
+                        createCommsArgs(comms="wait", markerStack=["test_stack"])
                      ]
         testBench = commsTraceReplayBench()
         testBench.backendFuncs = MockBackendFunction()
@@ -117,8 +103,7 @@ class TestRunComms(unittest.TestCase):
         testBench.is_blocking = True
         testBench.backendFuncs = MockBackendFunction()
         collName = "all_gather"
-        curComm = {}
-        curComm["req"] = 0
+        curComm = commsArgs(req=0)
         (latency, global_latency) = testBench.runComms(collName, curComm, "test_stack")
         self.assertIsNotNone(latency)
         self.assertIsNotNone(global_latency)
@@ -129,8 +114,7 @@ class TestRunComms(unittest.TestCase):
         testBench.is_blocking = False
         testBench.backendFuncs = MockBackendFunction()
         collName = "all_gather"
-        curComm = {}
-        curComm["req"] = 0
+        curComm = commsArgs(req=0)
         (latency, global_latency) = testBench.runComms(collName, curComm, "test_stack")
         self.assertIsNotNone(latency)
         self.assertIsNotNone(global_latency)
@@ -145,11 +129,11 @@ class TestinitTraceStat(unittest.TestCase):
 
     def test_dry_run(self):
         test_trace = [
-                        {"comms": "test", "in_msg_size": 1,
-                         "out_msg_size": 1, "marker_stack": ["test_stack"]},
-                        {"comms": "all_gather", "in_msg_size": 2,
-                         "out_msg_size": 2},
-                        {"comms": "wait", "marker_stack": ["test_stack"]}
+                        createCommsArgs(comms="test", inMsgSize=1,
+                         outMsgSize=1, markerStack=["test_stack"]),
+                        createCommsArgs(comms="all_gather", inMsgSize=2,
+                         outMsgSize=2),
+                        createCommsArgs(comms="wait", markerStack=["test_stack"])
                      ]
         testBench = commsTraceReplayBench()
         testBench.comms_trace = test_trace
@@ -171,11 +155,11 @@ class TestinitTraceStat(unittest.TestCase):
 
     def test_not_dry_run(self):
         test_trace = [
-                        {"comms": "test", "in_msg_size": 1,
-                         "out_msg_size": 1, "marker_stack": ["test_stack"]},
-                        {"comms": "all_gather", "in_msg_size": 2,
-                         "out_msg_size": 2},
-                        {"comms": "wait", "marker_stack": ["test_stack"]}
+                        createCommsArgs(comms="test", inMsgSize=1,
+                         outMsgSize=1, markerStack=["test_stack"]),
+                        createCommsArgs(comms="all_gather", inMsgSize=2,
+                         outMsgSize=2),
+                        createCommsArgs(comms="wait", markerStack=["test_stack"])
                      ]
         testBench = commsTraceReplayBench()
         testBench.comms_trace = test_trace

@@ -521,6 +521,93 @@ class paramTimer:
     def getTimeNS(self) -> float:
         return self.elapsedTimeNS
 
+class commsArgs():
+    """
+    This class contains all of the args that we can use to perform a single collective.
+
+    Public Attributes:
+        comms: Name of collective.
+        seqnum: Current number of collectives.
+        req: Request ID of collective to map to wait operation.
+        inMsgSize: Size of input tensor.
+        outMsgSize: Size of output tensor.
+        dtype: Data type of tensor values.
+        inSplit: List of input split sizes for rank across current process group.
+        outSplit: List of output split sizes for ranks across current process group.
+        startTimeNs: Start time of current collective.
+        pgId: Unique indentifier for the process group this collective will use.
+        groupRanks: Global ranks of the process group, this is used with PG init.
+        worldSize: World size of current process group.
+        markerStack: Current markers that this collective is a part of.
+        root: Used to determine if collective is src or dst.
+    """
+
+    def __init__(self, **kwargs) -> None:
+        """
+        Initialize arguments used for comm replay.
+        """
+        self.comms = kwargs["comms"] if "comms" in kwargs else None
+        self.seqnum = kwargs["seqnum"] if "seqnum" in kwargs else None
+        self.req = kwargs["req"] if "req" in kwargs else None
+        self.inMsgSize = kwargs["inMsgSize"] if "inMsgSize" in kwargs else None
+        self.outMsgSize = kwargs["outMsgSize"] if "outMsgSize" in kwargs else None
+        self.dtype = kwargs["dtype"] if "dtype" in kwargs else None
+        self.inSplit = kwargs["inSplit"] if "inSplit" in kwargs else None
+        self.outSplit = kwargs["outSplit"] if "outSplit" in kwargs else None
+        self.startTimeNs = kwargs["startTimeNs"] if "startTimeNs" in kwargs else None
+        self.pgId = kwargs["pgId"] if "pgId" in kwargs else None
+        self.groupRanks = kwargs["groupRanks"] if "groupRanks" in kwargs else None
+        self.worldSize = kwargs["worldSize"] if "worldSize" in kwargs else None
+        self.markerStack = kwargs["markerStack"] if "markerStack" in kwargs else None
+        self.root = kwargs["root"] if "root" in kwargs else None
+
+    def toDict(self) -> Dict:
+        """
+        Convert commsArgs to dictionary for storing in json.
+
+        Args:
+            None
+        Returns:
+            commData: Dictionary containing the comms metadata.
+        """
+        commData = {}
+        commData["comms"] = self.comms
+        commData["seqnum"] = self.seqnum
+        if self.req is not None:
+            commData["req"] = self.req
+        if self.inMsgSize is not None:
+            commData["in_msg_size"] = self.inMsgSize
+            commData["out_msg_size"] = self.outMsgSize
+            commData["dtype"] = self.dtype
+        if self.startTimeNs is not None:
+            commData["startTime_ns"] = self.startTimeNs
+        if self.pgId is not None:
+            commData["pg_id"] = self.pgId
+        if self.worldSize is not None:
+            commData["world_size"] = self.worldSize
+        if self.root is not None:
+            commData["root"] = self.root
+
+        return commData
+
+
+    def __eq__(self, other: commsArgs) -> bool:
+        """
+        Used for testing. Check if two comms are equal.
+        """
+        return self.__dict__ == other.__dict__
+
+    def __repr__(self):
+        """
+        Print repr of commsArgs in human readable format.
+        """
+        return self.__dict__.__str__()
+
+    def __str__(self) -> str:
+        """
+        Print out the commsArgs in human readable format.
+        """
+        return self.__dict__.__str__()
 
 class paramProfile(record_function):
     """Inherit from PyTorch profiler to enable autoguard profiling while measuring the time interval in PARAM"""
@@ -1048,7 +1135,7 @@ class paramCommsBench(ABC):
     def _prep_all_to_allv(
         self,
         ipTensor: torch.tensor,
-        curComm: Dict[str, Any],
+        curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
         numElementsOut: int,
@@ -1065,13 +1152,13 @@ class paramCommsBench(ABC):
         )
         # all_to_allv requires tensors to specify split
         self.collectiveArgs.opTensor_split = (
-            curComm["out_split"]
-            if ("out_split" in curComm.keys())
+            curComm.outSplit
+            if (curComm.outSplit is not None)
             else [(numElementsOut // world_size) for _ in range(world_size)]
         )
         self.collectiveArgs.ipTensor_split = (
-            curComm["in_split"]
-            if ("in_split" in curComm.keys())
+            curComm.inSplit
+            if (curComm.inSplit is not None)
             else [(numElementsIn // world_size) for _ in range(world_size)]
         )
         return (ipTensor, opTensor)
@@ -1079,7 +1166,7 @@ class paramCommsBench(ABC):
     def _prep_all_to_all(
         self,
         ipTensor: torch.tensor,
-        curComm: Dict[str, Any],
+        curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
         numElementsOut: int,
@@ -1123,7 +1210,7 @@ class paramCommsBench(ABC):
     def _prep_all_gather(
         self,
         ipTensor: torch.tensor,
-        curComm: Dict[str, Any],
+        curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
         numElementsOut: int,
@@ -1157,7 +1244,7 @@ class paramCommsBench(ABC):
     def _prep_all_gather_base(
         self,
         ipTensor: torch.tensor,
-        curComm: Dict[str, Any],
+        curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
         numElementsOut: int,
@@ -1190,7 +1277,7 @@ class paramCommsBench(ABC):
     def _prep_incast(
         self,
         ipTensor: torch.tensor,
-        curComm: Dict[str, Any],
+        curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
         numElementsOut: int,
@@ -1213,7 +1300,7 @@ class paramCommsBench(ABC):
     def _prep_reduce_scatter(
         self,
         ipTensor: torch.tensor,
-        curComm: Dict[str, Any],
+        curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
         numElementsOut: int,
@@ -1252,7 +1339,7 @@ class paramCommsBench(ABC):
     def _prep_reduce_scatter_base(
         self,
         ipTensor: torch.tensor,
-        curComm: Dict[str, Any],
+        curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
         numElementsOut: int,
@@ -1285,7 +1372,7 @@ class paramCommsBench(ABC):
     def _prep_pt2pt(
         self,
         ipTensor: torch.tensor,
-        curComm: Dict[str, Any],
+        curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
         numElementsOut: int,
@@ -1304,7 +1391,7 @@ class paramCommsBench(ABC):
         return (ipTensor, opTensor)
 
     def prepComm(
-        self, curComm: Dict[str, Any], commsParams: commsParamsHolderBase
+        self, curComm: commsArgs, commsParams: commsParamsHolderBase
     ) -> (torch.Tensor, torch.Tensor):
         """
         Allocate the tensors for collective.
@@ -1316,16 +1403,16 @@ class paramCommsBench(ABC):
             (iptensor, optensor): Appropriate input and output tensors for collective.
         """
         commOp = paramToCommName(
-            curComm["comms"] if ("comms" in curComm.keys()) else commsParams.collective,
+            curComm.comms if (curComm.comms is not None) else commsParams.collective,
             supported_comms=self.backendFuncs.collectiveFunc.keys(),
         )
 
         if commOp in ("wait", "barrier"):
             return ([], [])
 
-        numElementsIn = curComm["in_msg_size"]
+        numElementsIn = curComm.inMsgSize
         # numElementsOut is only meaningful for out-of-place collectives and pt2pt
-        numElementsOut = curComm["out_msg_size"]
+        numElementsOut = curComm.outMsgSize
         world_size = self.collectiveArgs.world_size
         dtype = commsParams.dtype
         curDevice = commsParams.device
