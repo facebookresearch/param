@@ -1,20 +1,28 @@
 import argparse
 import gc
 import json
-from collections import defaultdict
 import time
+from collections import defaultdict
+
 import torch
+from torch.profiler import ExecutionGraphObserver
 
 from ..lib import pytorch as lib_pytorch
 from ..lib.init_helper import load_modules
 from ..workloads import pytorch as workloads_pytorch
 from .eg_replay_utils import (
+    build_fbgemm_func,
     build_torchscript_func,
-    is_backward_aten,
-    is_backward_parent,
-    is_op,
-    is_output_tensor,
+    fbgemm_input_args_indices,
+    generate_fbgemm_tensors,
+    get_input_tensors,
+    get_output_tensors,
+    is_fbgemm_backward,
+    is_fbgemm_forward,
+    is_fbgemm_forward_unweighted,
+    is_qualified,
     is_tensor,
+    is_tensor_list,
     TORCH_DTYPES_RNG,
     trace_handler,
 )
@@ -68,6 +76,8 @@ class ExgrReplayManager:
 
         self.cuda = torch.device('cuda:0')
 
+        self.fbgemm_backward_ops = []
+
 
     def reset_registry(self):
         self.tensor_registry = {k: (None if v is None else (v if k in self.cpu_tensor else v.cuda(self.cuda))) for k, v in self.tensor_registry_permanent.items()}
@@ -81,29 +91,24 @@ class ExgrReplayManager:
         """
         def _dfs_traverse(root):
             for child in root.children:
-                if any(x in child.name for x in self.skip_node_names):
-                    continue
+                try:
+                    if any(x in child.name for x in self.skip_node_names):
+                        continue
 
-                # if "DataLoader" in child.name or "aten::set_" in child.name:
-                #     continue
+                    if is_qualified(child):
+                        self.sorted_nodes.append(child)
 
-                if (is_backward_aten(child)) or (is_op(child, strict=True) and not is_backward_parent(child)):
-                    self.sorted_nodes.append(child)
-
-                    # Tensors dependency
-                    for idxi, ip in enumerate(child.inputs):
-                        if is_tensor(child, idxi):
-                            if 'GenericList' in child.input_types[idxi]:
-                                for t in ip:
-                                    self.dependency_permanent[tuple(t)] += 1
-                            else:
-                                self.dependency_permanent[ip] += 1
-
-                    # Build aten funcs
-                    func, output_count = build_torchscript_func(child)
-                    self.funcs[child.id] = (func, output_count)
-                else:
-                    _dfs_traverse(child)
+                        # Tensors dependency
+                        for _, t_id, _ in get_input_tensors(child):
+                            self.dependency_permanent[t_id] += 1
+                        # Build aten funcs
+                        func, output_count = self.build_func(child)
+                        self.funcs[child.id] = (func, output_count)
+                    else:
+                        _dfs_traverse(child)
+                except Exception as e:
+                    print(f"Graph parse error: {e}, node id: {child.id}")
+                    exit(1)
 
         _dfs_traverse(root)
         self.sorted_nodes = sorted(self.sorted_nodes, key=lambda x: x.id)
@@ -111,127 +116,98 @@ class ExgrReplayManager:
 
 
     def analyze_tensors(self):
-
-        def add_unique_tensor(n, ip, shape):
+        def add_unique_tensor(node_id, t_id, shape):
             # If we did not see this tensor before, add it as a unique tensor
-            if ip not in self.original_unique_tensors:
-                self.original_unique_tensors.add(ip)
+            if t_id not in self.original_unique_tensors:
+                self.original_unique_tensors.add(t_id)
                 self.replay_unique_tensor_num += 1
-                self.tensors_mapping[(n.id, ip)] = self.replay_unique_tensor_num
-                self.replay_tensors_shapes[self.tensors_mapping[(n.id, ip)]] = shape
-                self.tensor_shapes[ip].add((self.tensors_mapping[(n.id, ip)], tuple(shape)))
+                self.tensors_mapping[(node_id, t_id)] = self.replay_unique_tensor_num
+                self.replay_tensors_shapes[self.tensors_mapping[(node_id, t_id)]] = shape
+                self.tensor_shapes[t_id].add((self.tensors_mapping[(node_id, t_id)], tuple(shape)))
                 return
 
             # If we saw this tensor before but with a different shape, add it as a unique tensor
-            for (relay_id, pre_shape) in self.tensor_shapes[ip]:
+            for (relay_t_id, pre_shape) in self.tensor_shapes[t_id]:
                 if tuple(shape) == pre_shape:
-                    self.tensors_mapping[(n.id, ip)] = relay_id
+                    self.tensors_mapping[(node_id, t_id)] = relay_t_id
                     return
 
             self.replay_unique_tensor_num += 1
-            self.tensors_mapping[(n.id, ip)] = self.replay_unique_tensor_num
-            self.replay_tensors_shapes[self.tensors_mapping[(n.id, ip)]] = shape
-            self.tensor_shapes[ip].add((self.tensors_mapping[(n.id, ip)], tuple(shape)))
+            self.tensors_mapping[(node_id, t_id)] = self.replay_unique_tensor_num
+            self.replay_tensors_shapes[self.tensors_mapping[(node_id, t_id)]] = shape
+            self.tensor_shapes[t_id].add((self.tensors_mapping[(node_id, t_id)], tuple(shape)))
 
 
-        for n in self.sorted_nodes:
-            for idx, ip in enumerate(n.inputs):
-                if not is_tensor(n, idx):
-                    continue
-                if 'GenericList' in n.input_types[idx]:
-                    for idxi, t in enumerate(ip):
-                        if tuple(t) not in self.dependency_permanent.keys():
-                            continue
-                        else:
-                            add_unique_tensor(n, tuple(t), n.input_shapes[idx][idxi])
-                else:
-                    if ip in self.dependency_permanent.keys():
-                        add_unique_tensor(n, ip, n.input_shapes[idx])
-            for idx, ip in enumerate(n.outputs):
-                if not is_output_tensor(n, idx):
-                    continue
-                if 'GenericList' in n.output_types[idx]:
-                    for idxi, t in enumerate(ip):
-                        if tuple(t) not in self.dependency_permanent.keys():
-                            continue
-                        else:
-                            add_unique_tensor(n, tuple(t), n.output_shapes[idx][idxi])
-                else:
-                    if ip in self.dependency_permanent.keys():
-                        add_unique_tensor(n, ip, n.output_shapes[idx])
+        for node in self.sorted_nodes:
+            for _, t_id, shape in get_input_tensors(node):
+                if t_id in self.dependency_permanent.keys():
+                    add_unique_tensor(node.id, t_id, shape)
+
+            for _, t_id, shape in get_output_tensors(node):
+                if t_id in self.dependency_permanent.keys():
+                    add_unique_tensor(node.id, t_id, shape)
 
         # Simulate the execution progress and record the output tensors we have seen so far
         output_set = set()
-        for n in self.sorted_nodes:
-            for idx, ip in enumerate(n.inputs):
-                if not is_tensor(n, idx):
-                    continue
-                if 'GenericList' in n.input_types[idx]:
-                    for t in ip:
-                        if tuple(t) in self.dependency_permanent.keys() and self.tensors_mapping[(n.id, tuple(t))] not in output_set:
-                            self.instantiate.add(self.tensors_mapping[(n.id, tuple(t))])
-                else:
-                    if ip in self.dependency_permanent.keys() and self.tensors_mapping[(n.id, ip)] not in output_set:
-                        self.instantiate.add(self.tensors_mapping[(n.id, ip)])
-            for idx, ip in enumerate(n.outputs):
-                if not is_output_tensor(n, idx):
-                    continue
-                if 'GenericList' in n.output_types[idx]:
-                    for t in ip:
-                        if tuple(t) in self.dependency_permanent.keys():
-                            output_set.add(self.tensors_mapping[(n.id, tuple(t))])
-                else:
-                    if ip in self.dependency_permanent.keys():
-                        output_set.add(self.tensors_mapping[(n.id, ip)])
+        for node in self.sorted_nodes:
+            for _, t_id, _ in get_input_tensors(node):
+                if t_id in self.dependency_permanent.keys() and self.tensors_mapping[(node.id, t_id)] not in output_set:
+                    self.instantiate.add(self.tensors_mapping[(node.id, t_id)])
+
+            for _, t_id, _ in get_output_tensors(node):
+                if t_id in self.dependency_permanent.keys():
+                    output_set.add(self.tensors_mapping[(node.id, t_id)])
 
 
     def allocate_tensors(self):
         # Instantiation of tensors:
-        for n in self.sorted_nodes:
-            for idx, ip in enumerate(n.inputs):
-                if is_tensor(n, idx):
-                    if 'GenericList' in n.input_types[idx]:
-                        for idxi, t in enumerate(ip):
-                            if tuple(t) in self.dependency_permanent.keys() and \
-                                    self.tensors_mapping[(n.id, tuple(t))] not in self.tensor_registry_permanent.keys() and \
-                                    (n.name == "aten::embedding_bag" or self.tensors_mapping[(n.id, tuple(t))] in self.instantiate):
-                                try:
-                                    dtype, rng = TORCH_DTYPES_RNG[n.input_types[idx][idxi].lstrip('Tensor(').rstrip(')')]
-                                    self.tensor_registry_permanent[self.tensors_mapping[(n.id, tuple(t))]] = rng(n.input_shapes[idx][idxi]).to(dtype)
-                                    # Mark offsets tensor for retrieving embedding table as unchangeable
-                                    # since we want to explicitly specify its distribution
-                                    if n.name == "aten::embedding_bag":
-                                        self.unchangeable_intermediate_tensors.add(self.tensors_mapping[(n.id, tuple(t))])
-                                except KeyError:
-                                    if n.input_types[idx][idxi] != 'Tensor(nullptr (uninitialized))':
-                                        print("KeyError in list: ", n.id, ip, n.input_types[idx][idxi])
-                                    self.tensor_registry_permanent[self.tensors_mapping[(n.id, tuple(t))]] = None
-                    else:
-                        if ip in self.dependency_permanent.keys() and \
-                                self.tensors_mapping[(n.id, ip)] not in self.tensor_registry_permanent.keys() and \
-                                (n.name == "aten::embedding_bag" or self.tensors_mapping[(n.id, ip)] in self.instantiate):
-                            try:
-                                dtype, rng = TORCH_DTYPES_RNG[n.input_types[idx].lstrip('Tensor(').rstrip(')')]
-                                self.tensor_registry_permanent[self.tensors_mapping[(n.id, ip)]] = rng(n.input_shapes[idx]).to(dtype)
-                                if n.name == "aten::embedding_bag":
-                                    self.unchangeable_intermediate_tensors.add(self.tensors_mapping[(n.id, ip)])
-                                if (n.name == "aten::pin_memory" or n.name == "aten::to") and idx == 0:
-                                    self.cpu_tensor.add(self.tensors_mapping[(n.id, ip)])
-                            except KeyError:
-                                if n.input_types[idx] != 'Tensor(nullptr (uninitialized))':
-                                    print("KeyError: ", n.id, ip, n.input_types[idx])
-                                self.tensor_registry_permanent[self.tensors_mapping[(n.id, ip)]] = None
+        for node in self.sorted_nodes:
+            if is_fbgemm_forward(node):
+                input_args, _ = generate_fbgemm_tensors(node)
+            for idx, (data_type, t_id, shape) in enumerate(get_input_tensors(node)):
+                replay_t_id = self.tensors_mapping[(node.id, t_id)]
+                if t_id in self.dependency_permanent.keys() and \
+                        replay_t_id not in self.tensor_registry_permanent.keys() and \
+                        (node.name == "aten::embedding_bag" or node.name == "fbgemm::split_embedding_codegen_lookup_sgd_function" \
+                        or replay_t_id in self.instantiate):
+                    try:
+                        if is_fbgemm_forward(node):
+                            self.tensor_registry_permanent[replay_t_id] = input_args[idx]
+                            if node.name == "fbgemm::split_embedding_codegen_lookup_sgd_function":
+                                self.unchangeable_intermediate_tensors.add(replay_t_id)
+                        else:
+                            dtype, rng = TORCH_DTYPES_RNG[data_type.lstrip('Tensor(').rstrip(')')]
+                            self.tensor_registry_permanent[replay_t_id] = rng(shape).to(dtype)
+                            if node.name == "aten::embedding_bag":
+                                self.unchangeable_intermediate_tensors.add(replay_t_id)
+                            if node.name == "aten::pin_memory" and idx == 0:
+                                self.cpu_tensor.add(replay_t_id)
+                    except KeyError:
+                        if data_type != 'Tensor(nullptr (uninitialized))':
+                            print("KeyError: ", node.id, t_id, data_type)
+                        self.tensor_registry_permanent[replay_t_id] = None
+
             ######
             # Workaround to match offsets for embedding table
             # Currently assume a uniform distribution
-            if n.name == "aten::embedding_bag":
-                indices_tensor_shape = n.input_shapes[1][0]
-                offsets_tensor_shape = n.input_shapes[2][0]
+            if node.name == "aten::embedding_bag":
+                indices_tensor_shape = node.input_shapes[1][0]
+                offsets_tensor_shape = node.input_shapes[2][0]
                 nnz = indices_tensor_shape / offsets_tensor_shape
                 for i in range(offsets_tensor_shape):
-                   self.tensor_registry_permanent[self.tensors_mapping[(n.id, n.inputs[2])]][i] = i * nnz
+                   self.tensor_registry_permanent[self.tensors_mapping[(node.id, node.inputs[2])]][i] = i * nnz
             ######
-        # print(len(self.tensor_registry_permanent))
+
+
+    def build_func(self, node):
+        if is_fbgemm_forward(node):
+            func, output_count = build_fbgemm_func(node)
+            self.fbgemm_backward_ops.append(func.backward)
+            return func.forward, output_count
+        elif is_fbgemm_backward(node):
+            assert self.fbgemm_backward_ops
+            return self.fbgemm_backward_ops.pop(-1), len(node.output_types)
+        return build_torchscript_func(node)
 
 
     def preprocess_graph(self):
@@ -239,7 +215,6 @@ class ExgrReplayManager:
         root_node = nodes[1] # 1-base
 
         self.extract_subgraph(root_node)
-        # self._dfs_traverse(root_node)
         self.analyze_tensors()
 
         tensor_with_multiple_shape_count = 0
@@ -252,30 +227,36 @@ class ExgrReplayManager:
         self.reset_registry()
 
 
+    def get_inputs(self, node):
+        try:
+            if is_fbgemm_forward(node):
+                idx_list = fbgemm_input_args_indices(node)
+                inputs = [self.tensor_registry[self.tensors_mapping[(node.id, tuple(node.inputs[idx]))]] for idx in idx_list]
+                if is_fbgemm_forward_unweighted(node):
+                    inputs.append(None)
+            else:
+                inputs = []
+                for idx, item in enumerate(node.inputs):
+                    if is_tensor(node, idx):
+                        inputs.append(self.tensor_registry[self.tensors_mapping[(node.id, tuple(item))]])
+                    elif is_tensor_list(node, idx):
+                        inputs.append([self.tensor_registry[self.tensors_mapping[(node.id, tuple(t_id))]] for t_id in item])
+                    elif item == '<None>' or item == '<Generator>':
+                        inputs.append(None)
+                    elif item == 'inf' or item == '-inf':
+                        inputs.append(float(item))
+                    else:
+                        inputs.append(item)
+            return inputs
+        except Exception as e:
+            print("Inputs error: ", e, node.id)
+
+
     def run_op(self, node):
         func, output_count = self.funcs[node.id]
         if not func:
             return
-
-        inputs = []
-        for idx, item in enumerate(node.inputs):
-            if is_tensor(node, idx):
-                if 'GenericList' in node.input_types[idx]:
-                    ts = []
-                    for t in item:
-                        ts.append(self.tensor_registry[self.tensors_mapping[(node.id, tuple(t))]])
-                    inputs.append(ts)
-                else:
-                    inputs.append(self.tensor_registry[self.tensors_mapping[(node.id, item)]])
-            else:
-                if item == '<None>' or item == '<Generator>':
-                    inputs.append(None)
-                elif item == 'inf':
-                    inputs.append(float('inf'))
-                elif item == '-inf':
-                    inputs.append(float('-inf'))
-                else:
-                    inputs.append(item)
+        inputs = self.get_inputs(node)
 
         ######
         # Workaround to eliminate the "strides() called on undefined Tensor" error
@@ -283,24 +264,38 @@ class ExgrReplayManager:
             inputs[-1] = [True, True, True]
         ######
 
-        try:
-            if output_count == 1:
-                outputs = (func(*inputs),)
-            else:
-                outputs = func(*inputs)
-        except Exception as e:
-            print("Run op exception Error:", e, node.id, inputs)
-
-        for idx, item in enumerate(node.outputs):
-            if is_output_tensor(node, idx):
-                if 'GenericList' in node.output_types[idx]:
-                    for idxi, t in enumerate(item):
-                        if tuple(t) in self.dependency_permanent.keys() and self.tensors_mapping[(node.id, tuple(t))] not in self.unchangeable_intermediate_tensors:
-                            self.tensor_registry[self.tensors_mapping[(node.id, tuple(t))]] = outputs[idx][idxi]
+        # Workaround to handle tensors are on different devices
+        if node.name == "aten::mul":
+            if inputs[0].is_cuda ^ inputs[1].is_cuda:
+                if inputs[0].is_cuda:
+                    inputs[1] = inputs[1].to(self.cuda)
                 else:
-                    if item in self.dependency_permanent.keys() and self.tensors_mapping[(node.id, item)] not in self.unchangeable_intermediate_tensors:
-                        if self.tensors_mapping[(node.id, item)] not in self.instantiate:
-                            self.tensor_registry[self.tensors_mapping[(node.id, item)]] = outputs[idx]
+                    inputs[1] = inputs[1].to('cpu')
+
+        try:
+            outputs = []
+            if output_count == 0:
+                func(*inputs)
+            else:
+                if output_count == 1:
+                    tmp = (func(*inputs),)
+                else:
+                    tmp = func(*inputs)
+                # Flatten any tensor lists
+                # TODO: Simplify this
+                for x in tmp:
+                    if isinstance(x, list) and isinstance(x[0], torch.Tensor):
+                        outputs.extend(x)
+                    elif isinstance(x, torch.Tensor):
+                        outputs.append(x)
+        except Exception as e:
+            print(f"Run op exception Error: {e}, node id: {node.id}, func: {func}, inputs: {inputs}")
+            exit(1)
+
+        for (_, t_id, _), output in zip(get_output_tensors(node), outputs):
+            if t_id in self.dependency_permanent.keys() and self.tensors_mapping[(node.id, t_id)] not in self.unchangeable_intermediate_tensors:
+                if self.tensors_mapping[(node.id, t_id)] not in self.instantiate:
+                    self.tensor_registry[self.tensors_mapping[(node.id, t_id)]] = output
 
         if self.profile_memory:
             self.op_allocated_mem[node] = torch.cuda.memory_allocated(self.cuda) - self.current_allocated_mem
@@ -316,6 +311,10 @@ class ExgrReplayManager:
         total_time = 0.0
         event_1 = torch.cuda.Event(enable_timing=True)
         event_2 = torch.cuda.Event(enable_timing=True)
+
+        eg_file = "/tmp/replay_eg.json"
+        eg = ExecutionGraphObserver()
+        eg.register_callback(eg_file)
 
         if self.profile_replay:
             with torch.profiler.profile(
@@ -334,6 +333,11 @@ class ExgrReplayManager:
                 # profile_memory=True,
             ) as prof:
                 for iter in range(self.numWarmupIters + self.numIters):
+                    if iter == self.numWarmupIters:
+                        eg.start()
+                    if iter == self.numWarmupIters + 1:
+                        eg.stop()
+                        eg.unregister_callback()
                     event_1.record()
                     for node in self.sorted_nodes:
                         self.run_op(node)

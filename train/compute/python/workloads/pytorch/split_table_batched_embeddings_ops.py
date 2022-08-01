@@ -148,9 +148,10 @@ class SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator:
         logger.debug(f"data generator config: {config}")
         # batch size * pooling_factor
         num_tables = config["args"][0]["value"]
+
         if num_tables > 1:
-            rows = genericList_to_list(config["args"][1])
-            pooling_factors = genericList_to_list(config["args"][4])
+            rows = config["args"][1]["value"]
+            pooling_factors = config["args"][4]["value"]
         else:
             rows = [config["args"][1]["value"]]
             pooling_factors = [config["args"][4]["value"]]
@@ -308,8 +309,13 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
     def create_grad(self):
         self.grad_in = torch.ones_like(self.fwd_out)
 
-    def backward(self):
-        self.fwd_out.backward(self.grad_in)
+    def backward(self, grad=None):
+        if grad is not None:
+            self.fwd_out.backward(grad)
+        else:
+            if self.grad_in is None:
+                self.create_grad()
+            self.fwd_out.backward(self.grad_in)
 
 
 register_operator(

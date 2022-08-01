@@ -3,6 +3,14 @@ import io
 import json
 import re
 from .execution_graph import NodeType
+from ..lib.config import make_op_config
+from ..lib.pytorch.config_util import (
+    create_op_args,
+    create_op_info,
+    get_benchmark_options,
+)
+from fbgemm_gpu.split_table_batched_embeddings_ops import PoolingMode
+
 
 # TODO: Add all torch dtypes to here
 TORCH_DTYPES_RNG = {
@@ -18,12 +26,12 @@ TORCH_DTYPES_RNG = {
 }
 
 
-def is_tensor(n, ip):
-    return isinstance(ip, int) and 'Tensor' in n.input_types[ip]
+def is_tensor_list(n, idx):
+    return isinstance(idx, int) and 'GenericList[Tensor' in n.input_types[idx]
 
 
-def is_output_tensor(n, ip):
-    return isinstance(ip, int) and 'Tensor' in n.output_types[ip]
+def is_tensor(n, idx):
+    return isinstance(idx, int) and 'Tensor' in n.input_types[idx] and 'GenericList' not in n.input_types[idx]
 
 
 def is_op(node, strict=False):
@@ -53,14 +61,56 @@ def is_backward_aten(op):
             has_backward_parent(op)
 
 
+def fbgemm_input_args_indices(n):
+    idx_list = None
+    if 'sgd' in n.name or 'adagrad' in n.name:
+        # exact_sgd: 11: indices, 12: offsets, 14: indice_weights
+        if n.inputs[14] == '<None>':
+            idx_list = [11, 12]
+        else:
+            idx_list = [11, 12, 14]
+    return idx_list
+
+
+def is_fbgemm_forward(op):
+    return 'fbgemm::split_embedding_codegen_lookup_' in op.name
+
+
+def is_fbgemm_forward_unweighted(op):
+    return is_fbgemm_forward(op) and len(fbgemm_input_args_indices(op)) == 2
+
+
+def is_fbgemm_backward(op):
+    return ('CppNode<SplitLookupFunction_' in op.name and not is_backward_parent(op))
+
+
+def is_fbgemm(op):
+    return is_fbgemm_forward(op) or is_fbgemm_backward(op)
+
+
+# TODO: Hopefully merge is_fbgemm and skip_op
+def skip_op(op):
+    # Workaround: skip bounds check indices and other ops under embedding lookup module
+    return (not is_fbgemm_forward(op) and op.parent is not None and \
+    ("embedding_lookup" in op.parent.name or "param|SplitTableBatchedEmbeddingBagsCodegen" in op.parent.name))
+
+
+# def is_qualified(op):
+#     return is_backward_aten(op) or is_op(op)
+
 def is_qualified(op):
-    return is_backward_aten(op) or is_op(op)
+    return not skip_op(op) and \
+        (is_backward_aten(op) or \
+            is_fbgemm_backward(op) or \
+            (is_op(op, strict=True) and not is_backward_parent(op)))
+
 
 def get_tmp_trace_filename():
     import datetime
     import uuid
     trace_fn = "tmp_" + datetime.datetime.today().strftime("%Y%m%d")+ "_" + uuid.uuid4().hex[:7] + ".json"
     return trace_fn
+
 
 def trace_handler(prof):
     prof.export_chrome_trace("/tmp/" + get_tmp_trace_filename())
@@ -87,6 +137,125 @@ def execution_graph_handler(output_file_name):
                 found_root_node = True
 
     assert found_root_node
+
+
+def get_input_tensors(n):
+    if is_fbgemm_forward(n):
+        idx_list = fbgemm_input_args_indices(n)
+        return zip([n.input_types[x] for x in idx_list],
+                    [tuple(n.inputs[x]) if isinstance(n.inputs[x], list) else n.inputs[x] for x in idx_list],
+                    [n.input_shapes[x] for x in idx_list])
+    return n.get_input_tensors()
+
+
+def get_output_tensors(n):
+    if is_fbgemm_forward(n):
+        return zip(n.output_types,
+                    [tuple(x) for x in n.outputs],
+                    n.output_shapes)
+    return n.get_output_tensors()
+
+
+def c10_type_to_str(t):
+    if "c10::Half" in t:
+        return "fp16"
+    return "fp32"
+    # raise ValueError("c10 type not supported!")
+
+
+def get_optimizer_from_fbgemm_function_name(s):
+    opt = s[39:].split("_")[0] # strip 'fbgemm::split_embedding_codegen_lookup_'
+    return "exact_{}".format(opt) # Workaround, should be more accurate
+
+
+def get_fbgemm_info(n):
+    if 'param|SplitTableBatchedEmbeddingBagsCodegen' in n.parent.name:
+        rows = [4194304]
+    else:
+        rows = [int(e) for e in n.parent.inputs[0].split('-')]
+    num_tables = len(rows)
+    dim = [n.inputs[8]] * num_tables # Assuming all Ds are the same
+    batch_size = int((n.input_shapes[12][0] - 1) / num_tables)
+    pooling_factor = [int(n.input_shapes[11][0] / batch_size / num_tables)] * num_tables
+    weighted = "Float" not in n.input_types[1] # e.g. c10:Half
+    weights_precision = c10_type_to_str(n.input_types[1])
+    optimizer = get_optimizer_from_fbgemm_function_name(n.name)
+    return rows, num_tables, dim, batch_size, pooling_factor, weighted, weights_precision, optimizer
+
+
+def build_fbgemm_func(n):
+    assert n.parent is not None
+    op_name = "SplitTableBatchedEmbeddingBagsCodegen"
+    op_info = create_op_info()
+    run_options = get_benchmark_options()
+    run_options["device"] = "cuda"
+    op_config = make_op_config(op_name, op_info, run_options["device"])
+    rows, num_tables, dim, _, _, weighted, weights_precision, optimizer = \
+        get_fbgemm_info(n)
+    # If num_tables is 1, build() takes row and dim as int instead of []
+    if num_tables == 1:
+        op_config.op.build(
+        num_tables,
+        rows[0],
+        dim[0],
+        PoolingMode.SUM,
+        weighted,
+        weights_precision,
+        optimizer,
+        )
+    else:
+        op_config.op.build(
+            num_tables,
+            rows,
+            dim,
+            PoolingMode.SUM,
+            weighted,
+            weights_precision,
+            optimizer,
+        )
+    return op_config.op, len(n.outputs)
+
+
+def generate_fbgemm_tensors(n):
+    assert n.parent is not None
+    op_name = "SplitTableBatchedEmbeddingBagsCodegen"
+    op_info = create_op_info()
+    op_info[
+        "input_data_generator"
+    ] = "SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator"
+    run_options = get_benchmark_options()
+    run_options["device"] = "cuda"
+    op_config = make_op_config(op_name, op_info, run_options["device"])
+
+    rows, num_tables, dim, batch_size, pooling_factor, weighted, weights_precision, optimizer = \
+        get_fbgemm_info(n)
+
+    if num_tables == 1:
+        rows = rows[0]
+        dim = dim[0]
+        pooling_factor = pooling_factor[0]
+
+    data_generator_config = create_op_args(
+        [
+            {"type": "int", "name": "num_tables", "value": num_tables},
+            {"type": "int", "name": "rows", "value": rows},
+            {"type": "int", "name": "dim", "value": dim},
+            {"type": "int", "name": "batch_size", "value": batch_size},
+            {"type": "int", "name": "pooling_factor", "value": pooling_factor},
+            {"type": "bool", "name": "weighted", "value": weighted},
+            {"type": "str", "name": "weights_precision", "value": weights_precision},
+        ],
+        {"optimizer": {"type": "str", "value": optimizer}},
+    )
+
+    input_data_gen = op_config.input_data_generator()
+    (input_args, input_kwargs) = input_data_gen.get_data(
+        data_generator_config, run_options["device"]
+    )
+    if is_fbgemm_forward_unweighted(n):
+        input_args.pop(-1)
+
+    return input_args, input_kwargs # Discard weights if not needed
 
 
 def build_torchscript_func(n):
