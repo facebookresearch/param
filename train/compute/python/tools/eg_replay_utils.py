@@ -25,6 +25,18 @@ TORCH_DTYPES_RNG = {
     "unsigned char": (torch.int8, torch.ones)
 }
 
+TORCH_DTYPES_BYTES = {
+    "bool": 1,
+    "int8": 1,
+    "half": 2,
+    "int": 4,
+    "long": 8,
+    "long int": 8,
+    "float": 4,
+    "double": 8,
+    "unsigned char": 1
+}
+
 
 def is_tensor_list(n, idx):
     return isinstance(idx, int) and 'GenericList[Tensor' in n.input_types[idx]

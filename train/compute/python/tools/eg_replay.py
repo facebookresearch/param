@@ -3,8 +3,14 @@ import gc
 import json
 import time
 from collections import defaultdict
+from functools import reduce
 
 import torch
+from param_bench.train.compute.python.tools.eg_replay_utils import (
+    has_backward_parent,
+    is_backward_aten,
+)
+from param_bench.train.compute.python.tools.execution_graph import NodeType
 from torch.profiler import ExecutionGraphObserver
 
 from ..lib import pytorch as lib_pytorch
@@ -23,6 +29,7 @@ from .eg_replay_utils import (
     is_qualified,
     is_tensor,
     is_tensor_list,
+    TORCH_DTYPES_BYTES,
     TORCH_DTYPES_RNG,
     trace_handler,
 )
@@ -78,6 +85,10 @@ class ExgrReplayManager:
 
         self.fbgemm_backward_ops = []
 
+        self.additional_tensors = set()
+        self.top_tensors = {}
+        self.additional_tensors_size = 0
+
 
     def reset_registry(self):
         self.tensor_registry = {k: (None if v is None else (v if k in self.cpu_tensor else v.cuda(self.cuda))) for k, v in self.tensor_registry_permanent.items()}
@@ -98,9 +109,16 @@ class ExgrReplayManager:
                     if is_qualified(child):
                         self.sorted_nodes.append(child)
 
+                        self.top_tensors[child] = set()
+                        for _, t_id, _ in get_input_tensors(child):
+                            self.top_tensors[child].add(t_id)
+                        for _, t_id, _ in get_output_tensors(child):
+                            self.top_tensors[child].add(t_id)
+
                         # Tensors dependency
                         for _, t_id, _ in get_input_tensors(child):
                             self.dependency_permanent[t_id] += 1
+
                         # Build aten funcs
                         func, output_count = self.build_func(child)
                         self.funcs[child.id] = (func, output_count)
@@ -113,6 +131,31 @@ class ExgrReplayManager:
         _dfs_traverse(root)
         self.sorted_nodes = sorted(self.sorted_nodes, key=lambda x: x.id)
         print("#Operations to execute: ", len(self.sorted_nodes))
+
+
+    def analyze_subgraph(self, root):
+        def _bfs_traverse(node):
+            for child in node.children:
+                if any(x in child.name for x in self.skip_node_names):
+                    continue
+
+                if is_backward_aten(child) or has_backward_parent(child):
+                    continue
+                else:
+                    if child not in self.sorted_nodes and child.type == NodeType.OPERATOR:
+                        node = child.parent
+                        while (node not in self.sorted_nodes):
+                            node = node.parent
+                        for data_type, t_id, shape in get_output_tensors(child):
+                            if t_id not in self.top_tensors[node] and \
+                                t_id in self.dependency_permanent and t_id not in self.additional_tensors:
+                                self.additional_tensors.add(t_id)
+                                if shape:
+                                    self.additional_tensors_size += reduce(lambda x,y:x*y, shape) * TORCH_DTYPES_BYTES[data_type.lstrip('Tensor(').rstrip(')')]
+                    _bfs_traverse(child)
+
+        _bfs_traverse(root)
+        print(f"Additional allocated {len(self.additional_tensors)} tensors with total size of {self.additional_tensors_size/1024/1024}MB")
 
 
     def analyze_tensors(self):
@@ -215,6 +258,8 @@ class ExgrReplayManager:
         root_node = nodes[1] # 1-base
 
         self.extract_subgraph(root_node)
+        self.analyze_subgraph(root_node)
+
         self.analyze_tensors()
 
         tensor_with_multiple_shape_count = 0
