@@ -25,6 +25,7 @@ supportedCollectives = [
     "all_to_all",
     "all_to_allv",
     "all_gather",
+    "all_gather_v",
     "broadcast",
     "reduce_scatter",
     "reduce_scatter_v",
@@ -234,14 +235,29 @@ class commsCollBench(paramCommsBench):
         args.b = comms_utils.parsesize(args.b)
         args.e = comms_utils.parsesize(args.e)
         args.dtype = self.dtypeMap[args.data_type]
+        element_size = torch.ones([1], dtype=args.dtype).element_size()
 
         if args.i is not None:
-            input_len = sum(args.i)
-            element_size = torch.ones([1], dtype=args.dtype).element_size()
+            in_split_coll = ["reduce_scatter_v", "all_to_allv"]
+            if not any(coll in args.collective.split(",") for coll in in_split_coll):
+                logger.error("Collective does not support input-split argument (--i)")
+                comms_utils.gracefulExit()
             logger.warning(
                 f"Overwriting begin-size (--b {args.b}) and end-size (--e {args.e}) to match requested input-split (--i)"
             )
+            input_len = sum(args.i)
             args.b = input_len * element_size
+            args.e = args.b
+        elif args.o is not None:
+            out_split_coll = ["all_gather_v", "all_to_allv"]
+            if not any(coll in args.collective.split(",") for coll in out_split_coll):
+                logger.error("Collective does not support output-split argument (--o)")
+                comms_utils.gracefulExit()
+            logger.warning(
+                f"Overwriting begin-size (--b {args.b}) and end-size (--e {args.e}) to match requested output-split (--o)"
+            )
+            output_len = sum(args.o)
+            args.b = output_len * element_size
             args.e = args.b
 
         if args.b < 1:
@@ -255,7 +271,6 @@ class commsCollBench(paramCommsBench):
                 f"the begin-size (--b {args.b}) is larger than the end-size (--e {args.e})"
             )
 
-        element_size = torch.ones([1], dtype=args.dtype).element_size()
         if args.sb % element_size != 0:
             logger.error("Step size bytes must be a multiple of element size")
             comms_utils.gracefulExit()
@@ -944,6 +959,7 @@ class commsCollBench(paramCommsBench):
             "reduce_scatter_v",
             "reduce_scatter_base",
             "all_gather",
+            "all_gather_v",
             "all_gather_base",
         ):
             results["numElements"] = int(
@@ -1357,6 +1373,10 @@ def main():
 
     if args.i is not None and (comms_world_info.world_size != len(args.i)):
         logger.error("An input split must be provided for all participating ranks")
+        comms_utils.gracefulExit()
+
+    if args.o is not None and (comms_world_info.world_size != len(args.o)):
+        logger.error("An output split must be provided for all participating ranks")
         comms_utils.gracefulExit()
 
     commsParams = comms_utils.commsParamsHolder(
