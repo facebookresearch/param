@@ -298,6 +298,22 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    def reduce_scatter_v(self, collectiveArgs, retFlag=False, pair=False):
+        retObj = dist._reduce_scatter_v(
+            output=collectiveArgs.opTensor,
+            input=collectiveArgs.ipTensor,
+            input_split_sizes=collectiveArgs.ipTensor_split,
+            op=collectiveArgs.op,
+            group=collectiveArgs.group,
+            async_op=collectiveArgs.asyncOp,
+        )  # synchronicity is maintained in runColl
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
     def reduce_scatter_base(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist._reduce_scatter_base(
             output=collectiveArgs.opTensor,
@@ -510,8 +526,8 @@ class PyTorchDistBackend(backendFunctions):
             _sizeBytes = sum(
                 [t.nelement() * t.element_size() for t in collectiveArgs.ipTensor]
             )
-        # reduce_scatter_base should use input tensor for total memory size
-        elif collectiveArgs.collective == "reduce_scatter_base":
+        # reduce_scatter_base and reduce_scatter_v should use input tensor for total memory size
+        elif collectiveArgs.collective in ["reduce_scatter_v", "reduce_scatter_base"]:
             _sizeBytes = (
                 collectiveArgs.ipTensor.nelement()
                 * collectiveArgs.ipTensor.element_size()

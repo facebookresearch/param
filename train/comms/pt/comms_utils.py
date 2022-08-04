@@ -417,6 +417,7 @@ def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
         "allgather": "all_gather",
         "allgatherbase": "all_gather_base",
         "reducescatter": "reduce_scatter",
+        "reducescatterv": "reduce_scatter_v",
         "recvanysource": "recv",
     }
 
@@ -650,6 +651,7 @@ class backendFunctions(ABC):
             "all_gather_base": self.all_gather_base,
             "reduce": self.reduce,
             "reduce_scatter": self.reduce_scatter,
+            "reduce_scatter_v": self.reduce_scatter_v,
             "reduce_scatter_base": self.reduce_scatter_base,
             "scatter": self.scatter,
             "barrier": self.barrier,
@@ -685,6 +687,7 @@ class backendFunctions(ABC):
             "gather",
             "all_gather",
             "reduce_scatter",
+            "reduce_scatter_v",
             "reduce_scatter_base",
             "scatter",
             "all_gather_base",
@@ -915,6 +918,8 @@ class commsParamsHolder(commsParamsHolderBase):
         self.beginSize = args.b
         self.endSize = args.e
         self.maxSize = int(args.e // self.element_size)
+        self.inSplit = args.i
+        self.outSplit = args.o
         self.stepFactor = args.f
         self.stepBytes = args.sb
         self.srcOrDst = args.root
@@ -1062,7 +1067,7 @@ class paramCommsBench(ABC):
         expRes = self.initVal
         if (
             commsParams.collective
-            in ("all_reduce", "reduce_scatter", "reduce_scatter_base")
+            in ("all_reduce", "reduce_scatter", "reduce_scatter_v", "reduce_scatter_base")
         ) or (
             self.backendFuncs.get_global_rank() == commsParams.srcOrDst
             and commsParams.collective == "reduce"
@@ -1340,6 +1345,30 @@ class paramCommsBench(ABC):
         )
         return (ipTensor, opTensor)
 
+    def _prep_reduce_scatter_v(
+        self,
+        ipTensor: torch.tensor,
+        curComm: commsArgs,
+        commsParams: commsParamsHolderBase,
+        numElementsIn: int,
+        numElementsOut: int,
+        world_size: int,
+        curDevice: str,
+        dtype: torch.dtype,
+        scaleFactor: float,
+    ) -> (torch.Tensor, torch.Tensor):
+
+        in_split = (curComm.inSplit
+            if (curComm.inSplit is not None)
+            else [(numElementsIn // world_size) for _ in range(world_size)]
+        )
+        global_rank = self.backendFuncs.get_global_rank()
+        opTensor = self.backendFuncs.alloc_random(
+            in_split[global_rank], curDevice, dtype, scaleFactor
+        )
+        self.collectiveArgs.ipTensor_split = in_split
+        return (ipTensor, opTensor)
+
     def _prep_reduce_scatter_base(
         self,
         ipTensor: torch.tensor,
@@ -1444,6 +1473,7 @@ class paramCommsBench(ABC):
             "all_gather_base": self._prep_all_gather_base,
             "incast": self._prep_incast,
             "reduce_scatter": self._prep_reduce_scatter,
+            "reduce_scatter_v": self._prep_reduce_scatter_v,
             "reduce_scatter_base": self._prep_reduce_scatter_base,
             "scatter": self._prep_reduce_scatter,
             "pt2pt": self._prep_pt2pt,

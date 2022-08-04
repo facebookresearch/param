@@ -27,6 +27,7 @@ supportedCollectives = [
     "all_gather",
     "broadcast",
     "reduce_scatter",
+    "reduce_scatter_v",
     "reduce_scatter_base",
     "all_gather_base",
     "incast",
@@ -88,6 +89,20 @@ class commsCollBench(paramCommsBench):
             default=0,
             help="step bytes between sizes, 0 value disables step increment and uses multiplication factor instead",
         )  # COMMS mode, additive step bytes for sizes.
+        parser.add_argument(
+            "--i",
+            "--in-split",
+            type=lambda s: [int(item) for item in s.split(",") if item],
+            default=None,
+            help="comma-separated split of number of elements in input tensor",
+        )  # COMMS mode, input tensor split, by number of elements. Overrides --b and --e.
+        parser.add_argument(
+            "--o",
+            "--out-split",
+            type=lambda s: [int(item) for item in s.split(",") if item],
+            default=None,
+            help="comma-separated split of number of elements in output tensor",
+        )  # COMMS mode, output tensor split, by number of elements.
         parser.add_argument(
             "--collective",
             "--collectives",
@@ -220,6 +235,15 @@ class commsCollBench(paramCommsBench):
         args.e = comms_utils.parsesize(args.e)
         args.dtype = self.dtypeMap[args.data_type]
 
+        if args.i is not None:
+            input_len = sum(args.i)
+            element_size = torch.ones([1], dtype=args.dtype).element_size()
+            logger.warning(
+                f"Overwriting begin-size (--b {args.b}) and end-size (--e {args.e}) to match requested input-split (--i)"
+            )
+            args.b = input_len * element_size
+            args.e = args.b
+
         if args.b < 1:
             logger.warning(
                 f"Starting size (--b {args.b}) should be greater than 1 byte...fix and continue"
@@ -243,7 +267,7 @@ class commsCollBench(paramCommsBench):
         if args.device == "rocm":
             args.device = "cuda"
 
-        reduce_ops = ["all_reduce", "reduce", "reduce_scatter"]
+        reduce_ops = ["all_reduce", "reduce", "reduce_scatter", "reduce_scatter_v"]
         if (
             args.c == 1
             and args.z == 0
@@ -917,6 +941,7 @@ class commsCollBench(paramCommsBench):
             "all_to_all",
             "all_to_allv",
             "reduce_scatter",
+            "reduce_scatter_v",
             "reduce_scatter_base",
             "all_gather",
             "all_gather_base",
@@ -1140,6 +1165,8 @@ class commsCollBench(paramCommsBench):
                     commsArgs.inMsgSize = numElements
                     commsArgs.outMsgSize = numElements
                     commsArgs.worldSize = world_size
+                    commsArgs.inSplit = commsParams.inSplit
+                    commsArgs.outSplit = commsParams.outSplit
 
                 (
                     self.collectiveArgs.ipTensor,
@@ -1327,6 +1354,10 @@ def main():
     comms_world_info = comms_utils.comms_world_info_holder(
         args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
     )
+
+    if args.i is not None and (comms_world_info.world_size != len(args.i)):
+        logger.error("An input split must be provided for all participating ranks")
+        comms_utils.gracefulExit()
 
     commsParams = comms_utils.commsParamsHolder(
         args, comms_world_info, element_size, collBenchObj.benchTime
