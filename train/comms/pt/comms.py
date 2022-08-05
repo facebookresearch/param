@@ -1177,12 +1177,13 @@ class commsCollBench(paramCommsBench):
                 # set corresponding function pointers
                 if commsParams.collective != "pt2pt":
                     collectiveFunc = backendFuncs.collectiveFunc[commsParams.collective]
-                    commsArgs = comms_utils.commsArgs()
-                    commsArgs.inMsgSize = numElements
-                    commsArgs.outMsgSize = numElements
-                    commsArgs.worldSize = world_size
-                    commsArgs.inSplit = commsParams.inSplit
-                    commsArgs.outSplit = commsParams.outSplit
+
+                commsArgs = comms_utils.commsArgs()
+                commsArgs.inMsgSize = numElements
+                commsArgs.outMsgSize = numElements
+                commsArgs.worldSize = world_size
+                commsArgs.inSplit = commsParams.inSplit
+                commsArgs.outSplit = commsParams.outSplit
 
                 (
                     self.collectiveArgs.ipTensor,
