@@ -82,10 +82,8 @@ def train_gpu_with_explicit_cast(
             output_size, [batch_size], device=device, dtype=torch.long
         )
         data = convert_to_datatype(data, data_type)
-        
         if i >= args.warmups:
             start_event.record()
-        
         output = model(data)
         loss = None
         if not args.fw_only:
@@ -94,7 +92,6 @@ def train_gpu_with_explicit_cast(
             loss.backward()
             if args.optimizer:
                 optimizer.step()
-        
         if i >= args.warmups:
             end_event.record()
             torch.cuda.synchronize()
@@ -121,10 +118,8 @@ def train_gpu_with_autocast(
         target = torch.randint(
             output_size, [batch_size], device=device, dtype=torch.long
         )
-        
         if i >= args.warmups:
             start_event.record()
-        
         loss = None
         if not args.fw_only:
             optimizer.zero_grad(set_to_none=args.set_to_none)
@@ -136,7 +131,6 @@ def train_gpu_with_autocast(
             loss.backward()
             if args.optimizer:
                 optimizer.step()
-        
         if i >= args.warmups:
             end_event.record()
             torch.cuda.synchronize()
@@ -151,26 +145,27 @@ def train_gpu(
     if data_type == "tf32":
         torch.backends.cudnn.allow_tf32 = True
         torch.backends.cuda.matmul.allow_tf32 = True
-    
-    if args.fw_only:
-        print("Running FW only")
-    elif args.optimizer:
-        print("Running FW+BW+optimizer")
-    else:
-        print("Running FW+BW only")
-    
-    if args.set_to_none:
-        print("Running with set_to_none as True in zero_grad")
-    else:
-        print("Running with set_to_none as False in zero_grad")
+
+    if args.debug:
+        if args.fw_only:
+            print("Running FW only")
+        elif args.optimizer:
+            print("Running FW+BW+optimizer")
+        else:
+            print("Running FW+BW only")
+
+        if args.set_to_none:
+            print("Running with set_to_none as True in zero_grad")
+        else:
+            print("Running with set_to_none as False in zero_grad")
 
     if args.explicit_cast:
-        time, loss = train_gpu_with_explicit_cast(model, device, optimizer, data_type, input_size, output_size, batch_size, args) 
+        time, loss = train_gpu_with_explicit_cast(model, device, optimizer, data_type, input_size, output_size, batch_size, args)
     else:
-        time, loss = train_gpu_with_autocast(model, device, optimizer, data_type, input_size, output_size, batch_size, args) 
- 
+        time, loss = train_gpu_with_autocast(model, device, optimizer, data_type, input_size, output_size, batch_size, args)
+
     return time, loss
-   
+
 def train_tpu(
     model, device, optimizer, data_type, input_size, output_size, batch_size, args
 ):
@@ -325,15 +320,16 @@ def run(args, dataset):
         flops *= batch_size
 
         # Forward 2x and Backward 4x
-        flops *= 2 if args.fw_only else 6 
+        flops *= 2 if args.fw_only else 6
 
         QPS = batch_size / elap
 
         # The hidden layer size could vary, but for now keeping for backward
         # compatibility
+        #len(layers_size) including the input and output layer counts.
         print(
             "{0:6},  {1:6},  {2:6},  {3:6},  {4:6},  {5:10.6f},  {6:8.1f}, {7:10.1f}".format(
-                len(layers_size)-1,
+                len(layers_size),
                 layers_size[0],
                 layers_size[1],
                 layers_size[-1],
@@ -344,7 +340,8 @@ def run(args, dataset):
             )
         )
 
-        print("layers size: {}".format(layers_size))
+        if args.debug:
+            print("layers size: {}".format(layers_size))
 
 
 def dash_separated_ints(value):
@@ -369,6 +366,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Measure the performance of MLP")
     parser.add_argument("--device", required=True, choices=["cpu", "gpu", "tpu"])
+    parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--no-debug', dest='debug', action='store_false')
+    parser.set_defaults(debug=False)
     parser.add_argument('--fw-only', action='store_true')
     parser.add_argument('--no-fw-only', dest='fw_only', action='store_false')
     parser.set_defaults(fw_only=False)

@@ -33,9 +33,19 @@ if __name__ == "__main__":
     parser_emb.add_argument("--alpha", default=0.0, help="Zipf param. Use uniform if == 0.0")
 
     parser_linear = subparsers.add_parser('linear', help='measure mlp performance')
-    parser_linear.add_argument('--optimizer-type', default='sgd', help='Optimizer: SGD', choices=['sgd'])
+    parser_linear.add_argument('--optimizer', action='store_true')
     parser_linear.add_argument('-t', '--dtype', default='float', help="data type", choices=["float", "float16", "bfloat16"])
     parser_linear.add_argument('-d', '--dataset', choices=['A'], default='A')
+    parser_linear.add_argument('--debug', action='store_false', default=False)
+    parser_linear.add_argument('--fw-only', action='store_false', default=False)
+    parser.add_argument('--set-to-none', action='store_false', default=False)
+    parser.add_argument('--explicit-cast', action='store_true', default=True)
+    parser_linear.add_argument(
+        "--optimizer-type",
+        default="sgd",
+        help="Optimizer: SGD",
+        choices=["sgd", "adagrad"],
+    )
 
     args=parser.parse_args()
 
@@ -61,5 +71,15 @@ if __name__ == "__main__":
     else:
         print("with linear dataset ", args.dataset, ", Data type: ", args.dtype)
         if args.dataset == 'A':
-            klinear.run(args, dataset.mlp_A)
+            ds=[]
+            for i in range(len(dataset.mlp_A)):
+                layers_size=[]
+                layer_num, input_size, hidden_size, output_size, batch_size = dataset.mlp_A[i]
+                layers_size.append(input_size)
+                for _ in range(layer_num):
+                    layers_size.append(hidden_size)
+                layers_size.append(output_size)
 
+                ds.append((layers_size, batch_size))
+
+            klinear.run(args,ds)
