@@ -918,6 +918,7 @@ class commsParamsHolder(commsParamsHolderBase):
         super().__init__(args)
 
         self.element_size = element_size
+        self.sizes = args.ss
         self.beginSize = args.b
         self.endSize = args.e
         self.maxSize = int(args.e // self.element_size)

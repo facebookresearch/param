@@ -105,6 +105,13 @@ class commsCollBench(paramCommsBench):
             help="comma-separated split of number of elements in output tensor",
         )  # COMMS mode, output tensor split, by number of elements.
         parser.add_argument(
+            "--ss",
+            "--sizes",
+            type=lambda s: [int(item) for item in s.split(",") if item],
+            default=None,
+            help="benchmark only specified sizes, comma-separated",
+        )  # COMMS mode, use specified sizes instead of increasing from small to large
+        parser.add_argument(
             "--collective",
             "--collectives",
             type=str,
@@ -682,15 +689,20 @@ class commsCollBench(paramCommsBench):
         self.comm_size = world_size
         self.global_rank = global_rank
 
-        comms_utils.fixBeginSize(
-            commsParams, world_size
-        )  # Ensuring that all-reduce and all-to-all has atleast one member per rank.
-        allSizes = comms_utils.getSizes(
-            commsParams.beginSize,
-            commsParams.endSize,
-            commsParams.stepFactor,
-            commsParams.stepBytes,
-        )  # Given the begin-size, end-size, step-factor what are the message sizes to iterate on.
+        if commsParams.sizes is not None:
+            allSizes = commsParams.sizes
+            if global_rank == 0:
+                logger.info(f"Benchmarking with user-specified message sizes {allSizes}, --b and --e are ignored")
+        else:
+            comms_utils.fixBeginSize(
+                commsParams, world_size
+            )  # Ensuring that all-reduce and all-to-all has atleast one member per rank.
+            allSizes = comms_utils.getSizes(
+                commsParams.beginSize,
+                commsParams.endSize,
+                commsParams.stepFactor,
+                commsParams.stepBytes,
+            )  # Given the begin-size, end-size, step-factor what are the message sizes to iterate on.
 
         self.collectiveArgs.group = group
         self.collectiveArgs.groups = groups
