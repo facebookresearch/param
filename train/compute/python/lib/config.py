@@ -1,12 +1,10 @@
 import copy
 import json
-from typing import Dict, List, Any
-from typing import Type
-
-from .data import DataGenerator, data_generator_map
+from typing import Any, Dict, List, Type
+from .data import data_generator_map, DataGenerator
 from .init_helper import get_logger
-from .iterator import ConfigIterator, config_iterator_map, DefaultConfigIterator
-from .operator import OperatorInterface, op_map
+from .iterator import config_iterator_map, ConfigIterator, DefaultConfigIterator
+from .operator import op_map, OperatorInterface
 
 logger = get_logger()
 
@@ -67,9 +65,9 @@ def make_op_config(op_name: str, op_info: Dict[str, Any], device: str):
     if (op_name not in op_map) or (not op_map[op_name]):
         logger.warning(f"{op_name} has no valid callable defined, skipped.")
         return None
+
     op = op_map[op_name]
     op.device = device
-    configs = op_info["config"]
     op_config = OperatorConfig(op_name, op_info, op)
 
     def get(key, table, default):

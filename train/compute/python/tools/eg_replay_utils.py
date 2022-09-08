@@ -1,15 +1,18 @@
-import torch
 import io
 import json
 import re
-from .execution_graph import NodeType
-from ..lib.config import make_op_config
-from ..lib.pytorch.config_util import (
-    create_op_args,
-    create_op_info,
-    get_benchmark_options,
-)
+
+import torch
 from fbgemm_gpu.split_table_batched_embeddings_ops import PoolingMode
+
+from ..lib.pytorch.config_util import create_op_args
+
+from ..workloads.pytorch.split_table_batched_embeddings_ops import (
+    SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator,
+    SplitTableBatchedEmbeddingBagsCodegenOp,
+)
+from .execution_graph import NodeType
+from .utility import upload_trace
 
 
 # TODO: Add all torch dtypes to here
@@ -22,7 +25,7 @@ TORCH_DTYPES_RNG = {
     "long int": (torch.int64, torch.ones),
     "float": (torch.float32, torch.randn),
     "double": (torch.float64, torch.randn),
-    "unsigned char": (torch.int8, torch.ones)
+    "unsigned char": (torch.int8, torch.ones),
 }
 
 TORCH_DTYPES_BYTES = {
@@ -34,7 +37,7 @@ TORCH_DTYPES_BYTES = {
     "long int": 8,
     "float": 4,
     "double": 8,
-    "unsigned char": 1
+    "unsigned char": 1,
 }
 
 
@@ -100,15 +103,16 @@ def is_fbgemm(op):
     return is_fbgemm_forward(op) or is_fbgemm_backward(op)
 
 
-# TODO: Hopefully merge is_fbgemm and skip_op
+# TODO: Hopefully merge is_fbgemm and skip_op, ignore tid == 2
 def skip_op(op):
     # Workaround: skip bounds check indices and other ops under embedding lookup module
     return (not is_fbgemm_forward(op) and op.parent is not None and \
-    ("embedding_lookup" in op.parent.name or "param|SplitTableBatchedEmbeddingBagsCodegen" in op.parent.name))
+    ("embedding_lookup" in op.parent.name or "param|SplitTableBatchedEmbeddingBagsCodegen" in op.parent.name \
+    or "## forward:tw_global_sparse_arch ##" in op.parent.name or op.name == "fb::to_dense_representation" \
+    or ("fbgemm::" in op.name and "fbgemm::split_embedding_codegen_lookup_" not in op.name) or \
+    ("SymInt" in op.op_schema)) or ("fused" in op.name) or \
+    (op.name in ["aten::empty", "aten::to", "aten::lift", "aten::detach_" ,"aten::set_", "aten::pin_memory"] and "thread" in op.parent.name and op.tid == 2))
 
-
-# def is_qualified(op):
-#     return is_backward_aten(op) or is_op(op)
 
 def is_qualified(op):
     return not skip_op(op) and \
@@ -125,15 +129,10 @@ def get_tmp_trace_filename():
 
 
 def trace_handler(prof):
-    prof.export_chrome_trace("/tmp/" + get_tmp_trace_filename())
-
-
-def another_trace_handler():
-    def handle_fn(prof):
-        # print(prof.key_averages().table(
-        #     sort_by="self_cuda_time_total", row_limit=-1))
-        prof.export_chrome_trace("/tmp/" + get_tmp_trace_filename())
-    return handle_fn
+    fn = get_tmp_trace_filename()
+    prof.export_chrome_trace("/tmp/" + fn)
+    print(f"Chrome profile trace written to /tmp/{fn}")
+    upload_trace(fn)
 
 
 def execution_graph_handler(output_file_name):
@@ -181,77 +180,74 @@ def get_optimizer_from_fbgemm_function_name(s):
 
 
 def get_fbgemm_info(n):
-    if 'param|SplitTableBatchedEmbeddingBagsCodegen' in n.parent.name:
-        rows = [4194304]
-    else:
-        rows = [int(e) for e in n.parent.inputs[0].split('-')]
-    num_tables = len(rows)
-    dim = [n.inputs[8]] * num_tables # Assuming all Ds are the same
+    num_tables = n.input_shapes[6][0] - 1
+    rows = [1024] * num_tables
     batch_size = int((n.input_shapes[12][0] - 1) / num_tables)
-    pooling_factor = [int(n.input_shapes[11][0] / batch_size / num_tables)] * num_tables
+    assert batch_size == n.output_shapes[0][0]
+
+    # Assume most tables have same dim except the last fews, at the same time it is required that dim % 4 == 0
+    # and dim <= 1024 (not necessary but would invoke error)
+    avg_dim = int(n.inputs[7] / num_tables / 4) * 4
+    dims = [avg_dim for _ in range(num_tables)]
+    addition = n.inputs[7] - avg_dim * num_tables
+    pos = len(dims) - 1
+    while (addition > 0 and pos >=0):
+        if addition >= 1024 - dims[pos]:
+            addition -= 1024 - dims[pos]
+            dims[pos] += 1024 - dims[pos]
+        else:
+            dims[pos] += addition
+            addition = 0
+        pos -= 1
+    pooling_factor = [1] * num_tables
+
     weighted = "Float" not in n.input_types[1] # e.g. c10:Half
     weights_precision = c10_type_to_str(n.input_types[1])
     optimizer = get_optimizer_from_fbgemm_function_name(n.name)
-    return rows, num_tables, dim, batch_size, pooling_factor, weighted, weights_precision, optimizer
+    return rows, num_tables, dims, batch_size, pooling_factor, weighted, weights_precision, optimizer
 
 
-def build_fbgemm_func(n):
+def build_fbgemm_func(n, device):
     assert n.parent is not None
-    op_name = "SplitTableBatchedEmbeddingBagsCodegen"
-    op_info = create_op_info()
-    run_options = get_benchmark_options()
-    run_options["device"] = "cuda"
-    op_config = make_op_config(op_name, op_info, run_options["device"])
-    rows, num_tables, dim, _, _, weighted, weights_precision, optimizer = \
-        get_fbgemm_info(n)
-    # If num_tables is 1, build() takes row and dim as int instead of []
+    rows, num_tables, dims, _, _, weighted, weights_precision, optimizer = get_fbgemm_info(n)
+    op = SplitTableBatchedEmbeddingBagsCodegenOp()
+    op.device = device
     if num_tables == 1:
-        op_config.op.build(
+        op.build(
         num_tables,
         rows[0],
-        dim[0],
+        dims[0],
         PoolingMode.SUM,
         weighted,
         weights_precision,
-        optimizer,
+        optimizer
         )
     else:
-        op_config.op.build(
+        op.build(
             num_tables,
             rows,
-            dim,
+            dims,
             PoolingMode.SUM,
             weighted,
             weights_precision,
-            optimizer,
+            optimizer
         )
-    return op_config.op, len(n.outputs)
+    return op, len(n.outputs)
 
 
-def generate_fbgemm_tensors(n):
+def generate_fbgemm_tensors(n, device):
     assert n.parent is not None
-    op_name = "SplitTableBatchedEmbeddingBagsCodegen"
-    op_info = create_op_info()
-    op_info[
-        "input_data_generator"
-    ] = "SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator"
-    run_options = get_benchmark_options()
-    run_options["device"] = "cuda"
-    op_config = make_op_config(op_name, op_info, run_options["device"])
-
-    rows, num_tables, dim, batch_size, pooling_factor, weighted, weights_precision, optimizer = \
-        get_fbgemm_info(n)
-
+    rows, num_tables, dims, batch_size, pooling_factor, weighted, weights_precision, optimizer = get_fbgemm_info(n)
     if num_tables == 1:
         rows = rows[0]
-        dim = dim[0]
+        dims = dims[0]
         pooling_factor = pooling_factor[0]
 
     data_generator_config = create_op_args(
         [
             {"type": "int", "name": "num_tables", "value": num_tables},
             {"type": "int", "name": "rows", "value": rows},
-            {"type": "int", "name": "dim", "value": dim},
+            {"type": "int", "name": "dim", "value": dims},
             {"type": "int", "name": "batch_size", "value": batch_size},
             {"type": "int", "name": "pooling_factor", "value": pooling_factor},
             {"type": "bool", "name": "weighted", "value": weighted},
@@ -260,9 +256,10 @@ def generate_fbgemm_tensors(n):
         {"optimizer": {"type": "str", "value": optimizer}},
     )
 
-    input_data_gen = op_config.input_data_generator()
+    input_data_gen = SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator()
+
     (input_args, input_kwargs) = input_data_gen.get_data(
-        data_generator_config, run_options["device"]
+        data_generator_config, device
     )
     if is_fbgemm_forward_unweighted(n):
         input_args.pop(-1)
@@ -274,7 +271,7 @@ def build_torchscript_func(n):
     input_count = len(n.input_types)
     output_count = len(n.output_types)
 
-    if "pyspeech" in n.op_schema or n.op_schema == "":
+    if "pyspeech" in n.op_schema or n.op_schema == "" or n.name == "aten::record_stream":
         return None, None
 
     tmp = n.op_schema.split(') -> ')
@@ -296,17 +293,29 @@ def build_torchscript_func(n):
         graph({}):
             {} = {}({})
             {}
-            return (%output)
+            {}
     """.format(
+        # Input arguments
         ", ".join(["%{}: {}".format(idx, t) for idx, t in enumerate(input_types)]),
-        "%output: {}".format(output_types[0]) if output_count == 1 else \
-            ", ".join(["%{}: {}".format(idx + input_count, t) for idx, t in enumerate(output_types)]),
+
+        # Op
+        "%output: {}".format(output_types[0] if output_count == 1 else "NoneType")
+            if output_count <= 1
+            else ", ".join(["%{}: {}".format(idx + input_count, t) for idx, t in enumerate(output_types)]),
         n.name,
         ", ".join(["%{}".format(idx) for idx in range(input_count)]),
+
+        # Tuple handling
         "%output : ({}) = prim::TupleConstruct({})".format(
             ", ".join(["Tensor" for _ in range(output_count)]),
-            ", ".join(["%{}".format(idx + input_count) for idx in range(output_count)])
-        ) if output_count > 1 else "",
+            ", ".join(["%{}".format(idx + input_count) for idx in range(output_count)]))
+            if output_count > 1
+            else "",
+
+        # Return
+        "return (%output)"
+            if output_count >= 1
+            else ""
     )
 
     # print(inputStr)

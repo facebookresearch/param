@@ -294,7 +294,9 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
             cache_algorithm=CacheAlgorithm.LFU,
             cache_load_factor=0.0,
             cache_reserved_memory=12.0,
+            device=torch.device(self.device)
         )
+
         logger.debug(f"op embedding_specs: {self.op.embedding_specs}")
 
     def cleanup(self):
@@ -305,6 +307,7 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
 
     def forward(self, *args, **kwargs):
         self.fwd_out = self.op.forward(args[0], args[1], args[2])
+        return self.fwd_out
 
     def create_grad(self):
         self.grad_in = torch.ones_like(self.fwd_out)

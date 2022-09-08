@@ -26,7 +26,9 @@ NodeType = Enum("NodeType", "OPERATOR LABEL")
 
 
 # Label markers
-LABEL_MARKERS = ["##", "__", "module::", "DLRM ", "DistributedDataParallel", "Profiler", "[pytorch|", "forward", "backward", "Optimizer.zero_grad", "[param"]
+LABEL_MARKERS = ["##", "__", "module::", "DLRM ", "DistributedDataParallel", "Profiler",
+                "[pytorch|", "forward", "backward", "Optimizer.zero_grad", "[param", "<forward op>",
+                "reduce-grads", "multiply-grads", "clip-grads", "optimizer"]
 
 
 """
