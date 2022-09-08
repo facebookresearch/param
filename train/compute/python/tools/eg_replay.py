@@ -8,13 +8,13 @@ from functools import reduce
 
 import torch
 
-from param_bench.train.compute.python.tools.execution_graph import NodeType
+from param_bench.train.compute.python.tools.execution_graph import ExecutionGraph, NodeType
 from torch.profiler import ExecutionGraphObserver
 
-from ..lib import pytorch as lib_pytorch
-from ..lib.init_helper import load_modules
-from ..workloads import pytorch as workloads_pytorch
-from .eg_replay_utils import (
+from param_bench.train.compute.python.lib import pytorch as lib_pytorch
+from param_bench.train.compute.python.lib.init_helper import load_modules
+from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
+from param_bench.train.compute.python.tools.eg_replay_utils import (
     build_fbgemm_func,
     build_torchscript_func,
     fbgemm_input_args_indices,
@@ -32,10 +32,8 @@ from .eg_replay_utils import (
     skip_op,
     TORCH_DTYPES_BYTES,
     TORCH_DTYPES_RNG,
-    trace_handler,
 )
-from .execution_graph import ExecutionGraph
-from .utility import generate_query_url
+from param_bench.train.compute.python.tools.utility import generate_query_url, trace_handler
 
 
 class ExgrReplayManager:

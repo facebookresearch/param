@@ -1,18 +1,15 @@
-import io
-import json
 import re
 
 import torch
 from fbgemm_gpu.split_table_batched_embeddings_ops import PoolingMode
 
-from ..lib.pytorch.config_util import create_op_args
+from param_bench.train.compute.python.lib.pytorch.config_util import create_op_args
 
-from ..workloads.pytorch.split_table_batched_embeddings_ops import (
+from param_bench.train.compute.python.workloads.pytorch.split_table_batched_embeddings_ops import (
     SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator,
     SplitTableBatchedEmbeddingBagsCodegenOp,
 )
-from .execution_graph import NodeType
-from .utility import upload_trace
+from param_bench.train.compute.python.tools.execution_graph import NodeType
 
 
 # TODO: Add all torch dtypes to here
@@ -119,35 +116,6 @@ def is_qualified(op):
         (is_backward_aten(op) or \
             is_fbgemm_backward(op) or \
             (is_op(op, strict=True) and not is_backward_parent(op)))
-
-
-def get_tmp_trace_filename():
-    import datetime
-    import uuid
-    trace_fn = "tmp_" + datetime.datetime.today().strftime("%Y%m%d")+ "_" + uuid.uuid4().hex[:7] + ".json"
-    return trace_fn
-
-
-def trace_handler(prof):
-    fn = get_tmp_trace_filename()
-    prof.export_chrome_trace("/tmp/" + fn)
-    print(f"Chrome profile trace written to /tmp/{fn}")
-    upload_trace(fn)
-
-
-def execution_graph_handler(output_file_name):
-    print(f"pytroch execution graph output: {output_file_name}")
-    found_root_node = False
-    with io.open(output_file_name, 'r') as f:
-        eg_graph = json.load(f)
-        assert "nodes" in eg_graph
-        nodes = eg_graph["nodes"]
-        for n in nodes:
-            assert "name" in n
-            if "__ROOT_PROCESS__" in n["name"]:
-                found_root_node = True
-
-    assert found_root_node
 
 
 def get_input_tensors(n):
