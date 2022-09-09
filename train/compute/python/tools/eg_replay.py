@@ -60,8 +60,9 @@ class ExgrReplayManager:
         # Number Unique tensors in replay since unique tensors in eg may have multiple shapes and to accommodate that
         # in replay we treat tensors with same identifier but different shapes as different tensors.
         self.replay_unique_tensor_num = 0
-        # Map unique tensor with the node id of its operation in eg to unique tensors in replay. We assume
-        # the shape of a tensor for an operation keeps the same (e.g., a tensor can be both input and output).
+        # Map unique tensor with the node id of its operator in eg to unique tensors in replay. We assume
+        # in either input or output, the shape of tensors with same id for an operator keeps the same.
+        # Same tensor in input and output may be different (e.g., aten::unsqueeze()).
         self.tensors_mapping = {}
         # Dict that stores the shape of each unique tensor in replay.
         self.replay_tensors_shapes = {}
@@ -76,7 +77,7 @@ class ExgrReplayManager:
         # Tensors lookup dict at runtime.
         self.tensor_registry = {}
         # Skip the node if their names contain any of the following strings.
-        self.skip_node_names = ["DataLoader", "aten::set_", "fb::", "c10d::allreduce_", "pyspeech::"]
+        self.skip_node_names = ["DataLoader", "aten::set_", "fb::", "c10d::allreduce_", "pyspeech::", "gans_torchscript_ops::"]
 
         if self.profile_memory:
             self.current_allocated_mem = 0
@@ -100,9 +101,37 @@ class ExgrReplayManager:
         self.actual_skip_nodes = []
         self.actual_skip_nodes_cnt = 0
 
+        self.tensor_with_device = True
+        # A tensor may appear on multiple devices but here we only store the first device for initialization
+        # since device change should be captured in operator execution and be naturally recovered by replaying
+        # the operators.
+        self.tensor_device = {}
+
+        self.exceptional_nodes = set()
+
+
+    def detect_tensor_device(self, root):
+        # Automatically detect whether the captured tensor information includes device.
+        # Just a util to accommodate old and new versions eg and can be removed later.
+        def _traverse(root):
+            for child in root.children:
+                for _, t_id, _ in get_input_tensors(child):
+                    if len(list(t_id)) == 5:
+                        self.tensor_with_device = False
+                        return
+                for _, t_id, _ in get_output_tensors(child):
+                    if len(list(t_id)) == 5:
+                        self.tensor_with_device = False
+                        return
+                _traverse(child)
+        _traverse(root)
+
 
     def reset_registry(self):
-        self.tensor_registry = {k: (None if v is None else (v if k in self.cpu_tensor else v.cuda(self.device))) for k, v in self.tensor_registry_permanent.items()}
+        if self.tensor_with_device:
+            self.tensor_registry = {k: (None if v is None else (v if self.tensor_device[k] == 'cpu' else v.cuda(self.device))) for k, v in self.tensor_registry_permanent.items()}
+        else:
+            self.tensor_registry = {k: (None if v is None else (v if k in self.cpu_tensor else v.cuda(self.device))) for k, v in self.tensor_registry_permanent.items()}
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -124,11 +153,17 @@ class ExgrReplayManager:
 
                         self.top_tensors[child] = set()
                         for _, t_id, _ in get_input_tensors(child):
+                            if self.tensor_with_device:
+                                t_id = tuple(list(t_id)[:5])
                             self.top_tensors[child].add(t_id)
                         for _, t_id, _ in get_output_tensors(child):
+                            if self.tensor_with_device:
+                                t_id = tuple(list(t_id)[:5])
                             self.top_tensors[child].add(t_id)
 
                         for _, t_id, _ in get_input_tensors(child):
+                            if self.tensor_with_device:
+                                t_id = tuple(list(t_id)[:5])
                             self.dependency_permanent[t_id] += 1
 
                         func, output_count = self.build_func(child)
@@ -144,7 +179,7 @@ class ExgrReplayManager:
 
         _dfs_traverse(root)
         self.sorted_nodes = sorted(self.sorted_nodes, key=lambda x: x.id)
-        print("#Operations to execute: ", len(self.sorted_nodes))
+        print("#Operators to execute: ", len(self.sorted_nodes))
 
 
     def analyze_subgraph(self, root):
@@ -158,9 +193,14 @@ class ExgrReplayManager:
                 else:
                     if child not in self.sorted_nodes and child.type == NodeType.OPERATOR:
                         node = child.parent
-                        while (node not in self.sorted_nodes):
+                        while (node and node not in self.sorted_nodes):
                             node = node.parent
+                        if not node:
+                            self.exceptional_nodes.add(child)
+                            continue
                         for data_type, t_id, shape in get_output_tensors(child):
+                            if self.tensor_with_device:
+                                t_id = tuple(list(t_id)[:5])
                             if t_id not in self.top_tensors[node] and \
                                 t_id in self.dependency_permanent and t_id not in self.additional_tensors:
                                 self.additional_tensors.add(t_id)
@@ -169,51 +209,74 @@ class ExgrReplayManager:
                     _bfs_traverse(child)
 
         _bfs_traverse(root)
+        # print("Exceptional nodes: ")
+        # for node in self.exceptional_nodes:
+        #     print(node.id, node.name)
         print(f"Additional allocated {len(self.additional_tensors)} tensors with total size of {self.additional_tensors_size/1024/1024}MB")
 
 
     def analyze_tensors(self):
-        def add_unique_tensor(node_id, t_id, shape):
+        def add_unique_tensor(node_id, t_id, shape, input, device=-1):
             # If we did not see this tensor before, add it as a unique tensor.
             if t_id not in self.original_unique_tensors:
                 self.original_unique_tensors.add(t_id)
                 self.replay_unique_tensor_num += 1
-                self.tensors_mapping[(node_id, t_id)] = self.replay_unique_tensor_num
-                self.replay_tensors_shapes[self.tensors_mapping[(node_id, t_id)]] = shape
-                self.tensor_shapes[t_id].add((self.tensors_mapping[(node_id, t_id)], tuple(shape)))
+                self.tensors_mapping[(node_id, t_id, input)] = self.replay_unique_tensor_num
+                self.replay_tensors_shapes[self.tensors_mapping[(node_id, t_id, input)]] = shape
+                self.tensor_shapes[t_id].add((self.tensors_mapping[(node_id, t_id, input)], tuple(shape)))
+                if self.tensor_with_device:
+                    self.tensor_device[self.tensors_mapping[(node_id, t_id, input)]] = device
                 return
 
             # If we saw this tensor before but with a different shape, add it as a unique tensor.
             for (relay_t_id, pre_shape) in self.tensor_shapes[t_id]:
                 if tuple(shape) == pre_shape:
-                    self.tensors_mapping[(node_id, t_id)] = relay_t_id
+                    self.tensors_mapping[(node_id, t_id, input)] = relay_t_id
                     return
 
             self.replay_unique_tensor_num += 1
-            self.tensors_mapping[(node_id, t_id)] = self.replay_unique_tensor_num
-            self.replay_tensors_shapes[self.tensors_mapping[(node_id, t_id)]] = shape
-            self.tensor_shapes[t_id].add((self.tensors_mapping[(node_id, t_id)], tuple(shape)))
+            self.tensors_mapping[(node_id, t_id, input)] = self.replay_unique_tensor_num
+            self.replay_tensors_shapes[self.tensors_mapping[(node_id, t_id, input)]] = shape
+            self.tensor_shapes[t_id].add((self.tensors_mapping[(node_id, t_id, input)], tuple(shape)))
+            if self.tensor_with_device:
+                self.tensor_device[self.tensors_mapping[(node_id, t_id, input)]] = device
 
 
         for node in self.sorted_nodes:
             for _, t_id, shape in get_input_tensors(node):
-                if t_id in self.dependency_permanent.keys():
-                    add_unique_tensor(node.id, t_id, shape)
+                if self.tensor_with_device:
+                    device = list(t_id)[5]
+                    t_id = tuple(list(t_id)[:5])
+                    if t_id in self.dependency_permanent.keys():
+                        add_unique_tensor(node.id, t_id, shape, input=True, device=device)
+                else:
+                    if t_id in self.dependency_permanent.keys():
+                        add_unique_tensor(node.id, t_id, shape, input=True)
 
             for _, t_id, shape in get_output_tensors(node):
-                if t_id in self.dependency_permanent.keys():
-                    add_unique_tensor(node.id, t_id, shape)
+                if self.tensor_with_device:
+                    device = list(t_id)[5]
+                    t_id = tuple(list(t_id)[:5])
+                    if t_id in self.dependency_permanent.keys():
+                        add_unique_tensor(node.id, t_id, shape, input=False, device=device)
+                else:
+                    if t_id in self.dependency_permanent.keys():
+                        add_unique_tensor(node.id, t_id, shape, input=False)
 
         # Simulate the execution progress and record the output tensors we have seen so far.
         output_set = set()
         for node in self.sorted_nodes:
             for _, t_id, _ in get_input_tensors(node):
-                if t_id in self.dependency_permanent.keys() and self.tensors_mapping[(node.id, t_id)] not in output_set:
-                    self.instantiate.add(self.tensors_mapping[(node.id, t_id)])
+                if self.tensor_with_device:
+                    t_id = tuple(list(t_id)[:5])
+                if t_id in self.dependency_permanent.keys() and self.tensors_mapping[(node.id, t_id, True)] not in output_set:
+                    self.instantiate.add(self.tensors_mapping[(node.id, t_id, True)])
 
             for _, t_id, _ in get_output_tensors(node):
+                if self.tensor_with_device:
+                    t_id = tuple(list(t_id)[:5])
                 if t_id in self.dependency_permanent.keys():
-                    output_set.add(self.tensors_mapping[(node.id, t_id)])
+                    output_set.add(self.tensors_mapping[(node.id, t_id, False)])
 
 
     def allocate_tensors(self):
@@ -221,7 +284,9 @@ class ExgrReplayManager:
             if is_fbgemm_forward(node):
                 input_args, _ = generate_fbgemm_tensors(node, self.cuda)
             for idx, (data_type, t_id, shape) in enumerate(get_input_tensors(node)):
-                replay_t_id = self.tensors_mapping[(node.id, t_id)]
+                if self.tensor_with_device:
+                    t_id = tuple(list(t_id)[:5])
+                replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
                 if t_id in self.dependency_permanent.keys() and \
                         replay_t_id not in self.tensor_registry_permanent.keys() and \
                         (node.name == "aten::embedding_bag" or node.name == "fbgemm::split_embedding_codegen_lookup_sgd_function" \
@@ -251,7 +316,7 @@ class ExgrReplayManager:
                 offsets_tensor_shape = node.input_shapes[2][0]
                 nnz = indices_tensor_shape / offsets_tensor_shape
                 for i in range(offsets_tensor_shape):
-                   self.tensor_registry_permanent[self.tensors_mapping[(node.id, node.inputs[2])]][i] = i * nnz
+                   self.tensor_registry_permanent[self.tensors_mapping[(node.id, node.inputs[2], True)]][i] = i * nnz
             ######
 
 
@@ -273,11 +338,13 @@ class ExgrReplayManager:
 
     def preprocess_graph(self):
         nodes = self.exgr.get_nodes(clean=True)
-        root_node = nodes[1] # 1-base
+        root = nodes[1] # 1-base
 
-        self.extract_subgraph(root_node)
+        self.detect_tensor_device(root)
 
-        # self.analyze_subgraph(root_node)
+        self.extract_subgraph(root)
+
+        # self.analyze_subgraph(root)
 
         self.analyze_tensors()
 
@@ -295,16 +362,21 @@ class ExgrReplayManager:
         try:
             if is_fbgemm_forward(node):
                 idx_list = fbgemm_input_args_indices(node)
-                inputs = [self.tensor_registry[self.tensors_mapping[(node.id, tuple(node.inputs[idx]))]] for idx in idx_list]
+                inputs = [self.tensor_registry[self.tensors_mapping[(node.id, tuple(node.inputs[idx]), True)]] for idx in idx_list]
                 if is_fbgemm_forward_unweighted(node):
                     inputs.append(None)
             else:
                 inputs = []
                 for idx, item in enumerate(node.inputs):
                     if is_tensor(node, idx):
-                        inputs.append(self.tensor_registry[self.tensors_mapping[(node.id, tuple(item))]])
+                        if self.tensor_with_device:
+                            item = tuple(item[:5])
+                        inputs.append(self.tensor_registry[self.tensors_mapping[(node.id, tuple(item), True)]])
                     elif is_tensor_list(node, idx):
-                        inputs.append([self.tensor_registry[self.tensors_mapping[(node.id, tuple(t_id))]] for t_id in item])
+                        if self.tensor_with_device:
+                            inputs.append([self.tensor_registry[self.tensors_mapping[(node.id, tuple(t_id[:5]), True)]] for t_id in item])
+                        else:
+                            inputs.append([self.tensor_registry[self.tensors_mapping[(node.id, tuple(t_id), True)]] for t_id in item])
                     elif item == '<None>' or item == '<Generator>':
                         inputs.append(None)
                     elif item == 'inf' or item == '-inf':
@@ -330,15 +402,16 @@ class ExgrReplayManager:
             inputs[-1] = [True, True, True]
         ######
 
-        # Workaround to handle tensors are on different devices.
-        if node.name == "aten::mul":
-            if is_tensor(node, 0) and is_tensor(node, 1):
-                if inputs[0].is_cuda ^ inputs[1].is_cuda:
-                    if inputs[0].is_cuda:
-                        inputs[1] = inputs[1].to(self.device)
-                    else:
-                        inputs[1] = inputs[1].to('cpu')
+        # # Workaround to handle tensors are on different devices.
+        # if node.name == "aten::mul":
+        #     if is_tensor(node, 0) and is_tensor(node, 1):
+        #         if inputs[0].is_cuda ^ inputs[1].is_cuda:
+        #             if inputs[0].is_cuda:
+        #                 inputs[1] = inputs[1].to(self.device)
+        #             else:
+        #                 inputs[1] = inputs[1].to('cpu')
 
+        # Workaround to handle tensor with same id but different data types (ads_cmf10x_single_iter_512_newest_eg.json).
         if node.name == "aten::index_add_":
             inputs[3] = inputs[3].to(torch.float64)
         if node.name == "aten::index_copy_":
@@ -366,9 +439,11 @@ class ExgrReplayManager:
             exit(1)
 
         for (_, t_id, _), output in zip(get_output_tensors(node), outputs):
-            if t_id in self.dependency_permanent.keys() and self.tensors_mapping[(node.id, t_id)] not in self.unchangeable_intermediate_tensors:
-                if self.tensors_mapping[(node.id, t_id)] not in self.instantiate:
-                    self.tensor_registry[self.tensors_mapping[(node.id, t_id)]] = output
+            if self.tensor_with_device:
+                t_id = tuple(list(t_id)[:5])
+            if t_id in self.dependency_permanent.keys() and self.tensors_mapping[(node.id, t_id, False)] not in self.unchangeable_intermediate_tensors:
+                if self.tensors_mapping[(node.id, t_id, False)] not in self.instantiate:
+                    self.tensor_registry[self.tensors_mapping[(node.id, t_id, False)]] = output
 
         if self.profile_memory:
             self.op_allocated_mem[node] = torch.cuda.memory_allocated(self.device) - self.current_allocated_mem

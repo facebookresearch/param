@@ -23,6 +23,7 @@ TORCH_DTYPES_RNG = {
     "float": (torch.float32, torch.randn),
     "double": (torch.float64, torch.randn),
     "unsigned char": (torch.int8, torch.ones),
+    "c10::Half": (torch.half, torch.ones),
 }
 
 TORCH_DTYPES_BYTES = {
@@ -35,6 +36,7 @@ TORCH_DTYPES_BYTES = {
     "float": 4,
     "double": 8,
     "unsigned char": 1,
+    "c10::Half": 2,
 }
 
 
@@ -105,7 +107,8 @@ def skip_op(op):
     # Workaround: skip bounds check indices and other ops under embedding lookup module
     return (not is_fbgemm_forward(op) and op.parent is not None and \
     ("embedding_lookup" in op.parent.name or "param|SplitTableBatchedEmbeddingBagsCodegen" in op.parent.name \
-    or "## forward:tw_global_sparse_arch ##" in op.parent.name or op.name == "fb::to_dense_representation" \
+    # or "## forward:tw_global_sparse_arch ##" in op.parent.name or op.name == "fb::to_dense_representation" \
+    or op.name == "fb::to_dense_representation" \
     or ("fbgemm::" in op.name and "fbgemm::split_embedding_codegen_lookup_" not in op.name) or \
     ("SymInt" in op.op_schema)) or ("fused" in op.name) or \
     (op.name in ["aten::empty", "aten::to", "aten::lift", "aten::detach_" ,"aten::set_", "aten::pin_memory"] and "thread" in op.parent.name and op.tid == 2))
