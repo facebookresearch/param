@@ -1,263 +1,57 @@
 from __future__ import (
     absolute_import,
+    annotations,
     division,
     print_function,
     unicode_literals,
-    annotations,
 )
 
 import argparse
 import json
 import logging
 import sys
-import pydot
 from enum import Enum
-from typing import Set, List, Any, Iterable, TextIO
+from typing import Dict, List, TextIO, Tuple
 
+import pydot
+
+from cea.ml_perf_model.gpu.scripts.execution_graph_data import (
+    Node,
+    NodeType,
+    TensorNode,
+)
+from util.graphml import GraphML
 
 FORMAT = "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
 logging.basicConfig(format=FORMAT)
 logging.getLogger().setLevel(logging.INFO)
 
 
-# OPERATOR: nodes actually does something
-# LABEL: nodes used as markers
-NodeType = Enum("NodeType", "OPERATOR LABEL")
-
-
-# Label markers
-LABEL_MARKERS = ["##", "__", "module::", "DLRM ", "DistributedDataParallel", "Profiler",
-                "[pytorch|", "forward", "backward", "Optimizer.zero_grad", "[param", "<forward op>",
-                "reduce-grads", "multiply-grads", "clip-grads", "optimizer"]
-
-
-"""
-TensorNode
-
-Contains information about a tensor object (TensorImpl in PyTorch). Each has an
-unique ID, element data type, source node IDs, sink nodes IDs, and all the
-shapes associated with this tensor used in different contexts. Their producer
-consumer relationship is:
-
-source node --> tensor --> sink node
-
-It's important to note that a tensor object maybe shared and used in different
-ways in the PyTorch computation graph.
-"""
-
-
-class TensorNode:
-    def __init__(self, id: int, dtype: str):
-        self.id: int = id
-        self.dtype = dtype
-        self.sources: Set = set()
-        self.sinks: Set = set()
-        self.shapes: Set = set()
-
-    def add_source(self, id: int):
-        self.sources.add(id)
-
-    def add_sink(self, id: int):
-        self.sinks.add(id)
-
-    def add_shape(self, shape: List[Any]):
-        self.shapes.add(tuple(shape))
-
-    def is_leaf_tensor(self):
-        return (not self.sources) and self.sinks # A tensor having no sources yet having some sinks is a leaf tensor
-
-
-"""
-Node
-
-Contains all the information about a non-tensor node in the PyTorch computation
-graph.
-
-A node has an unique ID. This ID is in the order of execution in the original
-graph. Special nodes:
-- A single label node __ROOT_PROCESS__ has node ID 1 and is the root of the execution
-graph.
-- Each thread has its __ROOT_THREAD__ node with an unique ID.
-
-All the input tensors will have ID < node ID.
-"""
-
-
-class Node:
-    def __init__(
-        self,
-        name: str,
-        id: int,
-        parent_id: int,
-        fw_parent_id: int,
-        pid: int,
-        tid: int,
-        fw_tid: int,
-        op_schema: str,
-        scope: int,
-        inputs: List[Any],
-        input_types: List[str],
-        input_shapes: List[Any],
-        outputs: List[Any],
-        output_types: List[str],
-        output_shapes: List[Any],
-    ):
-        self.name: str = name
-        self.parent_id: int = parent_id
-        self.parent: Node = None
-        self.children: List[Node] = []
-        self.id: int = id
-        self.pid: int = pid
-        self.tid: int = tid
-        self.fw_tid: int = fw_tid
-        self.op_schema: str = op_schema
-        self.fw_parent_id: int = fw_parent_id
-        self.scope: int = scope
-        self.type: str = self.detect_type(name, inputs, outputs)
-        # self.inputs: List[Any] = [tuple(i) if isinstance(i, list) else i for i in inputs]
-        self.inputs: List[Any] = inputs
-        self.input_types: List[str] = input_types
-        self.input_shapes: List[Any] = input_shapes
-        # self.outputs: List[Any] = [tuple(o) if isinstance(o, list) else o for o in outputs]
-        self.outputs: List[Any] = outputs
-        self.output_types: List[str] = output_types
-        self.output_shapes: List[Any] = output_shapes
-
-    def get_inputs(self) -> Iterable:
-        return zip(self.input_types, self.inputs, self.input_shapes)
-
-    def get_outputs(self) -> Iterable:
-        return zip(self.output_types, self.outputs, self.output_shapes)
-
-    def set_parent(self, parent: Node):
-        assert parent.id == self.parent_id
-        self.parent = parent
-
-    def add_child(self, child: Node):
-        self.children.append(child)
-
-    # Self-type is op yet none of its parent in any hierarchy is an op.
-    def is_op(self, detail: bool = False):
-        if detail:
-            return self.type == NodeType.OPERATOR
-        else:
-            has_parent_op = False
-            tmp = self
-            while 1:
-                if tmp.parent is None or tmp.id == tmp.parent_id: # Reach the root process
-                    break
-                if tmp.parent.type == NodeType.OPERATOR:
-                    has_parent_op = True
-                    break
-                tmp = tmp.parent
-
-            return self.type == NodeType.OPERATOR and not has_parent_op
-
-    def is_leaf_op(self) -> bool:
-        return not self.children
-
-    def _get_grandest_parent(self) -> Node:
-        if self.parent is None or \
-            self.parent.name == "## BENCHMARK ##" or \
-            self.parent.name == "__ROOT_THREAD__":
-            return self
-        return self.parent._get_grandest_parent()
-
-    def get_grandest_parent(self) -> Node:
-        return self._get_grandest_parent()
-
-    def _get_base_op(self) -> Node:
-        if self.parent is None or self.parent.type == NodeType.LABEL:
-            return self
-        return self.parent._get_base_op()
-
-    def get_base_op(self) -> Node:
-        return self._get_base_op()
-
-    def _get_child_by_name(self, name) -> Node:
-        for c in self.children:
-            if name in c.name:
-                return c
-            node = c._get_child_by_name(name)
-            if node:
-                return node
-        return None
-
-    def get_child_by_name(self, names) -> Node:
-        for name in names:
-            node = self._get_child_by_name(name)
-            if node is not None:
-                return node
-        return None
-
-    def _get_parent_by_name(self, name) -> Node:
-        if self.parent:
-            if name in self.parent.name:
-                return self.parent
-            node = self.parent._get_parent_by_name(name)
-            if node:
-                return node
-        return None
-
-    def get_parent_by_name(self, names) -> Node:
-        for name in names:
-            node = self._get_parent_by_name(name)
-            if node is not None:
-                return node
-        return None
-
-    def detect_type(self, name: str, inputs: List[Any], outputs: List[Any]) -> NodeType:
-        if (
-            any(name.startswith(x) for x in LABEL_MARKERS)
-            and not outputs
-        ):
-            return NodeType.LABEL
-        else:
-            return NodeType.OPERATOR
-
-    def get_tensors(self, param_list: Iterable) -> List[tuple]:
-        tensors = []
-        for (type, input, shape) in param_list:
-            if type.startswith("Tensor"):
-                tensors.append((type, tuple(input), shape))
-            # GenericList could have tensor elements
-            if type.startswith("GenericList"):
-                elem_type = type[12:-1].split(",")
-                tensors.extend(self.get_tensors(zip(elem_type, input, shape)))
-        return tensors
-
-    def get_input_tensors(self) -> List[tuple]:
-        return self.get_tensors(self.get_inputs())
-
-    def get_output_tensors(self) -> List[tuple]:
-        return self.get_tensors(self.get_outputs())
-
-    def sort_children(self):
-        self.children.sort(key=lambda x: x.id)
-
-
 class ExecutionGraph:
-    def __init__(self, json):
+    def __init__(self, event):
         self.nodes = {}
-        self.clean_nodes = {} # w/o DataLoader ops
         self.tensors = {}
+        self.tensor_id_map = {}
+        self.tensor_storage_map = {}
         self.proc_group = {}
-        pid = json["pid"]
+        pid = event["pid"]
         self.proc_group = {pid: {}}
-        nodes_list = json["nodes"]
+        nodes_list = event["nodes"]
         for x in nodes_list:
             id = x["id"]
             tid = x["tid"]
             self.nodes[id] = Node(
                 x["name"],
                 id,
+                x["rf_id"],
                 x["parent"],
                 x["fw_parent"],
+                x["seq_id"],
                 pid,
                 tid,
                 x["fw_tid"],
-                x["op_schema"] if "op_schema" in x.keys() else "",
                 x["scope"],
+                x["op_schema"],
                 x["inputs"],
                 x["input_types"],
                 x["input_shapes"],
@@ -269,48 +63,70 @@ class ExecutionGraph:
             output_tensors = self.nodes[id].get_output_tensors()
 
             # track the various process and threads we have
-            if x["name"] == "__ROOT_THREAD__":
+            if x["name"] == "[pytorch|profiler|execution_graph|process]":
                 self.proc_group[pid][tid] = id
 
-            # build tensor reference table
-            for (t_type, t_id, shape) in input_tensors:
-                if type(t_id) != tuple:
-                    t_id = tuple(t_id)
-                if t_id not in self.tensors:
-                    dtype = t_type[7:-1]
-                    self.tensors[t_id] = TensorNode(t_id, dtype)
-                self.tensors[t_id].add_sink(id)
-                self.tensors[t_id].add_shape(shape)
+            # build tensor refernece table
+            for (type, tensor_info, shape) in input_tensors:
+                tensor_key = tuple(tensor_info)
+                if tensor_key not in self.tensors:
+                    dtype = type[7:-1]  # "Tensor(*)"
+                    tensor_node = self._register_tensor_node(
+                        tensor_key, tensor_info, dtype
+                    )
+                else:
+                    tensor_node = self.tensors[tensor_key]
 
-            for (t_type, t_id, shape) in output_tensors:
-                if type(t_id) != tuple:
-                    t_id = tuple(t_id)
-                if t_id not in self.tensors:
-                    dtype = t_type[7:-1]
-                    self.tensors[t_id] = TensorNode(t_id, dtype)
-                self.tensors[t_id].add_source(id)
-                self.tensors[t_id].add_shape(shape)
+                tensor_node.add_sink(id)
+                tensor_node.add_shape(shape)
+
+            for (type, tensor_info, shape) in output_tensors:
+                tensor_key = tuple(tensor_info)
+                if tensor_key not in self.tensors:
+                    dtype = type[7:-1]
+                    tensor_node = self._register_tensor_node(
+                        tensor_key, tensor_info, dtype
+                    )
+                else:
+                    tensor_node = self.tensors[tensor_key]
+
+                tensor_node.add_source(id)
+                tensor_node.add_shape(shape)
 
         # populate parent and children nodes
         for n in self.nodes.values():
             # skip root node
             if n.id != 1:
-                if n.parent_id in self.nodes:
-                    self.nodes[n.parent_id].add_child(n)
-                    n.set_parent(self.nodes[n.parent_id])
+                self.nodes[n.parent_id].add_child(n)
+                n.set_parent(self.nodes[n.parent_id])
         # sort children nodes by id
         for n in self.nodes.values():
             n.sort_children()
 
-        # remove all dataloader ops
-        self.remove_dataloader_ops()
+    def _register_tensor_node(
+        self, tensor_key: Tuple[int], tensor_info: Dict[int], dtype: str
+    ):
+        tensor_node = TensorNode(
+            tensor_info[0],
+            tensor_info[1],
+            tensor_info[2],
+            tensor_info[3],
+            tensor_info[4],
+            dtype,
+            tensor_info[5],
+        )
+        self.tensors[tensor_key] = tensor_node
+        self.tensor_id_map.setdefault(tensor_node.id, [])
+        self.tensor_id_map[tensor_node.id].append(tensor_node)
+        self.tensor_storage_map.setdefault(tensor_node.storage_id, [])
+        self.tensor_storage_map[tensor_node.storage_id].append(tensor_node)
 
-    def get_nodes(self, clean: bool = False):
-        if clean:
-            return self.clean_nodes
-        return self.nodes
+        return tensor_node
 
-    def get_unique_ops(self, detail: bool = False, clean: bool = False, json_format: bool = False):
+    def _get_dependency_id_for_tensor_info(self, tensor_info: List[int]):
+        return self.tensors[tuple(tensor_info)].get_dependency_id()
+
+    def print_op_stats(self, detail: bool = False, json_format: bool = False):
         def get_param(value, type, shape):
             type = type.lower()
             SCALAR_TYPES = {"int", "long", "float", "double", "bool"}
@@ -329,6 +145,7 @@ class ExecutionGraph:
                 param["type"] = "tensor"
                 param["dtype"] = type[7:-1]
                 param["shape"] = shape
+                param["requires_grad"] = False
             return param
 
         def convert_inputs(inputs, types, shapes):
@@ -339,40 +156,62 @@ class ExecutionGraph:
             return params
 
         ops = {}
-        nodes_dict = self.clean_nodes if clean else self.nodes
-        for n in nodes_dict.values():
-            if n.is_op(detail):
+        for n in self.nodes.values():
+            if detail:
+                is_op = n.type == NodeType.OPERATOR
+            else:
+                is_op = (
+                    n.type == NodeType.OPERATOR and n.parent.type != NodeType.OPERATOR
+                )
+            if is_op:
                 if n.name in ops:
                     ops[n.name]["count"] += 1
-                    ops[n.name]["inputs"].append(
-                        convert_inputs(n.inputs, n.input_types, n.input_shapes)
-                    )
+                    if n.op_schema in ops[n.name]["op_schema"]:
+                        ops[n.name]["op_schema"][n.op_schema].append(
+                            convert_inputs(n.inputs, n.input_types, n.input_shapes)
+                        )
+                    else:
+                        ops[n.name]["op_schema"][n.op_schema] = [
+                            convert_inputs(n.inputs, n.input_types, n.input_shapes)
+                        ]
                 else:
                     ops[n.name] = {"count": 1}
-                    ops[n.name]["inputs"] = [
-                        convert_inputs(n.inputs, n.input_types, n.input_shapes)
-                    ]
-        # Remove dupliates
-        for attr in ops.values():
-            # use json to serialize list of dict to string for set
-            unique = {json.dumps(x, sort_keys=True) for x in attr["inputs"]}
-            attr["inputs"] = list(map(json.loads, unique))
+                    ops[n.name]["build_data_generator"] = "PyTorch:DefaultDataGenerator"
+                    ops[n.name]["input_data_generator"] = "PyTorch:DefaultDataGenerator"
+                    ops[n.name]["op_schema"] = {
+                        n.op_schema: [
+                            convert_inputs(n.inputs, n.input_types, n.input_shapes)
+                        ]
+                    }
 
-        return ops
+        for _op_name, op_info in ops.items():
+            op_info["config"] = []
+            for op_schema, op_inputs in op_info["op_schema"].items():
+                op_info["config"].append(
+                    {
+                        "build": [{"args": [{"type": "str", "value": op_schema}]}],
+                        "input": [],
+                    }
+                )
+                # Remove input dupliates.
+                # use json to serialize list of dict to string for set
+                unique = {json.dumps({"args": x}, sort_keys=True) for x in op_inputs}
+                op_info["config"][-1]["input"] = list(map(json.loads, unique))
 
-    def print_op_stats(self, detail: bool = False, clean: bool = False, json_format: bool = False):
-        ops = self.get_unique_ops(detail, clean, json_format)
+            # Remove temp schema book keeping entries
+            op_info.pop("op_schema")
 
         if json_format:
-            print(json.dumps(ops, indent=2, sort_keys=True))
+            print(json.dumps(ops, indent=2))
         else:
             print("### OP STATS ###")
             for key, val in sorted(ops.items()):
                 print(f"op: {key}")
                 print(f"  count: {val['count']}")
-                print("  unique inputs:")
-                for i in val["inputs"]:
-                    print(f"  input: {i}")
+                for config in val["config"]:
+                    print(f"  build: {config['build']}")
+                    for input in config["input"]:
+                        print(f"  input: {input}")
 
     def gen_graphviz(self, file_name):
         dot = pydot.Dot(graph_type="digraph")
@@ -386,20 +225,28 @@ class ExecutionGraph:
                     fillcolor="#fffbed",
                 )
             )
-        for id in self.tensors:
+        for _tensor_key, tensor_node in self.tensors.items():
+            id = tensor_node.get_dependency_id()
             dot.add_node(
-                pydot.Node(id, label=f"T{id}", style="filled", fillcolor="#e8faff")
+                pydot.Node(
+                    id,
+                    label=f"T{tensor_node.id} ({tensor_node.storage_id}+{tensor_node.offset})",
+                    style="filled",
+                    fillcolor="#e8faff",
+                )
             )
         nodes = len(self.nodes) + len(self.tensors)
         edges = 0
         for id, n in self.nodes.items():
             dot.add_edge(pydot.Edge(n.parent_id, id, arrowhead="odiamond"))
             edges += 1
-            for (_, input, _) in n.get_input_tensors():
-                dot.add_edge(pydot.Edge(input, id))
+            for (_, tensor_info, _) in n.get_input_tensors():
+                input_id = self._get_dependency_id_for_tensor_info(tensor_info)
+                dot.add_edge(pydot.Edge(input_id, id))
                 edges += 1
-            for (_, output, _) in n.get_output_tensors():
-                dot.add_edge(pydot.Edge(id, output))
+            for (_, tensor_info, _) in n.get_output_tensors():
+                output_id = self._get_dependency_id_for_tensor_info(tensor_info)
+                dot.add_edge(pydot.Edge(id, output_id))
                 edges += 1
         dot.write_svg(file_name, prog="dot")
         logging.info(f"nodes: {nodes}")
@@ -422,31 +269,69 @@ class ExecutionGraph:
 
         print(f"Execution graph written to {out_name}")
 
+    def gen_tfjs_json(self, file_name):
+        """Function to export graph to Tensorflow.js style JSON format.
+
+        This can be run by adding optional flag --tfjs-json
+        """
+
+        tfjs_nodes = []
+
+        for n in self.nodes.values():
+            tfjs_node = {}
+            tfjs_node["name"] = f"{n.id}"
+            tfjs_node["op"] = f"{n.name} ({n.id})"
+            tfjs_node["input"] = []
+            if n.parent is not None:
+                tfjs_node["input"].append(f"{n.parent.id}")
+
+            for (_, input_info, _) in n.get_input_tensors():
+                id = self._get_dependency_id_for_tensor_info(input_info)
+                tfjs_node["input"].append(f"{id}")
+
+            tfjs_nodes.append(tfjs_node)
+
+        for tensor_key, t in self.tensors.items():
+            tfjs_node = {}
+            id = self.tensors[tensor_key].get_dependency_id()
+            tfjs_node["name"] = f"{id}"
+            tfjs_node["op"] = f"T{t.id} ({t.storage_id}+{t.offset})"
+            tfjs_node["input"] = [f"{self.nodes[elem].id}" for elem in t.sources]
+            # tfjs_node["shape"] = list(list(t.shapes)[0])
+            tfjs_nodes.append(tfjs_node)
+
+        output = {"modelTopology": {"node": tfjs_nodes}, "weightsManifest": []}
+        out_name = f"{file_name}.json"
+        with open(out_name, "w") as outfile:
+            json.dump(output, outfile)
+
+        print(f"Execution graph written to {out_name}")
+
     def print_tensors(self, detail: bool = False):
         print("### TENSORS ###")
-        for id, t in self.tensors.items():
-            if detail:
-                print(f"ID {id}:")
-                print("     type:", t.dtype)
-                print("   shapes:", t.shapes)
-                print("  sources:", t.sources)
-                print("    sinks:", t.sinks)
-            else:
-                print(f"id = {id}:")
-                print("     type:", t.dtype)
-                print("   shapes:", t.shapes)
+        for _, tensor_node in self.tensors.items():
+            print("Tensor:")
+            self.print_tensor_node(tensor_node, detail)
 
     def _print_tree_preorder(self, n, indent, pid, tid, detail: bool):
-        if n.type == NodeType.OPERATOR:
-            print(f"{indent}({n.parent_id}:{n.id}) {n.name}")
+        def print_inputs_outputs(node: Node):
             inputs = list(n.get_inputs())
             print(f"{indent}    arg: {inputs}")
             outputs = list(n.get_outputs())
             print(f"{indent}    out: {outputs}")
+
+        if n.type == NodeType.OPERATOR:
+            print(
+                f"{indent}({n.parent_id}|{n.id}:{n.rf_id}:{n.seq_id}) {n.name} [{n.op_schema}]"
+            )
+            print_inputs_outputs(n)
             if not detail:
                 return
+
         else:
-            print(f"{indent}({n.id}) {n.name}")
+            print(f"{indent}({n.parent_id}|{n.id}:{n.rf_id}:{n.seq_id}) {n.name}")
+            print_inputs_outputs(n)
+
         for c in n.children:
             self._print_tree_preorder(c, indent + "  ", pid, tid, detail)
 
@@ -461,194 +346,83 @@ class ExecutionGraph:
 
     def node_depend(self, id: int):
         n = self.nodes[id]
-        print(f"ID {id}: Operator")
+        print("Type: Node")
+        print("-" * 15)
+        print("            id:", id)
         print("          name:", n.name)
-        print("           tid:", n.tid)
+        print("         rf_id:", n.parent_id)
         print("     parent_id:", n.parent_id)
+        print("           tid:", n.tid)
         print("        fw_tid:", n.fw_tid)
-        print("        op_schema:", n.op_schema)
         print("  fw_parent_id:", n.fw_parent_id)
         print("         scope:", n.scope)
         print("        inputs:")
-        for (dtype, tensor_id, shape) in n.get_input_tensors():
-            prev_id = 0
-            for s in self.tensors[tensor_id].sources:
-                if s < id and s > prev_id:
-                    prev_id = s
-            if prev_id:
-                print(
-                    f"{' '*16}{tensor_id}: {dtype} {shape} <-- {prev_id} ({self.nodes[prev_id].name})"
-                )
-            else:
-                print(f"{' '*16}{tensor_id}: {dtype} {shape}")
+        input_tensors = n.get_input_tensors()
+        if input_tensors:
+            for (dtype, tensor_info, shape) in input_tensors:
+                prev_id = 0
+                for s in self.tensors[tuple(tensor_info)].sources:
+                    if s < id and s > prev_id:
+                        prev_id = s
+                if prev_id:
+                    print(
+                        f"{' '*16}{tensor_info}: {dtype} {shape} <-- {prev_id} ({self.nodes[prev_id].name})"
+                    )
+                else:
+                    print(f"{' '*16}{tensor_info}: {dtype} {shape}")
+        else:
+            print(f"{' '*16}None")
 
         print("       outputs:")
-        for (dtype, tensor_id, shape) in n.get_output_tensors():
-            next_id = sys.maxsize
-            for s in self.tensors[tensor_id].sinks:
-                # We could have cycle (s == id), where an op read and write to
-                # the same tensor.
-                if s > id and s < next_id:
-                    next_id = s
-            if next_id != sys.maxsize:
-                print(
-                    f"{' '*16}{tensor_id}: {dtype} {shape} --> {next_id} ({self.nodes[next_id].name})"
-                )
-            else:
-                print(f"{' '*16}{tensor_id}: {dtype} {shape}")
+        output_tensors = n.get_output_tensors()
+        if output_tensors:
+            for (dtype, tensor_info, shape) in output_tensors:
+                next_id = sys.maxsize
+                for s in self.tensors[tuple(tensor_info)].sinks:
+                    # We could have cycle (s == id), where an op read and write to
+                    # the same tensor.
+                    if s > id and s < next_id:
+                        next_id = s
+                if next_id != sys.maxsize:
+                    print(
+                        f"{' '*16}{tensor_info}: {dtype} {shape} --> {next_id} ({self.nodes[next_id].name})"
+                    )
+                else:
+                    print(f"{' '*16}{tensor_info}: {dtype} {shape}")
+        else:
+            print(f"{' '*16}None")
 
-    def tensor_depend(self, id: int):
-        t = self.tensors[id]
-        print(f"ID {id}: Tensor")
-        print("     type:", t.dtype)
-        print("   shapes:", t.shapes)
-        sources = {}
-        for node_id in t.sources:
-            sources[node_id] = self.nodes[node_id].name
-        print("  sources:", sources)
-        sinks = {}
-        for node_id in t.sinks:
-            sinks[node_id] = self.nodes[node_id].name
-        print("    sinks:", sinks)
+    def tensor_id_depend(self, id: int):
+        print("Type: Tensor")
+        tensor_list = self.tensor_id_map[id]
+        for tensor_node in tensor_list:
+            self.print_tensor_node(tensor_node, True)
 
-    def remove_dataloader_ops(self):
-        def check_parent(node):
-            tmp = node
-            while tmp and tmp.id != tmp.parent_id: # while not the final root
-                if "DataLoader" in tmp.name:
-                    return True
-                tmp = tmp.parent
-            return False
+    def tensor_storage_depend(self, storage_id: int):
+        print("Type: Storage")
+        tensor_list = self.tensor_storage_map[storage_id]
+        for tensor_node in tensor_list:
+            self.print_tensor_node(tensor_node, True)
 
-        if len(self.clean_nodes.keys()) == 0: # clean_nodes is empty
-            for id, node in self.nodes.items():
-                if not check_parent(node): # if the op is not under dataloader
-                    self.clean_nodes[id] = node
-
-
-class GraphML:
-    def __init__(self, execution_graph: ExecutionGraph):
-        self.nodes: List = []
-        self.edges: List = []
-        # construct op nodes and edges
-        for id, n in execution_graph.nodes.items():
-            self._create_node(id, f"{n.name} ({n.id})", n.name)
-        for tensor in execution_graph.tensors.values():
-            self._create_tensor_node(tensor)
-        for id, n in execution_graph.nodes.items():
-            self._create_edge(n.parent_id, id)
-            for (_, input, _) in n.get_input_tensors():
-                self._create_edge(input, id)
-            for (_, output, _) in n.get_output_tensors():
-                self._create_edge(id, output)
-
-        logging.info(f"nodes: {len(self.nodes)}")
-        logging.info(f"edges: {len(self.edges)}")
-
-    def _create_node(
-        self,
-        node_id: int,
-        name: str = "",
-        type: str = "",
-        input: str = "",
-        output: str = "",
-        arg: str = "",
-        device: str = "",
-        engine: str = "",
-        is_grad: str = "",
-        info: str = "",
-    ):
-        self.nodes.append(
-            {
-                "id": node_id,
-                "name": name,
-                "type": type,
-                "input": input,
-                "output": output,
-                "arg": arg,
-                "is_grad": is_grad,
-                "device": device,
-                "engine": engine,
-                "info": info,
-            }
-        )
-
-    def _create_tensor_node(self, tensor):
-        self._create_node(
-            tensor.id,
-            f"T{tensor.id}",
-            type="Tensor",
-            input=tensor.sources,
-            output=tensor.sinks,
-        )
-
-    def _create_edge(self, source, target):
-        self.edges.append({"source": source, "target": target})
-
-    def write(self, name, file_name):
-        """
-        Given the graph information, write a GraphML file.
-        Parameters:
-        name (string): Name of the network.
-        file_name: Output file name.
-        """
-
-        def write_header():
-            out.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-
-        def graphml_begin():
-            graphml = (
-                '<graphml xmlns="http://graphml.graphdrawing.org/xmlns" '
-                'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
-                'xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns '
-                'http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">\n'
-                '<key id="name" attr.name="name" '
-                'attr.type="string" for="node" namespace="all::node"/>\n'
-                '<key id="type" attr.name="type" '
-                'attr.type="string" for="node" namespace="all::node"/>\n'
-                '<key id="input" attr.name="input" '
-                'attr.type="string" for="node" namespace="all::node"/>\n'
-                '<key id="output" attr.name="output" '
-                'attr.type="string" for="node" namespace="all::node"/>\n'
-                '<key id="arg" attr.name="arg" '
-                'attr.type="string" for="node" namespace="all::node"/>\n'
-                '<key id="device" attr.name="device" '
-                'attr.type="string" for="node" namespace="all::node"/>\n'
-                '<key id="engine" attr.name="engine" '
-                'attr.type="string" for="node" namespace="all::node"/>\n'
-                '<key id="is_grad" attr.name="is_grad" '
-                'attr.type="string" for="node" namespace="all::node"/>\n'
-                '<key id="info" attr.name="info" '
-                'attr.type="string" for="node" namespace="all::node"/>\n'
-            )
-            out.write(graphml)
-
-        def graphml_end():
-            out.write("</graphml>\n")
-
-        def write_graph():
-            out.write(f'<graph id="{name}" edgedefault="directed">\n')
-            for node in self.nodes:
-                write_node(node)
-            for id, edge in enumerate(self.edges):
-                write_edge(id, edge["source"], edge["target"])
-            out.write("</graph>\n")
-
-        def write_node(node):
-            out.write(f'<node id="{node["id"]}">\n')
-            for name, data in node.items():
-                if name != "id" and data:
-                    out.write(f'  <data key="{name}">{data}</data>\n')
-            out.write("</node>\n")
-
-        def write_edge(id, source, target):
-            out.write(f'<edge id="e_{id}" source="{source}" target="{target}"/>\n')
-
-        with open(file_name, "wt") as out:
-            write_header()
-            graphml_begin()
-            write_graph()
-            graphml_end()
+    def print_tensor_node(self, tensor_node: TensorNode, detail: bool = False):
+        print("-" * 13)
+        print("   tensor_id:", tensor_node.id)
+        print("  storage_id:", tensor_node.storage_id)
+        print("      offset:", tensor_node.offset)
+        print("    num_elem:", tensor_node.num_elem)
+        print("  elem_bytes:", tensor_node.elem_bytes)
+        print("   elem_type:", tensor_node.dtype)
+        print("      device:", tensor_node.device)
+        print("      shapes:", tensor_node.shapes)
+        if detail:
+            sources = {}
+            for node_id in tensor_node.sources:
+                sources[node_id] = self.nodes[node_id].name
+            print("     sources:", sources)
+            sinks = {}
+            for node_id in tensor_node.sinks:
+                sinks[node_id] = self.nodes[node_id].name
+            print("       sinks:", sinks)
 
 
 def main():
@@ -680,6 +454,13 @@ def main():
         help="generate graph output in graphml format.",
     )
     parser.add_argument(
+        "--tfjs-json",
+        dest="tfjs_json",
+        default=False,
+        action="store_true",
+        help="generate graph output in model.json format of Tensorflow.js for importing in Netron.",
+    )
+    parser.add_argument(
         "--list-tensor",
         dest="list_tensor",
         default=False,
@@ -707,13 +488,6 @@ def main():
         default=False,
         action="store_true",
         help="combined with some other options, will show more detailed information.",
-    )
-    parser.add_argument(
-        "--clean",
-        dest="clean",
-        default=False,
-        action="store_true",
-        help="remove all dataloader ops.",
     )
     parser.add_argument(
         "--json",
@@ -745,17 +519,21 @@ def main():
         if args.node != -1:
             if args.node in execution_graph.nodes:
                 execution_graph.node_depend(args.node)
-            elif args.node in execution_graph.tensors:
-                execution_graph.tensor_depend(args.node)
+            elif args.node in execution_graph.tensor_id_map:
+                execution_graph.tensor_id_depend(args.node)
+            elif args.node in execution_graph.tensor_storage_map:
+                execution_graph.tensor_storage_depend(args.node)
             else:
                 logging.error(f"node {args.node} not found.")
 
-        if args.graph or args.graphviz or args.graphml:
+        if args.graph or args.graphviz or args.graphml or args.tfjs_json:
             out_file: str = "execution_graph"
             if args.graphviz:
                 execution_graph.gen_graph(out_file, "graphviz")
             elif args.graphml:
                 execution_graph.gen_graph(out_file, "graphml")
+            elif args.tfjs_json:
+                execution_graph.gen_tfjs_json(out_file)
             else:
                 execution_graph.gen_graph(out_file)
 
