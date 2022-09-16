@@ -2,6 +2,7 @@ import argparse
 from datetime import datetime
 import gc
 import json
+import numpy as np
 import time
 from collections import defaultdict
 from functools import reduce
@@ -47,6 +48,7 @@ class ExgrReplayManager:
         self.eg = args.eg
         self.batch = args.batch
         self.cuda_id = args.cuda
+        self.debug = args.debug
 
         # Permanent
         self.tensor_registry_permanent = {}
@@ -77,7 +79,7 @@ class ExgrReplayManager:
         # Tensors lookup dict at runtime.
         self.tensor_registry = {}
         # Skip the node if their names contain any of the following strings.
-        self.skip_node_names = ["DataLoader", "aten::set_", "fb::", "c10d::allreduce_", "pyspeech::", "gans_torchscript_ops::"]
+        self.skip_node_names = ["DataLoader", "aten::set_", "fb::", "c10d::allreduce_", "pyspeech::"]
 
         if self.profile_memory:
             self.current_allocated_mem = 0
@@ -108,6 +110,13 @@ class ExgrReplayManager:
         self.tensor_device = {}
 
         self.exceptional_nodes = set()
+
+        self.lookup_cnt = 0
+        self.input_total_time = 0
+        self.output_total_time = 0
+
+        self.exec_time = []
+        self.setup_time = []
 
 
     def detect_tensor_device(self, root):
@@ -369,10 +378,12 @@ class ExgrReplayManager:
                 inputs = []
                 for idx, item in enumerate(node.inputs):
                     if is_tensor(node, idx):
+                        self.lookup_cnt += 1
                         if self.tensor_with_device:
                             item = tuple(item[:5])
                         inputs.append(self.tensor_registry[self.tensors_mapping[(node.id, tuple(item), True)]])
                     elif is_tensor_list(node, idx):
+                        self.lookup_cnt += len(item)
                         if self.tensor_with_device:
                             inputs.append([self.tensor_registry[self.tensors_mapping[(node.id, tuple(t_id[:5]), True)]] for t_id in item])
                         else:
@@ -391,25 +402,17 @@ class ExgrReplayManager:
 
 
     def run_op(self, node, iter):
+        if self.debug and iter >= self.numWarmupIters:
+            start_ns = time.time_ns()
+
         func, output_count = self.funcs[node.id]
         if not func:
             return
         inputs = self.get_inputs(node)
 
-        ######
         # Workaround to eliminate the "strides() called on undefined Tensor" error.
         if node.name == "aten::convolution_backward":
             inputs[-1] = [True, True, True]
-        ######
-
-        # # Workaround to handle tensors are on different devices.
-        # if node.name == "aten::mul":
-        #     if is_tensor(node, 0) and is_tensor(node, 1):
-        #         if inputs[0].is_cuda ^ inputs[1].is_cuda:
-        #             if inputs[0].is_cuda:
-        #                 inputs[1] = inputs[1].to(self.device)
-        #             else:
-        #                 inputs[1] = inputs[1].to('cpu')
 
         # Workaround to handle tensor with same id but different data types (ads_cmf10x_single_iter_512_newest_eg.json).
         if node.name == "aten::index_add_":
@@ -417,6 +420,12 @@ class ExgrReplayManager:
         if node.name == "aten::index_copy_":
             if node.input_types[3] == "Tensor(double)":
                 inputs[3] = inputs[3].to(torch.float64)
+
+        # if self.debug and iter >= self.numWarmupIters:
+        #     self.input_total_time += time.time_ns() - start_ns
+
+        if self.debug and iter >= self.numWarmupIters:
+            before_execution = time.time_ns()
 
         try:
             outputs = []
@@ -438,6 +447,9 @@ class ExgrReplayManager:
             print(f"Run op exception Error: {e}, node id: {node.id}, func: {func}, inputs: {inputs}")
             exit(1)
 
+        if self.debug and iter >= self.numWarmupIters:
+            after_execution = time.time_ns()
+
         for (_, t_id, _), output in zip(get_output_tensors(node), outputs):
             if self.tensor_with_device:
                 t_id = tuple(list(t_id)[:5])
@@ -445,11 +457,18 @@ class ExgrReplayManager:
                 if self.tensors_mapping[(node.id, t_id, False)] not in self.instantiate:
                     self.tensor_registry[self.tensors_mapping[(node.id, t_id, False)]] = output
 
+        # if self.debug and iter >= self.numWarmupIters:
+        #     self.output_total_time += time.time_ns() - after_execution
+
         if self.profile_memory:
             self.op_allocated_mem[node] = torch.cuda.memory_allocated(self.device) - self.current_allocated_mem
             self.current_allocated_mem = torch.cuda.memory_allocated(self.device)
             self.op_reserved_mem[node] = torch.cuda.memory_reserved(self.device) - self.current_reserved_mem
             self.current_reserved_mem = torch.cuda.memory_reserved(self.device)
+
+        if self.debug and iter >= self.numWarmupIters:
+            self.setup_time.append(time.time_ns() - start_ns - (after_execution - before_execution))
+            self.exec_time.append(after_execution - before_execution)
 
 
     def analyze_ops(self):
@@ -575,6 +594,18 @@ class ExgrReplayManager:
         end_time = datetime.now()
         generate_query_url(start_time, end_time, self.cuda_id)
 
+        if self.debug:
+            print("Setup time: {}".format(sum(self.setup_time) / 1000000.0))
+            print("Execution time: {}".format(sum(self.exec_time) / 1000000.0))
+
+            print("Input time: {}".format(self.input_total_time / 1000000.0))
+            print("Output time: {}".format(self.output_total_time / 1000000.0))
+            print("Lookup count: {}".format(self.lookup_cnt))
+            print("Remap tensor list size: ", len(self.tensors_mapping))
+
+            print("Execution time: 50th:{}ms\t90th:{}ms\t95th:{}ms".format(np.percentile(self.exec_time, 50) / 1000.0,
+                np.percentile(self.exec_time, 90) / 1000.0, np.percentile(self.exec_time, 95) / 1000.0))
+
 
 def main():
     parser = argparse.ArgumentParser(description="Execution Graph Replay")
@@ -601,6 +632,9 @@ def main():
     )
     parser.add_argument(
         "--cuda", type=int, default=-1, help="cuda device id, if not specify, will use the default"
+    )
+    parser.add_argument(
+        "-d", "--debug", action="store_true", default=False, help="Enable debug mode."
     )
 
     args = parser.parse_args()
