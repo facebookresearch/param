@@ -692,7 +692,9 @@ class commsCollBench(paramCommsBench):
         if commsParams.sizes is not None:
             allSizes = commsParams.sizes
             if global_rank == 0:
-                logger.info(f"Benchmarking with user-specified message sizes {allSizes}, --b and --e are ignored")
+                logger.info(
+                    f"Benchmarking with user-specified message sizes {allSizes}, --b and --e are ignored"
+                )
         else:
             comms_utils.fixBeginSize(
                 commsParams, world_size

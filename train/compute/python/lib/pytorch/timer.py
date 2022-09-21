@@ -24,4 +24,4 @@ class Timer:
         return (self.end_time - self.start_time) * 1000.0
 
     def elapsed_time_sec(self) -> float:
-        return (self.end_time - self.start_time)
+        return self.end_time - self.start_time

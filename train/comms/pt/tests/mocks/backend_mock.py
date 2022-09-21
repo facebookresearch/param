@@ -1,6 +1,7 @@
 import torch
 
-class MockBackendFunction: # Mock backend function
+
+class MockBackendFunction:  # Mock backend function
     # TODO: Add configurable options.
     def __init__(self):
         self.collectiveFunc = {
@@ -127,4 +128,6 @@ class MockBackendFunction: # Mock backend function
     def alloc_random(
         self, sizeArr, curRankDevice="cpu", dtype=torch.int32, scaleFactor=1.0
     ):
-        return self.alloc_ones(sizeArr, "cpu", dtype, 1.0) # just return arrays of 1 for testing
+        return self.alloc_ones(
+            sizeArr, "cpu", dtype, 1.0
+        )  # just return arrays of 1 for testing

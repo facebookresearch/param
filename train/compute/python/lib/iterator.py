@@ -1,6 +1,6 @@
 import abc
 import copy
-from typing import Dict, List, Any, Callable, Type
+from typing import Any, Callable, Dict, List, Type
 
 from .generator import full_range, IterableList, ListProduct, TableProduct
 from .init_helper import get_logger

@@ -13,6 +13,7 @@ from param_bench.train.comms.pt.tests.test_utils import (
     testArgs,
 )
 
+
 class TestPrepComms(unittest.TestCase):
     """
     Test prepComms() to verify that correct tensors are being generated for different
@@ -59,7 +60,15 @@ class TestPrepComms(unittest.TestCase):
         commsParams = commsParamsTest()
         commsParams.dcheck = 1
         commsParams.device = "cpu"
-        curComm = commsArgs(comms="all_to_allv", dtype="Int", inMsgSize=4, outMsgSize=4, inSplit=[1, 1, 1, 1], outSplit=[1, 1, 1, 1], worldSize=4)
+        curComm = commsArgs(
+            comms="all_to_allv",
+            dtype="Int",
+            inMsgSize=4,
+            outMsgSize=4,
+            inSplit=[1, 1, 1, 1],
+            outSplit=[1, 1, 1, 1],
+            worldSize=4,
+        )
         testBench.shrink = True
         testBench.collectiveArgs.world_size = 1
         (iptensor, optensor) = testBench.prepComms(curComm, commsParams)
@@ -76,13 +85,16 @@ class TestPrepComms(unittest.TestCase):
         commsParams = commsParamsTest()
         commsParams.dcheck = 1
         commsParams.device = "cpu"
-        curComm = commsArgs(comms="all_gather", dtype="Int", inMsgSize=4, outMsgSize=4, worldSize=4)
+        curComm = commsArgs(
+            comms="all_gather", dtype="Int", inMsgSize=4, outMsgSize=4, worldSize=4
+        )
         testBench.shrink = True
         testBench.collectiveArgs.world_size = 1
         (iptensor, optensor) = testBench.prepComms(curComm, commsParams)
         # tensor length should shrink to world size
         self.assertEqual(1, len(iptensor))
         self.assertEqual(1, len(optensor))
+
 
 class TestWarmUpBench(unittest.TestCase):
     """
@@ -92,18 +104,18 @@ class TestWarmUpBench(unittest.TestCase):
 
     def test_warm_up_bench(self):
         test_trace = [
-                        createCommsArgs(comms="test", inMsgSize=1,
-                         outMsgSize=1, markerStack=["test_stack"]),
-                        createCommsArgs(comms="all_gather", inMsgSize=2,
-                         outmsgSize=2),
-                        createCommsArgs(comms="wait", markerStack=["test_stack"])
-                     ]
+            createCommsArgs(
+                comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]
+            ),
+            createCommsArgs(comms="all_gather", inMsgSize=2, outmsgSize=2),
+            createCommsArgs(comms="wait", markerStack=["test_stack"]),
+        ]
         testBench = commsTraceReplayBench()
         testBench.backendFuncs = MockBackendFunction()
         testBench.comms_trace = test_trace
         commsParams = commsParamsTest()
         testBench.warmUpBench(commsParams)
-        self.assertTrue(True) # just check to see if warmUpBench ran without failure
+        self.assertTrue(True)  # just check to see if warmUpBench ran without failure
 
 
 class TestRunComms(unittest.TestCase):
@@ -143,12 +155,12 @@ class TestinitTraceStat(unittest.TestCase):
 
     def test_dry_run(self):
         test_trace = [
-                        createCommsArgs(comms="test", inMsgSize=1,
-                         outMsgSize=1, markerStack=["test_stack"]),
-                        createCommsArgs(comms="all_gather", inMsgSize=2,
-                         outMsgSize=2),
-                        createCommsArgs(comms="wait", markerStack=["test_stack"])
-                     ]
+            createCommsArgs(
+                comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]
+            ),
+            createCommsArgs(comms="all_gather", inMsgSize=2, outMsgSize=2),
+            createCommsArgs(comms="wait", markerStack=["test_stack"]),
+        ]
         testBench = commsTraceReplayBench()
         testBench.comms_trace = test_trace
         testBench.is_dry_run = True
@@ -162,20 +174,24 @@ class TestinitTraceStat(unittest.TestCase):
         # Dry run records comm blocks. We have two colls in test_stack
         self.assertEqual(2, len(testBench.comms_blocks["test_stack"]))
         # check values of comm_blocks
-        self.assertEqual("test", testBench.comms_blocks["test_stack"][0]["comms"]) # first comm in "test_stack" is test
+        self.assertEqual(
+            "test", testBench.comms_blocks["test_stack"][0]["comms"]
+        )  # first comm in "test_stack" is test
         self.assertEqual(1, testBench.comms_blocks["test_stack"][0]["in_msg_size"])
         self.assertEqual(1, testBench.comms_blocks["test_stack"][0]["out_msg_size"])
 
-        self.assertEqual("wait", testBench.comms_blocks["test_stack"][1]["comms"]) # second comm in "test_stack" is wait
+        self.assertEqual(
+            "wait", testBench.comms_blocks["test_stack"][1]["comms"]
+        )  # second comm in "test_stack" is wait
 
     def test_not_dry_run(self):
         test_trace = [
-                        createCommsArgs(comms="test", inMsgSize=1,
-                         outMsgSize=1, markerStack=["test_stack"]),
-                        createCommsArgs(comms="all_gather", inMsgSize=2,
-                         outMsgSize=2),
-                        createCommsArgs(comms="wait", markerStack=["test_stack"])
-                     ]
+            createCommsArgs(
+                comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]
+            ),
+            createCommsArgs(comms="all_gather", inMsgSize=2, outMsgSize=2),
+            createCommsArgs(comms="wait", markerStack=["test_stack"]),
+        ]
         testBench = commsTraceReplayBench()
         testBench.comms_trace = test_trace
         testBench.initTraceStat()
@@ -187,6 +203,7 @@ class TestinitTraceStat(unittest.TestCase):
         self.assertEqual(2, sum(testBench.collOutMsgSizes["all_gather"]))
         # Not dry run does not record comm blocks.
         self.assertEqual(0, len(testBench.comms_blocks["test_stack"]))
+
 
 class TestInitBench(unittest.TestCase):
     """
@@ -208,6 +225,7 @@ class TestInitBench(unittest.TestCase):
         self.assertEqual(False, args.auto_shrink, testBench.shrink)
         self.assertEqual(False, args.no_warm_up, not testBench.do_warm_up)
 
+
 class TestRebalanceSplit(unittest.TestCase):
     """
     Test rebalance split function based on different policies.
@@ -226,9 +244,15 @@ class TestRebalanceSplit(unittest.TestCase):
         testComm.inSplit = [3, 2]
         testComm.outSplit = [1, 2]
 
-        ipTensor = torch.tensor([16], dtype=torch.int) # Mock a second rank to have inMsgSize 11
+        ipTensor = torch.tensor(
+            [16], dtype=torch.int
+        )  # Mock a second rank to have inMsgSize 11
         testBench.backendFuncs = MockBackendFunction()
-        testBench.backendFuncs.mock_collective = mock.MagicMock(side_effect=(lambda collectiveArgs: setattr(collectiveArgs, "ipTensor", ipTensor)))
+        testBench.backendFuncs.mock_collective = mock.MagicMock(
+            side_effect=(
+                lambda collectiveArgs: setattr(collectiveArgs, "ipTensor", ipTensor)
+            )
+        )
 
         testBench.rebalanceSplit(testComm)
         # Mock all_reduce wil return 16, so inMsgSize, outMsgSize should be equal to 8 since we are assuming world_size = 2.
@@ -236,13 +260,14 @@ class TestRebalanceSplit(unittest.TestCase):
         print(f"ipTensor after: {testBench.collectiveArgs.ipTensor}")
         self.assertEqual(8, testComm.inMsgSize)
         self.assertEqual(8, testComm.outMsgSize)
-        self.assertEqual([4,4], testComm.inSplit)
-        self.assertEqual([4,4], testComm.outSplit)
-
+        self.assertEqual([4, 4], testComm.inSplit)
+        self.assertEqual([4, 4], testComm.outSplit)
 
     def test_unsupported_policy(self):
         testBench = commsTraceReplayBench()
-        testBench.rebalance_policy = "unsupported" # any str that isn't in supported is considered unsupported
+        testBench.rebalance_policy = (
+            "unsupported"  # any str that isn't in supported is considered unsupported
+        )
 
         testComm = commsArgs()
         testComm.comms = "all_to_allv"
@@ -257,8 +282,9 @@ class TestRebalanceSplit(unittest.TestCase):
         # should be no change
         self.assertEqual(5, testComm.inMsgSize)
         self.assertEqual(3, testComm.outMsgSize)
-        self.assertEqual([3,2], testComm.inSplit)
-        self.assertEqual([1,2], testComm.outSplit)
+        self.assertEqual([3, 2], testComm.inSplit)
+        self.assertEqual([1, 2], testComm.outSplit)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

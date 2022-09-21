@@ -1,18 +1,19 @@
 from __future__ import (
     absolute_import,
+    annotations,
     division,
     print_function,
     unicode_literals,
-    annotations,
 )
 
 import argparse
 import json
 import logging
 import sys
-import pydot
 from enum import Enum
-from typing import Set, List, Any, Iterable, TextIO
+from typing import Any, Iterable, List, Set, TextIO
+
+import pydot
 
 
 FORMAT = "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
@@ -26,9 +27,25 @@ NodeType = Enum("NodeType", "OPERATOR LABEL")
 
 
 # Label markers
-LABEL_MARKERS = ["##", "__", "module::", "DLRM ", "DistributedDataParallel", "Profiler",
-                "[pytorch|", "forward", "backward", "Optimizer.zero_grad", "[param", "<forward op>",
-                "reduce-grads", "multiply-grads", "clip-grads", "optimizer", "gans_torchscript_ops::"]
+LABEL_MARKERS = [
+    "##",
+    "__",
+    "module::",
+    "DLRM ",
+    "DistributedDataParallel",
+    "Profiler",
+    "[pytorch|",
+    "forward",
+    "backward",
+    "Optimizer.zero_grad",
+    "[param",
+    "<forward op>",
+    "reduce-grads",
+    "multiply-grads",
+    "clip-grads",
+    "optimizer",
+    "gans_torchscript_ops::",
+]
 
 
 """
@@ -64,7 +81,9 @@ class TensorNode:
         self.shapes.add(tuple(shape))
 
     def is_leaf_tensor(self):
-        return (not self.sources) and self.sinks # A tensor having no sources yet having some sinks is a leaf tensor
+        return (
+            not self.sources
+        ) and self.sinks  # A tensor having no sources yet having some sinks is a leaf tensor
 
 
 """
@@ -144,7 +163,9 @@ class Node:
             has_parent_op = False
             tmp = self
             while 1:
-                if tmp.parent is None or tmp.id == tmp.parent_id: # Reach the root process
+                if (
+                    tmp.parent is None or tmp.id == tmp.parent_id
+                ):  # Reach the root process
                     break
                 if tmp.parent.type == NodeType.OPERATOR:
                     has_parent_op = True
@@ -157,9 +178,11 @@ class Node:
         return not self.children
 
     def _get_grandest_parent(self) -> Node:
-        if self.parent is None or \
-            self.parent.name == "## BENCHMARK ##" or \
-            self.parent.name == "__ROOT_THREAD__":
+        if (
+            self.parent is None
+            or self.parent.name == "## BENCHMARK ##"
+            or self.parent.name == "__ROOT_THREAD__"
+        ):
             return self
         return self.parent._get_grandest_parent()
 
@@ -241,7 +264,7 @@ class Node:
 class ExecutionGraph:
     def __init__(self, json):
         self.nodes = {}
-        self.clean_nodes = {} # w/o DataLoader ops
+        self.clean_nodes = {}  # w/o DataLoader ops
         self.tensors = {}
         self.proc_group = {}
         pid = json["pid"]
@@ -312,7 +335,9 @@ class ExecutionGraph:
             return self.clean_nodes
         return self.nodes
 
-    def get_unique_ops(self, detail: bool = False, clean: bool = False, json_format: bool = False):
+    def get_unique_ops(
+        self, detail: bool = False, clean: bool = False, json_format: bool = False
+    ):
         def get_param(value, type, shape):
             type = type.lower()
             SCALAR_TYPES = {"int", "long", "float", "double", "bool"}
@@ -362,7 +387,9 @@ class ExecutionGraph:
 
         return ops
 
-    def print_op_stats(self, detail: bool = False, clean: bool = False, json_format: bool = False):
+    def print_op_stats(
+        self, detail: bool = False, clean: bool = False, json_format: bool = False
+    ):
         ops = self.get_unique_ops(detail, clean, json_format)
 
         if json_format:
@@ -516,15 +543,15 @@ class ExecutionGraph:
     def remove_dataloader_ops(self):
         def check_parent(node):
             tmp = node
-            while tmp and tmp.id != tmp.parent_id: # while not the final root
+            while tmp and tmp.id != tmp.parent_id:  # while not the final root
                 if "DataLoader" in tmp.name:
                     return True
                 tmp = tmp.parent
             return False
 
-        if len(self.clean_nodes.keys()) == 0: # clean_nodes is empty
+        if len(self.clean_nodes.keys()) == 0:  # clean_nodes is empty
             for id, node in self.nodes.items():
-                if not check_parent(node): # if the op is not under dataloader
+                if not check_parent(node):  # if the op is not under dataloader
                     self.clean_nodes[id] = node
 
 

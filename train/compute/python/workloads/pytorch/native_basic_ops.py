@@ -2,11 +2,8 @@ from typing import Dict
 
 import torch
 
-from ...lib.operator import (
-    OperatorInterface,
-    register_operators,
-)
-from ...lib.pytorch.operator_impl import CallableOp, UnaryOp, BuildableOp, TorchScriptOp
+from ...lib.operator import OperatorInterface, register_operators
+from ...lib.pytorch.operator_impl import BuildableOp, CallableOp, TorchScriptOp, UnaryOp
 
 
 # Unary

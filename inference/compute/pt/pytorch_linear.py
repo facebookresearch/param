@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init
 
+
 class Net(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, layer_num):
         super(Net, self).__init__()
@@ -30,10 +31,10 @@ class Net(nn.Module):
         x = F.softmax(x, dim=1)
         return x
 
-def infer_nnpi(
-    model, device, data_type, input_size, output_size, batch_size, args
-):
+
+def infer_nnpi(model, device, data_type, input_size, output_size, batch_size, args):
     import torch_glow
+
     # Detailed structure for spec can be found at https://fburl.com/diffusion/79q4efud
     # Create compilation spec
     spec = torch_glow.CompilationSpec()
@@ -68,10 +69,7 @@ def infer_nnpi(
     return time.time() - start_time
 
 
-
-def infer_cpu(
-    model, device, data_type, input_size, output_size, batch_size, args
-):
+def infer_cpu(model, device, data_type, input_size, output_size, batch_size, args):
     start_time = time.time()
 
     for i in range(args.steps + args.warmups):
@@ -85,13 +83,10 @@ def infer_cpu(
 
     return time.time() - start_time
 
-
     return 0
 
 
-def infer_gpu(
-    model, device, data_type, input_size, output_size, batch_size, args
-):
+def infer_gpu(model, device, data_type, input_size, output_size, batch_size, args):
     data = torch.randn(batch_size, input_size, device="cuda")
 
     if data_type == "float16":
@@ -99,11 +94,10 @@ def infer_gpu(
         model_final = model.half()
         if args.use_trt:
             print("Creating TRT model")
-            from torch_tensorrt.fx.lower import (
-                lower_to_trt,
-            )
+            from torch_tensorrt.fx.lower import lower_to_trt
             from torch_tensorrt.fx.utils import LowerPrecision
-            model_final =  lower_to_trt(
+
+            model_final = lower_to_trt(
                 model_final,
                 [data],
                 max_batch_size=batch_size,
@@ -117,12 +111,18 @@ def infer_gpu(
     if args.use_migraphx:
         torch.onnx.export(
             model_final,
-            torch.randn(batch_size, input_size, device="cuda", dtype=torch.float16 if data_type == "float16" else torch.float32),
+            torch.randn(
+                batch_size,
+                input_size,
+                device="cuda",
+                dtype=torch.float16 if data_type == "float16" else torch.float32,
+            ),
             "benchmark.onnx",
             input_names=["input"],
             output_names=["output"],
         )
         import migraphx
+
         migraphx_program = migraphx.parse_onnx("benchmark.onnx")
         migraphx_program.compile(migraphx.get_target("gpu"), offload_copy=False)
 
@@ -157,12 +157,10 @@ def infer_gpu(
             torch.cuda.synchronize()
             total_time += start_event.elapsed_time(end_event) * 1.0e-3
 
-    return (total_time)
+    return total_time
 
 
-def infer(
-    model, device, data_type, input_size, output_size, batch_size, args
-):
+def infer(model, device, data_type, input_size, output_size, batch_size, args):
 
     if device == "cpu":
         elap = infer_cpu(
@@ -312,8 +310,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--warmups", type=int, default=10)
-    parser.add_argument("--use-trt", default=False, action='store_true')
-    parser.add_argument("--use-migraphx", default=False, action='store_true')
+    parser.add_argument("--use-trt", default=False, action="store_true")
+    parser.add_argument("--use-migraphx", default=False, action="store_true")
 
     args = parser.parse_args()
     layer_num = args.layer_num

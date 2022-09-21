@@ -30,7 +30,7 @@ def register_data_generator(name: str, data_gen_class: Type[DataGenerator]):
     if name not in data_generator_map:
         data_generator_map[name] = data_gen_class
     else:
-        raise ValueError(f'Duplicate data generator registration name: {name}')
+        raise ValueError(f"Duplicate data generator registration name: {name}")
 
 
 data_generator_map: Dict[str, Type[DataGenerator]] = {}

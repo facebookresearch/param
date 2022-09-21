@@ -3,9 +3,9 @@ import json
 import logging
 import os
 import sqlite3
-from typing import List, Dict, Tuple, Any
+from typing import Any, Dict, List, Tuple
 
-from ..lib.init_helper import init_logging, get_logger
+from ..lib.init_helper import get_logger, init_logging
 
 logger = get_logger()
 

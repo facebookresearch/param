@@ -8,7 +8,7 @@ logger = init_logging(logging.INFO)
 import argparse
 import json
 import os
-from multiprocessing import shared_memory, resource_tracker
+from multiprocessing import resource_tracker, shared_memory
 
 from ..lib import pytorch as lib_pytorch
 from ..lib.config import make_op_config

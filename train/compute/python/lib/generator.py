@@ -1,4 +1,4 @@
-from typing import Dict, Set, List, Any
+from typing import Any, Dict, List, Set
 
 
 def full_range(a: int, b: int, s: int = 1):

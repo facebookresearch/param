@@ -2,11 +2,7 @@ from ..init_helper import get_logger, load_package
 
 logger = get_logger()
 
-from typing import Any
-from typing import Callable
-from typing import Dict
-from typing import List
-from typing import Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
 import torch
 from torch.autograd.profiler import record_function
@@ -52,8 +48,12 @@ class OpExecutor:
             OpExecutionMode.CONTINUOUS: self._benchmark_continuous,
             OpExecutionMode.CONTINUOUS_EVENTS: self._benchmark_continuous,
         }
-        self._label_template_fwd = f"[param|{self.name}|{{op_run_id}}|{{tag}}|{ExecutionPass.FORWARD.value}]"
-        self._label_template_bwd = f"[param|{self.name}|{{op_run_id}}|{{tag}}|{ExecutionPass.BACKWARD.value}]"
+        self._label_template_fwd = (
+            f"[param|{self.name}|{{op_run_id}}|{{tag}}|{ExecutionPass.FORWARD.value}]"
+        )
+        self._label_template_bwd = (
+            f"[param|{self.name}|{{op_run_id}}|{{tag}}|{ExecutionPass.BACKWARD.value}]"
+        )
         self._label_template_fwd_bwd = f"[param|{self.name}|{{op_run_id}}|{{tag}}|{ExecutionPass.FORWARD.value}_{ExecutionPass.BACKWARD.value}]"
 
     def run(
@@ -116,7 +116,9 @@ class OpExecutor:
         bw_gpu_mem_records = []
 
         if self.pass_type == ExecutionPass.BACKWARD:
-            label_str = self._label_template_fwd_bwd.format(tag=tag, op_run_id=op_run_id)
+            label_str = self._label_template_fwd_bwd.format(
+                tag=tag, op_run_id=op_run_id
+            )
         else:
             label_str = self._label_template_fwd.format(tag=tag, op_run_id=op_run_id)
 
@@ -125,7 +127,9 @@ class OpExecutor:
 
         with record_function(label_str):
             for _ in range(count):
-                label_str = self._label_template_fwd.format(tag=tag, op_run_id=op_run_id)
+                label_str = self._label_template_fwd.format(
+                    tag=tag, op_run_id=op_run_id
+                )
                 latency, peak_memory = self._benchmark_op(
                     self.op.forward, args, kwargs, tag, label_str
                 )
@@ -133,7 +137,9 @@ class OpExecutor:
                 fw_gpu_mem_records.append(peak_memory)
                 if self.pass_type == ExecutionPass.BACKWARD:
                     self.op.create_grad()
-                    label_str = self._label_template_bwd.format(tag=tag, op_run_id=op_run_id)
+                    label_str = self._label_template_bwd.format(
+                        tag=tag, op_run_id=op_run_id
+                    )
                     latency, peak_memory = self._benchmark_op(
                         self.op.backward, [], {}, tag, label_str
                     )
@@ -184,7 +190,6 @@ class OpExecutor:
         fw_gpu_mem_records = []
         bw_gpu_mem_records = []
 
-
         tag_range = torch.cuda.nvtx.range_start(f"[param|{tag}]")
 
         fw_events = create_cuda_start_stop_events(count)
@@ -209,7 +214,9 @@ class OpExecutor:
 
             bw_events = create_cuda_start_stop_events(count)
             torch.cuda.reset_peak_memory_stats()
-            label_str = self._label_template_fwd_bwd.format(tag=tag, op_run_id=op_run_id)
+            label_str = self._label_template_fwd_bwd.format(
+                tag=tag, op_run_id=op_run_id
+            )
             with record_function(label_str):
                 torch.cuda.synchronize()
                 op_run_id_range = torch.cuda.nvtx.range_start(label_str)
@@ -268,7 +275,9 @@ class OpExecutor:
         if self.pass_type == ExecutionPass.BACKWARD:
             self.op.create_grad()
             torch.cuda.reset_peak_memory_stats()
-            label_str = self._label_template_fwd_bwd.format(tag=tag, op_run_id=op_run_id)
+            label_str = self._label_template_fwd_bwd.format(
+                tag=tag, op_run_id=op_run_id
+            )
             with record_function(label_str):
                 timer.start()
                 op_run_id_range = torch.cuda.nvtx.range_start(label_str)
@@ -314,7 +323,9 @@ class OpExecutor:
                     fw_time_records.append(timer.elapsed_time_ms())
 
         elif self.pass_type == ExecutionPass.BACKWARD:
-            label_str = self._label_template_fwd_bwd.format(tag=tag, op_run_id=op_run_id)
+            label_str = self._label_template_fwd_bwd.format(
+                tag=tag, op_run_id=op_run_id
+            )
             with record_function(label_str):
                 for _i in range(count):
                     timer.start()
@@ -364,7 +375,9 @@ class OpExecutor:
                 fw_mem_records,
                 bw_time_records,
                 bw_mem_records,
-            ) = self.benchmark_func[self.exec_mode](iteration, args, kwargs, tag, op_run_id)
+            ) = self.benchmark_func[self.exec_mode](
+                iteration, args, kwargs, tag, op_run_id
+            )
 
         metric_name = tag + ".time"
         pass_name = ExecutionPass.FORWARD.value

@@ -11,14 +11,10 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from comms_utils import (
-    backendFunctions,
-    collectiveArgsHolder,
-    paramProfile,
-)
+from comms_utils import backendFunctions, collectiveArgsHolder, paramProfile
 
 try:
-    from internals import all_to_allv_internal, all_to_all_internal
+    from internals import all_to_all_internal, all_to_allv_internal
 except ImportError:
     pass
 
@@ -685,7 +681,11 @@ class PyTorchDistBackend(backendFunctions):
         self.comms_world_info = comms_world_info
         self.commsParams = commsParams
         # extra ops supported (Note these are not supported in pytorch_tpu_backend.py)
-        self.collectiveFunc["wait"] = self.wait # a noop until all collective operations can post a wait operation or specify async vs not async
+        self.collectiveFunc[
+            "wait"
+        ] = (
+            self.wait
+        )  # a noop until all collective operations can post a wait operation or specify async vs not async
         self.collectiveFunc["send"] = self.send
         self.collectiveFunc["recv"] = self.recv
         self.collectiveFunc["isend"] = self.isend
@@ -739,16 +739,20 @@ class PyTorchDistBackend(backendFunctions):
 
         # create additional groups
         for pg_id, group_ranks in self.commsParams.groupRanks.items():
-            if len(group_ranks) > world_size: # this means that --auto-shrink is enabled, only use default pg
+            if (
+                len(group_ranks) > world_size
+            ):  # this means that --auto-shrink is enabled, only use default pg
                 self.groups.clear()
                 break
-            if len(group_ranks) == world_size: # this is the default group, it has already been created
+            if (
+                len(group_ranks) == world_size
+            ):  # this is the default group, it has already been created
                 pg = self.get_default_group()
             else:
                 pg = dist.new_group(ranks=group_ranks, backend=backend)
             self.groups[pg_id] = pg
 
-        if len(self.groups) == 0: # if no groups were provided, use default group
+        if len(self.groups) == 0:  # if no groups were provided, use default group
             self.groups[0] = self.get_default_group()
 
         self.num_pgs = len(self.groups)

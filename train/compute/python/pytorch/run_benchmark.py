@@ -8,14 +8,13 @@ import torch
 from torch.autograd.profiler import record_function
 from torch.profiler import ExecutionGraphObserver
 
-from ..lib import __version__
-from ..lib import pytorch as lib_pytorch
+from ..lib import __version__, pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
 from ..lib.init_helper import init_logging, load_modules
 from ..lib.pytorch.benchmark import make_default_benchmark
 from ..lib.pytorch.config_util import (
-    get_benchmark_options,
     ExecutionPass,
+    get_benchmark_options,
     get_sys_info,
     OpExecutionMode,
 )

@@ -3,14 +3,15 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import time
 import sys
+import time
+
 import numpy as np
 import torch
 import torch.nn as nn
 
-class XlaEmbeddingBag(nn.Module):
 
+class XlaEmbeddingBag(nn.Module):
 
     """
     nn.EmbeddingBag is not lowered just yet to xla.
@@ -33,12 +34,13 @@ class XlaEmbeddingBag(nn.Module):
         reduce_fn = getattr(torch, self.mode)
         return reduce_fn(emb, axis=1)
 
+
 def measure_cpu(warmups, steps, h_emb, h_indices, h_offsets):
 
     start = time.perf_counter()
     for i in range(warmups + steps):
         results = h_emb(h_indices, h_offsets)
-        if (i < warmups):
+        if i < warmups:
             start = time.perf_counter()
     end = time.perf_counter()
 
@@ -50,9 +52,9 @@ def measure_gpu(warmups, steps, h_emb, h_indices, h_offsets):
     # ncuda = torch.cuda.device_count()
     # print("There are {} cuda devices".format(ncuda))
     # print("The current cuda device name is {} ".format(torch.cuda.get_device_name()))
-    cuda0 = torch.device('cuda:0')
+    cuda0 = torch.device("cuda:0")
     with torch.cuda.device(cuda0):
-        g_emb  = h_emb.to(cuda0)
+        g_emb = h_emb.to(cuda0)
         g_indices = h_indices.to(cuda0)
         g_offsets = h_offsets.to(cuda0)
         torch.cuda.synchronize()
@@ -61,7 +63,7 @@ def measure_gpu(warmups, steps, h_emb, h_indices, h_offsets):
         for i in range(warmups + steps):
             results = g_emb(g_indices, g_offsets)
             # torch.cuda.synchronize()
-            if (i < warmups):
+            if i < warmups:
                 torch.cuda.synchronize()
                 start = time.perf_counter()
         torch.cuda.synchronize()
@@ -72,16 +74,19 @@ def measure_gpu(warmups, steps, h_emb, h_indices, h_offsets):
 
 def measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, usexlabag, batch, nnz):
 
+    import os
+
     import torch_xla
     import torch_xla.core.xla_model as xm
-    import os
 
     # If emb table is too large will cause protobuf error,
     # we have to split them
     tsize = int(os.environ.get("MODEL_PARTITION_SIZE", 60000000))
 
     def syncTPU(tensor):
-        torch_xla._XLAC._xla_sync_multi([tensor], devices=[], wait=True, sync_xla_data=True)
+        torch_xla._XLAC._xla_sync_multi(
+            [tensor], devices=[], wait=True, sync_xla_data=True
+        )
 
     # alldev = xm.get_xla_supported_devices()
     # allrealdev = xm.xla_real_devices(alldev)
@@ -93,7 +98,7 @@ def measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, usexlabag, batch, n
     else:
         features = h_emb.weight.shape[0]
 
-    if (features > tsize):
+    if features > tsize:
         if usexlabag:
             tsplit = torch.split(h_emb.embtable.weight, tsize, dim=0)
         else:
@@ -131,13 +136,13 @@ def measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, usexlabag, batch, n
     end = time.perf_counter()
     results = results.cpu()
 
-    return end - start,results
+    return end - start, results
 
 
 def init_indices(alpha, features, batch, nnz):
 
     if alpha == 0.0:
-        indices = torch.randint(0, features, (batch*nnz,))
+        indices = torch.randint(0, features, (batch * nnz,))
     else:
         # Zipf (i.e. zeta) distribution
         pmf = np.power(np.arange(1, features + 1, dtype=np.float64), -alpha)
@@ -159,6 +164,7 @@ def init_indices(alpha, features, batch, nnz):
 
     return indices
 
+
 def run_single(args, features, embdim, nnz, batch):
 
     device = args.device
@@ -175,8 +181,8 @@ def run_single(args, features, embdim, nnz, batch):
 
     # Use xlabag now on TPU
     # EmbeddingBag is not optimized by PyTorch/XLA currently
-    if (not device == 'tpu' or not args.usexlabag):
-        h_emb = nn.EmbeddingBag(features, embdim, mode='sum')
+    if not device == "tpu" or not args.usexlabag:
+        h_emb = nn.EmbeddingBag(features, embdim, mode="sum")
         total_bytes = batch * nnz * embdim * h_emb.weight.element_size()
     else:
         # print("using XlaBag instead of torch.nn.EmbeddingBag now")
@@ -185,34 +191,55 @@ def run_single(args, features, embdim, nnz, batch):
 
     h_results = torch.zeros(batch, embdim)
 
-    if device == 'cpu':
+    if device == "cpu":
         emb_times, h_results = measure_cpu(warmups, steps, h_emb, h_indices, h_offsets)
 
-    elif device == 'gpu':
+    elif device == "gpu":
         if torch.cuda.is_available():
-            emb_times, h_results = measure_gpu(warmups, steps, h_emb, h_indices, h_offsets)
+            emb_times, h_results = measure_gpu(
+                warmups, steps, h_emb, h_indices, h_offsets
+            )
         else:
             print("CUDA is not available, could not run on GPU")
             sys.exit(1)
 
     else:
-        emb_times, t_results = measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, args.usexlabag, batch, nnz)
+        emb_times, t_results = measure_tpu(
+            warmups, steps, h_emb, h_indices, h_offsets, args.usexlabag, batch, nnz
+        )
 
     return emb_times, total_bytes
 
+
 def run(args, dataset):
 
-    print("---------------------------------------------------------------------------------")
-    print("    Features    embdim    nnz     batch      Time(s)/step   Data(MB)   BW(GB/s)")
-    print("---------------------------------------------------------------------------------")
+    print(
+        "---------------------------------------------------------------------------------"
+    )
+    print(
+        "    Features    embdim    nnz     batch      Time(s)/step   Data(MB)   BW(GB/s)"
+    )
+    print(
+        "---------------------------------------------------------------------------------"
+    )
 
     for i in range(len(dataset)):
         features, embdim, nnz, batch = dataset[i]
         elap, total_bytes = run_single(args, features, embdim, nnz, batch)
         elap /= args.steps
         total_bytes /= 1.0e6
-        print("{0:10},  {1:6},  {2:6},  {3:8},    {4:10.6f}, {5:10.1f},  {6:8.3f}".format(features,
-            embdim, nnz, batch, elap, total_bytes, total_bytes / elap / 1.0e3))
+        print(
+            "{0:10},  {1:6},  {2:6},  {3:8},    {4:10.6f}, {5:10.1f},  {6:8.3f}".format(
+                features,
+                embdim,
+                nnz,
+                batch,
+                elap,
+                total_bytes,
+                total_bytes / elap / 1.0e3,
+            )
+        )
+
 
 if __name__ == "__main__":
 
@@ -230,9 +257,13 @@ if __name__ == "__main__":
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--randomseed", type=int, default=0)
     parser.add_argument("-t", "--dtype", type=str, default="float32")
-    parser.add_argument("-d", "--device", choices=['cpu', 'gpu', 'tpu'], type=str, default='cpu')
-    parser.add_argument("--usexlabag", action='store_true')
-    parser.add_argument("--alpha", type=float, default=0.0, help="Zipf param. Use uniform if == 0.0")
+    parser.add_argument(
+        "-d", "--device", choices=["cpu", "gpu", "tpu"], type=str, default="cpu"
+    )
+    parser.add_argument("--usexlabag", action="store_true")
+    parser.add_argument(
+        "--alpha", type=float, default=0.0, help="Zipf param. Use uniform if == 0.0"
+    )
 
     args = parser.parse_args()
 
@@ -245,4 +276,3 @@ if __name__ == "__main__":
 
     d = [(num_features, embdim, nnz, batch)]
     run(args, d)
-

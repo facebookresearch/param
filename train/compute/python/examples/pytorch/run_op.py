@@ -5,8 +5,8 @@ from ...lib.config import make_op_config
 from ...lib.init_helper import load_modules
 from ...lib.pytorch.config_util import (
     create_bench_config,
-    create_type,
     create_op_args,
+    create_type,
     ExecutionPass,
     get_benchmark_options,
 )

@@ -4,13 +4,10 @@ import os
 import platform
 import random
 import socket
-from typing import Any
-from typing import Dict
-from typing import List
+from typing import Any, Dict, List
 
 import torch
-from torch.utils.collect_env import get_nvidia_driver_version
-from torch.utils.collect_env import run as run_cmd
+from torch.utils.collect_env import get_nvidia_driver_version, run as run_cmd
 
 from ...lib import __version__
 

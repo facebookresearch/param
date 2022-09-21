@@ -34,6 +34,7 @@ def train_cpu(
     if data_type != "float":
         print("Only FP32 supported on CPU.")
         import sys
+
         sys.exit(0)
     loss_f = nn.CrossEntropyLoss()
 
@@ -104,7 +105,12 @@ def train_gpu_with_autocast(
     model, device, optimizer, data_type, input_size, output_size, batch_size, args
 ):
     print("Running with 32-bit weights using autocast to ", data_type, " data type")
-    dtype_map = {"float16": torch.float16, "float": torch.float32, "tf32": torch.float32, "bfloat16": torch.bfloat16}
+    dtype_map = {
+        "float16": torch.float16,
+        "float": torch.float32,
+        "tf32": torch.float32,
+        "bfloat16": torch.bfloat16,
+    }
     dt = dtype_map[data_type]
     loss_f = nn.CrossEntropyLoss().to(device)
     from torch.cuda.amp import autocast
@@ -160,11 +166,30 @@ def train_gpu(
             print("Running with set_to_none as False in zero_grad")
 
     if args.explicit_cast:
-        time, loss = train_gpu_with_explicit_cast(model, device, optimizer, data_type, input_size, output_size, batch_size, args)
+        time, loss = train_gpu_with_explicit_cast(
+            model,
+            device,
+            optimizer,
+            data_type,
+            input_size,
+            output_size,
+            batch_size,
+            args,
+        )
     else:
-        time, loss = train_gpu_with_autocast(model, device, optimizer, data_type, input_size, output_size, batch_size, args)
+        time, loss = train_gpu_with_autocast(
+            model,
+            device,
+            optimizer,
+            data_type,
+            input_size,
+            output_size,
+            batch_size,
+            args,
+        )
 
     return time, loss
+
 
 def train_tpu(
     model, device, optimizer, data_type, input_size, output_size, batch_size, args
@@ -263,13 +288,9 @@ def run_single(args, layers_size, batch_size):
         dev = torch.device("cuda:0")
         model = Net(layers_size).to(dev)
         if optimizer_type == "sgd":
-            optimizer = torch.optim.SGD(
-                model.parameters(), lr=lr
-            )
+            optimizer = torch.optim.SGD(model.parameters(), lr=lr)
         elif optimizer_type == "adagrad":
-            optimizer = torch.optim.Adagrad(
-                model.parameters(), lr=lr
-            )
+            optimizer = torch.optim.Adagrad(model.parameters(), lr=lr)
         else:
             assert 0, "Unsupported optimizer type"
 
@@ -290,7 +311,14 @@ def run_single(args, layers_size, batch_size):
             assert 0, "Unsupported optimizer type"
 
     elap, loss = train(
-        model, dev, optimizer, data_type, layers_size[0], layers_size[-1], batch_size, args
+        model,
+        dev,
+        optimizer,
+        data_type,
+        layers_size[0],
+        layers_size[-1],
+        batch_size,
+        args,
     )
     return elap, loss
 
@@ -309,14 +337,12 @@ def run(args, dataset):
 
     for i in range(len(dataset)):
         layers_size, batch_size = dataset[i]
-        elap, loss = run_single(
-            args, layers_size, batch_size
-        )
+        elap, loss = run_single(args, layers_size, batch_size)
         elap /= args.steps
 
         flops = 0
-        for i in range(len(layers_size)-1):
-            flops += layers_size[i] * layers_size[i+1]
+        for i in range(len(layers_size) - 1):
+            flops += layers_size[i] * layers_size[i + 1]
         flops *= batch_size
 
         # Forward 2x and Backward 4x
@@ -326,7 +352,7 @@ def run(args, dataset):
 
         # The hidden layer size could vary, but for now keeping for backward
         # compatibility
-        #len(layers_size) including the input and output layer counts.
+        # len(layers_size) including the input and output layer counts.
         print(
             "{0:6},  {1:6},  {2:6},  {3:6},  {4:6},  {5:10.6f},  {6:8.1f}, {7:10.1f}".format(
                 len(layers_size),
@@ -366,20 +392,22 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Measure the performance of MLP")
     parser.add_argument("--device", required=True, choices=["cpu", "gpu", "tpu"])
-    parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--no-debug', dest='debug', action='store_false')
+    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--no-debug", dest="debug", action="store_false")
     parser.set_defaults(debug=False)
-    parser.add_argument('--fw-only', action='store_true')
-    parser.add_argument('--no-fw-only', dest='fw_only', action='store_false')
+    parser.add_argument("--fw-only", action="store_true")
+    parser.add_argument("--no-fw-only", dest="fw_only", action="store_false")
     parser.set_defaults(fw_only=False)
-    parser.add_argument('--optimizer', action='store_true')
-    parser.add_argument('--no-optimizer', dest='optimizer', action='store_false')
+    parser.add_argument("--optimizer", action="store_true")
+    parser.add_argument("--no-optimizer", dest="optimizer", action="store_false")
     parser.set_defaults(optimizer=True)
-    parser.add_argument('--explicit-cast', action='store_true')
-    parser.add_argument('--no-explicit-cast', dest='explicit_cast', action='store_false')
+    parser.add_argument("--explicit-cast", action="store_true")
+    parser.add_argument(
+        "--no-explicit-cast", dest="explicit_cast", action="store_false"
+    )
     parser.set_defaults(explicit_cast=True)
-    parser.add_argument('--set-to-none', action='store_true')
-    parser.add_argument('--no-set-to-none', dest='set_to_none', action='store_false')
+    parser.add_argument("--set-to-none", action="store_true")
+    parser.add_argument("--no-set-to-none", dest="set_to_none", action="store_false")
     parser.set_defaults(set_to_none=False)
     parser.add_argument(
         "--optimizer-type",
@@ -398,9 +426,11 @@ if __name__ == "__main__":
     )
     parser.add_argument("--batch-size", type=int, default=512, help="Batch size")
     parser.add_argument("--input-size", type=int, default=1024, help="Input layer size")
-    parser.add_argument("--hidden-size", type=int, default=1024,help="Number of hidden_sizes per layer")
     parser.add_argument(
-        "--layers-size", #"1024-1024-1024-1024" for example
+        "--hidden-size", type=int, default=1024, help="Number of hidden_sizes per layer"
+    )
+    parser.add_argument(
+        "--layers-size",  # "1024-1024-1024-1024" for example
         type=dash_separated_ints,
         default="",
         help="dash separated shape for all layers",

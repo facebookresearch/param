@@ -1,35 +1,28 @@
 import copy
 import gc
 import os
-from typing import Any
-from typing import (
-    Dict,
-    Optional,
-)
-from typing import List
-from typing import Tuple
-from typing import Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 from fbgemm_gpu.split_table_batched_embeddings_ops import (
     CacheAlgorithm,
-    OptimType,
-    SparseType,
-    PoolingMode,
-    EmbeddingLocation,
     ComputeDevice,
+    EmbeddingLocation,
+    OptimType,
+    PoolingMode,
+    SparseType,
     SplitTableBatchedEmbeddingBagsCodegen,
 )
 
 from ...lib.data import register_data_generator
-from ...lib.generator import full_range, TableProduct, IterableList, ListProduct
+from ...lib.generator import full_range, IterableList, ListProduct, TableProduct
 from ...lib.init_helper import get_logger
 from ...lib.iterator import (
     ConfigIterator,
-    remove_meta_attr,
-    register_config_iterator,
     genericList_to_list,
+    register_config_iterator,
+    remove_meta_attr,
 )
 from ...lib.operator import OperatorInterface, register_operator
 
@@ -294,7 +287,7 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
             cache_algorithm=CacheAlgorithm.LFU,
             cache_load_factor=0.0,
             cache_reserved_memory=12.0,
-            device=torch.device(self.device)
+            device=torch.device(self.device),
         )
 
         logger.debug(f"op embedding_specs: {self.op.embedding_specs}")

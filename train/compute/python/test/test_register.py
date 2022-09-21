@@ -1,12 +1,12 @@
 import unittest
 
-from ..lib.data import register_data_generator, DataGenerator, data_generator_map
-from ..lib.iterator import ConfigIterator, register_config_iterator, config_iterator_map
+from ..lib.data import data_generator_map, DataGenerator, register_data_generator
+from ..lib.iterator import config_iterator_map, ConfigIterator, register_config_iterator
 from ..lib.operator import (
+    op_map,
+    OperatorInterface,
     register_operator,
     register_operators,
-    OperatorInterface,
-    op_map,
 )
 
 

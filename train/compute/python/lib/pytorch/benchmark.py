@@ -2,10 +2,9 @@ from ..init_helper import get_logger
 
 logger = get_logger()
 
-from typing import List
-from typing import Type
+from typing import List, Type
 
-from ..config import OperatorConfig, BenchmarkConfig
+from ..config import BenchmarkConfig, OperatorConfig
 from .build_executor import BuildExecutor, OpBuildExecutor, StopBenchmarkException
 from .config_util import init_pytorch
 

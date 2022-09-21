@@ -523,7 +523,8 @@ class paramTimer:
     def getTimeNS(self) -> float:
         return self.elapsedTimeNS
 
-class commsArgs():
+
+class commsArgs:
     """
     This class contains all of the args that we can use to perform a single collective.
 
@@ -596,7 +597,6 @@ class commsArgs():
 
         return commData
 
-
     def __eq__(self, other: commsArgs) -> bool:
         """
         Used for testing. Check if two comms are equal.
@@ -614,6 +614,7 @@ class commsArgs():
         Print out the commsArgs in human readable format.
         """
         return self.__dict__.__str__()
+
 
 class paramProfile(record_function):
     """Inherit from PyTorch profiler to enable autoguard profiling while measuring the time interval in PARAM"""
@@ -1071,7 +1072,12 @@ class paramCommsBench(ABC):
         expRes = self.initVal
         if (
             commsParams.collective
-            in ("all_reduce", "reduce_scatter", "reduce_scatter_v", "reduce_scatter_base")
+            in (
+                "all_reduce",
+                "reduce_scatter",
+                "reduce_scatter_v",
+                "reduce_scatter_base",
+            )
         ) or (
             self.backendFuncs.get_global_rank() == commsParams.srcOrDst
             and commsParams.collective == "reduce"
@@ -1400,7 +1406,8 @@ class paramCommsBench(ABC):
         scaleFactor: float,
     ) -> (torch.Tensor, torch.Tensor):
 
-        in_split = (curComm.inSplit
+        in_split = (
+            curComm.inSplit
             if (curComm.inSplit is not None)
             else [(numElementsIn // world_size) for _ in range(world_size)]
         )

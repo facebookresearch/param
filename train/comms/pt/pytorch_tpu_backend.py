@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-import torch
 import os
+
+import numpy as np
+import torch
+import torch.nn as nn
 import torch_xla.core.xla_model as xm
 import torch_xla.distributed.xla_multiprocessing as xmp
-import torch.nn as nn
-import numpy as np
 from comms_utils import backendFunctions
 
 
@@ -89,7 +90,9 @@ class PyTorchTPUBackend(backendFunctions):
 
     def alloc_random(self, sizeArr, curRankDevice, dtype, scaleFactor=1.0):
         if dtype in (torch.int32, torch.long):
-            ipTensor = torch.randint(0, 1000, sizeArr, device=curRankDevice, dtype=dtype)
+            ipTensor = torch.randint(
+                0, 1000, sizeArr, device=curRankDevice, dtype=dtype
+            )
         else:
             ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
         # ipTensor = torch.full(

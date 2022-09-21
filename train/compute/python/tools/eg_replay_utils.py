@@ -4,12 +4,12 @@ import torch
 from fbgemm_gpu.split_table_batched_embeddings_ops import PoolingMode
 
 from param_bench.train.compute.python.lib.pytorch.config_util import create_op_args
+from param_bench.train.compute.python.tools.execution_graph import NodeType
 
 from param_bench.train.compute.python.workloads.pytorch.split_table_batched_embeddings_ops import (
     SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator,
     SplitTableBatchedEmbeddingBagsCodegenOp,
 )
-from param_bench.train.compute.python.tools.execution_graph import NodeType
 
 
 # TODO: Add all torch dtypes to here
@@ -41,24 +41,27 @@ TORCH_DTYPES_BYTES = {
 
 
 def is_tensor_list(n, idx):
-    return isinstance(idx, int) and 'GenericList[Tensor' in n.input_types[idx]
+    return isinstance(idx, int) and "GenericList[Tensor" in n.input_types[idx]
 
 
 def is_tensor(n, idx):
-    return isinstance(idx, int) and 'Tensor' in n.input_types[idx] and 'GenericList' not in n.input_types[idx]
+    return (
+        isinstance(idx, int)
+        and "Tensor" in n.input_types[idx]
+        and "GenericList" not in n.input_types[idx]
+    )
 
 
 def is_op(node, strict=False):
     if not strict:
         return node.type == NodeType.OPERATOR
     return node.type == NodeType.OPERATOR and (
-                node.parent is not None and \
-                node.parent.type != NodeType.OPERATOR\
-            )
+        node.parent is not None and node.parent.type != NodeType.OPERATOR
+    )
 
 
 def has_backward_parent(op):
-    if not op.parent or op.parent.id == op.id: # Top op
+    if not op.parent or op.parent.id == op.id:  # Top op
         return False
     if is_backward_parent(op):
         return True
@@ -66,20 +69,21 @@ def has_backward_parent(op):
 
 
 def is_backward_parent(op):
-    return "autograd::engine::evaluate_function: " in op.name or \
-            "Optimizer.step" in op.name
+    return (
+        "autograd::engine::evaluate_function: " in op.name
+        or "Optimizer.step" in op.name
+    )
 
 
 def is_backward_aten(op):
-    return op.name.startswith("aten::") and \
-            has_backward_parent(op)
+    return op.name.startswith("aten::") and has_backward_parent(op)
 
 
 def fbgemm_input_args_indices(n):
     idx_list = None
-    if 'sgd' in n.name or 'adagrad' in n.name:
+    if "sgd" in n.name or "adagrad" in n.name:
         # exact_sgd: 11: indices, 12: offsets, 14: indice_weights
-        if n.inputs[14] == '<None>':
+        if n.inputs[14] == "<None>":
             idx_list = [11, 12]
         else:
             idx_list = [11, 12, 14]
@@ -87,7 +91,7 @@ def fbgemm_input_args_indices(n):
 
 
 def is_fbgemm_forward(op):
-    return 'fbgemm::split_embedding_codegen_lookup_' in op.name
+    return "fbgemm::split_embedding_codegen_lookup_" in op.name
 
 
 def is_fbgemm_forward_unweighted(op):
@@ -95,7 +99,7 @@ def is_fbgemm_forward_unweighted(op):
 
 
 def is_fbgemm_backward(op):
-    return ('CppNode<SplitLookupFunction_' in op.name and not is_backward_parent(op))
+    return "CppNode<SplitLookupFunction_" in op.name and not is_backward_parent(op)
 
 
 def is_fbgemm(op):
@@ -105,36 +109,62 @@ def is_fbgemm(op):
 # TODO: Hopefully merge is_fbgemm and skip_op, ignore tid == 2
 def skip_op(op):
     # Workaround: skip bounds check indices and other ops under embedding lookup module
-    return (not is_fbgemm_forward(op) and op.parent is not None and \
-    ("embedding_lookup" in op.parent.name or "param|SplitTableBatchedEmbeddingBagsCodegen" in op.parent.name \
-    # or "## forward:tw_global_sparse_arch ##" in op.parent.name or op.name == "fb::to_dense_representation" \
-    or op.name == "fb::to_dense_representation" \
-    or ("fbgemm::" in op.name and "fbgemm::split_embedding_codegen_lookup_" not in op.name) or \
-    ("SymInt" in op.op_schema)) or ("fused" in op.name) or \
-    (op.name in ["aten::empty", "aten::to", "aten::lift", "aten::detach_" ,"aten::set_", "aten::pin_memory"] and "thread" in op.parent.name and op.tid == 2))
+    return (
+        not is_fbgemm_forward(op)
+        and op.parent is not None
+        and (
+            "embedding_lookup" in op.parent.name
+            or "param|SplitTableBatchedEmbeddingBagsCodegen"
+            in op.parent.name  # or "## forward:tw_global_sparse_arch ##" in op.parent.name or op.name == "fb::to_dense_representation" \
+            or op.name == "fb::to_dense_representation"
+            or (
+                "fbgemm::" in op.name
+                and "fbgemm::split_embedding_codegen_lookup_" not in op.name
+            )
+            or ("SymInt" in op.op_schema)
+        )
+        or ("fused" in op.name)
+        or (
+            op.name
+            in [
+                "aten::empty",
+                "aten::to",
+                "aten::lift",
+                "aten::detach_",
+                "aten::set_",
+                "aten::pin_memory",
+            ]
+            and "thread" in op.parent.name
+            and op.tid == 2
+        )
+    )
 
 
 def is_qualified(op):
-    return not skip_op(op) and \
-        (is_backward_aten(op) or \
-            is_fbgemm_backward(op) or \
-            (is_op(op, strict=True) and not is_backward_parent(op)))
+    return not skip_op(op) and (
+        is_backward_aten(op)
+        or is_fbgemm_backward(op)
+        or (is_op(op, strict=True) and not is_backward_parent(op))
+    )
 
 
 def get_input_tensors(n):
     if is_fbgemm_forward(n):
         idx_list = fbgemm_input_args_indices(n)
-        return zip([n.input_types[x] for x in idx_list],
-                    [tuple(n.inputs[x]) if isinstance(n.inputs[x], list) else n.inputs[x] for x in idx_list],
-                    [n.input_shapes[x] for x in idx_list])
+        return zip(
+            [n.input_types[x] for x in idx_list],
+            [
+                tuple(n.inputs[x]) if isinstance(n.inputs[x], list) else n.inputs[x]
+                for x in idx_list
+            ],
+            [n.input_shapes[x] for x in idx_list],
+        )
     return n.get_input_tensors()
 
 
 def get_output_tensors(n):
     if is_fbgemm_forward(n):
-        return zip(n.output_types,
-                    [tuple(x) for x in n.outputs],
-                    n.output_shapes)
+        return zip(n.output_types, [tuple(x) for x in n.outputs], n.output_shapes)
     return n.get_output_tensors()
 
 
@@ -146,8 +176,8 @@ def c10_type_to_str(t):
 
 
 def get_optimizer_from_fbgemm_function_name(s):
-    opt = s[39:].split("_")[0] # strip 'fbgemm::split_embedding_codegen_lookup_'
-    return "exact_{}".format(opt) # Workaround, should be more accurate
+    opt = s[39:].split("_")[0]  # strip 'fbgemm::split_embedding_codegen_lookup_'
+    return "exact_{}".format(opt)  # Workaround, should be more accurate
 
 
 def get_fbgemm_info(n):
@@ -162,7 +192,7 @@ def get_fbgemm_info(n):
     dims = [avg_dim for _ in range(num_tables)]
     addition = n.inputs[7] - avg_dim * num_tables
     pos = len(dims) - 1
-    while (addition > 0 and pos >=0):
+    while addition > 0 and pos >= 0:
         if addition >= 1024 - dims[pos]:
             addition -= 1024 - dims[pos]
             dims[pos] += 1024 - dims[pos]
@@ -172,26 +202,44 @@ def get_fbgemm_info(n):
         pos -= 1
     pooling_factor = [1] * num_tables
 
-    weighted = "Float" not in n.input_types[1] # e.g. c10:Half
+    weighted = "Float" not in n.input_types[1]  # e.g. c10:Half
     weights_precision = c10_type_to_str(n.input_types[1])
     optimizer = get_optimizer_from_fbgemm_function_name(n.name)
-    return rows, num_tables, dims, batch_size, pooling_factor, weighted, weights_precision, optimizer
+    return (
+        rows,
+        num_tables,
+        dims,
+        batch_size,
+        pooling_factor,
+        weighted,
+        weights_precision,
+        optimizer,
+    )
 
 
 def build_fbgemm_func(n, device):
     assert n.parent is not None
-    rows, num_tables, dims, _, _, weighted, weights_precision, optimizer = get_fbgemm_info(n)
+    (
+        rows,
+        num_tables,
+        dims,
+        _,
+        _,
+        weighted,
+        weights_precision,
+        optimizer,
+    ) = get_fbgemm_info(n)
     op = SplitTableBatchedEmbeddingBagsCodegenOp()
     op.device = device
     if num_tables == 1:
         op.build(
-        num_tables,
-        rows[0],
-        dims[0],
-        PoolingMode.SUM,
-        weighted,
-        weights_precision,
-        optimizer
+            num_tables,
+            rows[0],
+            dims[0],
+            PoolingMode.SUM,
+            weighted,
+            weights_precision,
+            optimizer,
         )
     else:
         op.build(
@@ -201,14 +249,23 @@ def build_fbgemm_func(n, device):
             PoolingMode.SUM,
             weighted,
             weights_precision,
-            optimizer
+            optimizer,
         )
     return op, len(n.outputs)
 
 
 def generate_fbgemm_tensors(n, device):
     assert n.parent is not None
-    rows, num_tables, dims, batch_size, pooling_factor, weighted, weights_precision, optimizer = get_fbgemm_info(n)
+    (
+        rows,
+        num_tables,
+        dims,
+        batch_size,
+        pooling_factor,
+        weighted,
+        weights_precision,
+        optimizer,
+    ) = get_fbgemm_info(n)
     if num_tables == 1:
         rows = rows[0]
         dims = dims[0]
@@ -229,35 +286,47 @@ def generate_fbgemm_tensors(n, device):
 
     input_data_gen = SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator()
 
-    (input_args, input_kwargs) = input_data_gen.get_data(
-        data_generator_config, device
-    )
+    (input_args, input_kwargs) = input_data_gen.get_data(data_generator_config, device)
     if is_fbgemm_forward_unweighted(n):
         input_args.pop(-1)
 
-    return input_args, input_kwargs # Discard weights if not needed
+    return input_args, input_kwargs  # Discard weights if not needed
 
 
 def build_torchscript_func(n):
     input_count = len(n.input_types)
     output_count = len(n.output_types)
 
-    if "pyspeech" in n.op_schema or n.op_schema == "" or n.name == "aten::record_stream":
+    if (
+        "pyspeech" in n.op_schema
+        or n.op_schema == ""
+        or n.name == "aten::record_stream"
+    ):
         return None, None
 
-    tmp = n.op_schema.split(') -> ')
+    tmp = n.op_schema.split(") -> ")
     # items = [item for item in tmp[0].split(',') if item != ' *']
-    types = [item for item in tmp[0].split(' ') if ',' not in item][:-1]
+    types = [item for item in tmp[0].split(" ") if "," not in item][:-1]
     # print(n.name, n.id, types)
-    types = [re.sub(r'\[[0-9]\]', '[]', t) for t in types] # e.g. int[2] -> int[]
+    types = [re.sub(r"\[[0-9]\]", "[]", t) for t in types]  # e.g. int[2] -> int[]
     # print(n.name, n.id, types)
-    input_types = ['Tensor' if 'Tensor(' in t else t for t in types if ('*)' not in t and '->' not in t)] # e.g. Tensor(float) -> Tensor; exception: aten::unbind(Tensor(a -> *) self, ...
+    input_types = [
+        "Tensor" if "Tensor(" in t else t
+        for t in types
+        if ("*)" not in t and "->" not in t)
+    ]  # e.g. Tensor(float) -> Tensor; exception: aten::unbind(Tensor(a -> *) self, ...
     # print(n.name, n.id, input_types)
-    input_types[0] = re.sub(r'^.*?\(', '', input_types[0]) # Strip the op name, e.g. aten::zeros(int[] -> int[]
+    input_types[0] = re.sub(
+        r"^.*?\(", "", input_types[0]
+    )  # Strip the op name, e.g. aten::zeros(int[] -> int[]
     # print(n.name, n.id, input_types)
-    output_types = tmp[-1].lstrip(' (').rstrip(')').split(', ') # e.g. (Tensor, Tensor) -> [Tensor, Tensor]
+    output_types = (
+        tmp[-1].lstrip(" (").rstrip(")").split(", ")
+    )  # e.g. (Tensor, Tensor) -> [Tensor, Tensor]
     # print(n.id, input_types, output_types)
-    output_types = [t if t == 'Tensor[]' or 'Tensor' not in t else 'Tensor' for t in output_types]
+    output_types = [
+        t if t == "Tensor[]" or "Tensor" not in t else "Tensor" for t in output_types
+    ]
     # print(n.id, input_types, output_types)
 
     inputStr = """
@@ -268,25 +337,26 @@ def build_torchscript_func(n):
     """.format(
         # Input arguments
         ", ".join(["%{}: {}".format(idx, t) for idx, t in enumerate(input_types)]),
-
         # Op
         "%output: {}".format(output_types[0] if output_count == 1 else "NoneType")
-            if output_count <= 1
-            else ", ".join(["%{}: {}".format(idx + input_count, t) for idx, t in enumerate(output_types)]),
+        if output_count <= 1
+        else ", ".join(
+            [
+                "%{}: {}".format(idx + input_count, t)
+                for idx, t in enumerate(output_types)
+            ]
+        ),
         n.name,
         ", ".join(["%{}".format(idx) for idx in range(input_count)]),
-
         # Tuple handling
         "%output : ({}) = prim::TupleConstruct({})".format(
             ", ".join(["Tensor" for _ in range(output_count)]),
-            ", ".join(["%{}".format(idx + input_count) for idx in range(output_count)]))
-            if output_count > 1
-            else "",
-
+            ", ".join(["%{}".format(idx + input_count) for idx in range(output_count)]),
+        )
+        if output_count > 1
+        else "",
         # Return
-        "return (%output)"
-            if output_count >= 1
-            else ""
+        "return (%output)" if output_count >= 1 else "",
     )
 
     # print(inputStr)

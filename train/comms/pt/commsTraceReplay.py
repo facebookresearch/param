@@ -19,8 +19,8 @@ import comms_utils
 import numpy as np
 import torch
 from comms_utils import (
-    commsArgs,
     comms_world_info_holder,
+    commsArgs,
     commsParamsHolderBase,
     paramCommsBench,
     paramProfile,
@@ -33,7 +33,8 @@ logger = logging.getLogger(__name__)
 # sleep for 20ms to wait for next collective
 LOOP_TIMER_S = 0.02
 
-def writeCommDetails(commsTracePerf: List, rank: int, folder: str ="./") -> None:
+
+def writeCommDetails(commsTracePerf: List, rank: int, folder: str = "./") -> None:
     """
     Writes the replayed comm details of the current rank.
 
@@ -52,7 +53,7 @@ def writeCommDetails(commsTracePerf: List, rank: int, folder: str ="./") -> None
     logger.info(f"[Rank {rank:3}] Writing comms details to {comms_file}")
 
     saveToLocal = True
-    if "://" in comms_file: # assume that "://" in directory path means remote store
+    if "://" in comms_file:  # assume that "://" in directory path means remote store
         saveToLocal = False
         try:
             from internals import writeRemoteTrace as writeFbRemoteTrace
@@ -84,6 +85,7 @@ class commsTraceReplayBench(paramCommsBench):
     At the end of a replay, the benchmarks for the run will be recorded in different JSON files in the specified out_path, if provided.
     The goal of this class is to help scale AI training optimizations by studying the behaviours of AI backends.
     """
+
     def __init__(self):
         super().__init__(supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu"])
         self.comms_trace = {}
@@ -190,13 +192,13 @@ class commsTraceReplayBench(paramCommsBench):
             help="Toggle to set number of consecutive collectives in a batch. This also enables per batch latency stats.",
         )
         parser.add_argument(
-           "--use-timestamp",
+            "--use-timestamp",
             action="store_true",
             default=self.use_timestamp,
             help="Toggle to use time-based replay.",
         )
         parser.add_argument(
-           "--rebalance-policy",
+            "--rebalance-policy",
             type=str,
             default="",
             help="Balancing policy for all_to_allv splits, this will occur during warm-up. Supported policies:['equal']. Unsupported policies will be ignored.",
@@ -427,24 +429,32 @@ class commsTraceReplayBench(paramCommsBench):
         if self.rebalance_policy == "equal":
             # Equally split sizes across ranks.
 
-            self.collectiveArgs.ipTensor = torch.tensor([curComm.inMsgSize], dtype=torch.int, device=self.collectiveArgs.device)
+            self.collectiveArgs.ipTensor = torch.tensor(
+                [curComm.inMsgSize], dtype=torch.int, device=self.collectiveArgs.device
+            )
             self.backendFuncs.collectiveFunc["all_reduce"](self.collectiveArgs)
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             # in and out sizes are the same for equal splits.
             newInSize = self.collectiveArgs.ipTensor[0].item()
-            newInSize = (self.collectiveArgs.world_size * self.collectiveArgs.world_size) * round(
-                newInSize / (self.collectiveArgs.world_size * self.collectiveArgs.world_size)
+            newInSize = (
+                self.collectiveArgs.world_size * self.collectiveArgs.world_size
+            ) * round(
+                newInSize
+                / (self.collectiveArgs.world_size * self.collectiveArgs.world_size)
             )
             curComm.inMsgSize = newInSize // self.collectiveArgs.world_size
             curComm.outMsgSize = curComm.inMsgSize
             curComm.inSplit = [
-                    (curComm.inMsgSize // self.collectiveArgs.world_size) for _ in range(self.collectiveArgs.world_size)
-                ]
+                (curComm.inMsgSize // self.collectiveArgs.world_size)
+                for _ in range(self.collectiveArgs.world_size)
+            ]
             curComm.outSplit = curComm.inSplit
         else:
             logger.error("Unsupported balancing policy. Ignoring.")
 
-    def prepComms(self, curComm: commsArgs, commsParams: commsParamsHolderBase) -> (torch.Tensor, torch.Tensor):
+    def prepComms(
+        self, curComm: commsArgs, commsParams: commsParamsHolderBase
+    ) -> (torch.Tensor, torch.Tensor):
         """
         Prepares the appropriate tensors for the current collective communication.
 
@@ -461,8 +471,10 @@ class commsTraceReplayBench(paramCommsBench):
         # prep process group for hard-coded traces
         if curComm.pgId is not None and not self.shrink:
             self.collectiveArgs.group = self.collectiveArgs.groups[curComm.pgId]
-            self.collectiveArgs.world_size = curComm.worldSize # match world size to the size of the current PG
-        else: # use default process group if no pg_id is provided or shrink is enabled
+            self.collectiveArgs.world_size = (
+                curComm.worldSize
+            )  # match world size to the size of the current PG
+        else:  # use default process group if no pg_id is provided or shrink is enabled
             self.collectiveArgs.group = self.backendFuncs.get_default_group()
             self.world_size = self.backendFuncs.get_world_size()
 
@@ -486,9 +498,7 @@ class commsTraceReplayBench(paramCommsBench):
                         real_world_size = out_split_len
 
             newNumElemsIn = (curComm.inMsgSize // real_world_size) * cur_world_size
-            newNumElemsOut = (
-                curComm.outMsgSize // real_world_size
-            ) * cur_world_size
+            newNumElemsOut = (curComm.outMsgSize // real_world_size) * cur_world_size
 
             if commOp == "all_to_allv":
                 curComm.outSplit = (
@@ -550,9 +560,17 @@ class commsTraceReplayBench(paramCommsBench):
             ) = self.prepComms(commEntry, commsParams)
 
             # Rebalance all_to_allv if a policy is specified.
-            if commName in self.backendFuncs.collectiveFunc.keys() and commName == "all_to_allv" and len(self.rebalance_policy) > 0:
+            if (
+                commName in self.backendFuncs.collectiveFunc.keys()
+                and commName == "all_to_allv"
+                and len(self.rebalance_policy) > 0
+            ):
                 # We need to set world_size correctly for rebalancing.
-                self.collectiveArgs.world_size = self.backendFuncs.get_world_size() if commEntry.pgId is None or self.shrink else commEntry.worldSize
+                self.collectiveArgs.world_size = (
+                    self.backendFuncs.get_world_size()
+                    if commEntry.pgId is None or self.shrink
+                    else commEntry.worldSize
+                )
                 # Pass in curComm to modify it in the trace, instead of the copy.
                 self.rebalanceSplit(curComm)
 
@@ -568,7 +586,9 @@ class commsTraceReplayBench(paramCommsBench):
 
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
-    def runComms(self, collName: str, curComm: commsArgs, curBlockStack: str) -> (float, float):
+    def runComms(
+        self, collName: str, curComm: commsArgs, curBlockStack: str
+    ) -> (float, float):
         """
         Replays collective communication operation and records metrics for benchmarking.
 
@@ -601,13 +621,14 @@ class commsTraceReplayBench(paramCommsBench):
             # skip not supported ops
 
             # if blocking, post outstanding ops and wait for them to complete. if nonblocking, just post op
-            self.backendFuncs.complete_accel_ops(self.collectiveArgs, devSync=self.is_blocking)
+            self.backendFuncs.complete_accel_ops(
+                self.collectiveArgs, devSync=self.is_blocking
+            )
 
             # if nonblocking, then store the pair {reqID, future} so that we can wait on it later
             # check if req id is recorded in trace for backwards compatibility
             if curComm.req is not None and not self.is_blocking and collName != "wait":
                 self.collectiveArgs.waitObjIds[curComm.req] = retObj
-
 
         # For non-blocking, latency and global_latency are the same
         global_latency = latency = collTimer.getTimeUS()
@@ -635,10 +656,10 @@ class commsTraceReplayBench(paramCommsBench):
         """
         # sleep for until it is time for the next collective to run
         # if the collective is less than LOOP_TIMER_S (.02s) away, continue looping for the duration. This is because of time.sleep()'s accuracy.
-        if curComm.startTimeNs is not None: # for backwards compatibility
-            while(time.monotonic_ns() - startTime <= curComm.startTimeNs):
+        if curComm.startTimeNs is not None:  # for backwards compatibility
+            while time.monotonic_ns() - startTime <= curComm.startTimeNs:
                 timeDiff = curComm.startTimeNs - (time.monotonic_ns() - startTime)
-                if(timeDiff/1e9 >= LOOP_TIMER_S): # make it seconds
+                if timeDiff / 1e9 >= LOOP_TIMER_S:  # make it seconds
                     time.sleep(LOOP_TIMER_S)
 
     def replayTrace(self, commsParams: commsParamsHolderBase) -> None:
@@ -685,10 +706,16 @@ class commsTraceReplayBench(paramCommsBench):
             (latency, global_latency) = self.runComms(collName, curComm, curBlockStack)
 
             # perform data validation check on the final opTensor
-            if self.is_blocking and commsParams.dcheck == 1 and collName not in ("wait","barrier"):
+            if (
+                self.is_blocking
+                and commsParams.dcheck == 1
+                and collName not in ("wait", "barrier")
+            ):
                 commsParams.collective = collName
                 commsParams.srcOrDst = curComm.root if curComm.root is not None else 0
-                self.dcheck(commsParams, curComm.outMsgSize, self.collectiveArgs.opTensor)
+                self.dcheck(
+                    commsParams, curComm.outMsgSize, self.collectiveArgs.opTensor
+                )
 
             # calculating batch latency (batch defined by --colls-per-batch)
             if collName == "wait" and self.colls_per_batch > 0:
@@ -803,12 +830,16 @@ class commsTraceReplayBench(paramCommsBench):
 
         # record how long it took for trace-replay to complete
         traceEndTime = time.monotonic_ns()
-        self.totalTraceLatency = (traceEndTime-traceStartTime) / 1e3 # make it us
+        self.totalTraceLatency = (traceEndTime - traceStartTime) / 1e3  # make it us
 
         # cleanup any memory left in use
         self.backendFuncs.clear_memory(self.collectiveArgs)
 
-    def runBench(self, comms_world_info: comms_world_info_holder, commsParams: commsParamsHolderBase) -> None:
+    def runBench(
+        self,
+        comms_world_info: comms_world_info_holder,
+        commsParams: commsParamsHolderBase,
+    ) -> None:
         """
         Run the comms-replay benchmark:
         1) Each rank reads its trace
@@ -856,7 +887,11 @@ class commsTraceReplayBench(paramCommsBench):
             self.backendFuncs.barrier(self.collectiveArgs)
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
-    def setBench(self, comms_world_info: comms_world_info_holder, commsParams: commsParamsHolderBase) -> None:
+    def setBench(
+        self,
+        comms_world_info: comms_world_info_holder,
+        commsParams: commsParamsHolderBase,
+    ) -> None:
         """
         Initializes the replay backend.
 
@@ -904,7 +939,7 @@ class commsTraceReplayBench(paramCommsBench):
             self.backendFuncs
         )  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes
 
-        self.collectiveArgs.group = group # default group
+        self.collectiveArgs.group = group  # default group
         self.collectiveArgs.groups = self.backendFuncs.get_groups()
         self.collectiveArgs.num_pgs = self.backendFuncs.get_num_pgs()
         self.collectiveArgs.device = curDevice
@@ -926,8 +961,9 @@ class commsTraceReplayBench(paramCommsBench):
         else:
             self.allowList = [paramToCommName(op) for op in self.allowList.split(",")]
 
-
-    def initBench(self, commsParams: commsParamsHolderBase, args: argparse.Namespace) -> None:
+    def initBench(
+        self, commsParams: commsParamsHolderBase, args: argparse.Namespace
+    ) -> None:
         """
         Initializes replay parameters.
 
@@ -1003,9 +1039,12 @@ class commsTraceReplayBench(paramCommsBench):
             logger.info("FB internals not present, using base parser.")
             self.comms_trace = extractCommsInfo(self.comms_trace)
         else:
-            self.comms_trace = commsTraceParser.parseTrace(self.comms_trace, self.global_rank)
+            self.comms_trace = commsTraceParser.parseTrace(
+                self.comms_trace, self.global_rank
+            )
 
-def extractCommsInfo(in_trace: List[Dict] ) -> List[commsArgs]:
+
+def extractCommsInfo(in_trace: List[Dict]) -> List[commsArgs]:
     """
     Convert UCC Trace to comms trace format.
     """
@@ -1041,6 +1080,7 @@ def extractCommsInfo(in_trace: List[Dict] ) -> List[commsArgs]:
         newCommsTrace.append(newComm)
 
     return newCommsTrace
+
 
 def main() -> None:
     """

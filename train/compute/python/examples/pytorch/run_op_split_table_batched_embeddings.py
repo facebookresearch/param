@@ -5,9 +5,9 @@ from ...lib import pytorch as lib_pytorch
 from ...lib.config import make_op_config
 from ...lib.init_helper import load_modules
 from ...lib.pytorch.config_util import (
-    ExecutionPass,
     create_op_args,
     create_op_info,
+    ExecutionPass,
     get_benchmark_options,
 )
 from ...lib.pytorch.op_executor import OpExecutor

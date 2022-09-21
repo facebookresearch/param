@@ -1,6 +1,6 @@
 import copy
 import random
-from typing import Dict, Set, List, Any, Callable
+from typing import Any, Callable, Dict, List, Set
 
 import torch
 
@@ -22,7 +22,12 @@ pytorch_float_dtype_map: Dict[str, torch.dtype] = {
     "float16": torch.float16,
     "bfloat16": torch.bfloat16,
 }
-pytorch_dtype_map: Dict[str, torch.dtype] = {**pytorch_int_dtype_map, **pytorch_float_dtype_map, "bool": torch.bool}
+pytorch_dtype_map: Dict[str, torch.dtype] = {
+    **pytorch_int_dtype_map,
+    **pytorch_float_dtype_map,
+    "bool": torch.bool,
+}
+
 
 def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
     """
@@ -50,12 +55,15 @@ def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
                     device=torch.device(device),
                 )
             elif attr["dtype"] == "bool":
-                return (torch.rand(
-                    *shape,
-                    dtype=pytorch_dtype_map["float"],
-                    requires_grad=requires_grad,
-                    device=torch.device(device),
-                ) < 0.5)
+                return (
+                    torch.rand(
+                        *shape,
+                        dtype=pytorch_dtype_map["float"],
+                        requires_grad=requires_grad,
+                        device=torch.device(device),
+                    )
+                    < 0.5
+                )
         # Single value
         else:
             return torch.tensor(
@@ -152,8 +160,8 @@ class DefaultDataGenerator(DataGenerator):
         self,
         config: Dict[str, Any],
         device: str,
-        op_args: List[Any], # potentially cached container
-        op_kwargs: Dict[str, Any], # potentially cached container
+        op_args: List[Any],  # potentially cached container
+        op_kwargs: Dict[str, Any],  # potentially cached container
         arg_updates: Set[Any],
         kwarg_updates: Set[Any],
     ):
@@ -186,12 +194,13 @@ class DefaultDataGenerator(DataGenerator):
             arg_updates, kwarg_updates = self._find_updates(config)
             # cache arg configs for next iteration to compare.
             self.prev_config = copy.deepcopy(config)
-            return self._generate_data(config, device, self.op_args, self.op_kwargs, arg_updates, kwarg_updates)
+            return self._generate_data(
+                config, device, self.op_args, self.op_kwargs, arg_updates, kwarg_updates
+            )
         else:
             op_args = []
             op_kwargs = {}
             return self._generate_data(config, device, op_args, op_kwargs, None, None)
-
 
 
 register_data_generator("PyTorch:DefaultDataGenerator", DefaultDataGenerator)
