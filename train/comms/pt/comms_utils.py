@@ -1035,6 +1035,7 @@ class paramCommsBench(ABC):
             "int32": torch.int32,
             "long": torch.long,
             "float16": torch.half,
+            "bfloat16": torch.bfloat16,
             "float64": torch.double,
             "bool": torch.bool,
             "Float": torch.float32,
