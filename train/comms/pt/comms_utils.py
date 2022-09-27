@@ -1674,6 +1674,11 @@ class paramCommsBench(ABC):
                 f"Specified dtype: {args.data_type} is not one of the supported commstyle: {str(self.supportedDtype)}"
             )
             gracefulExit()
+        if args.data_type == "bfloat16" and args.backend == "gloo":
+            logger.error(
+                f"Specified dtype: {args.data_type} does not work with gloo backend"
+            )
+            gracefulExit()
         if args.num_tpu_cores not in self.supported_tpu_core_valuses:
             logger.error(
                 f"TPU core value: {args.num_tpu_cores} is not one of the supported values: {self.supported_tpu_core_valuses}"
