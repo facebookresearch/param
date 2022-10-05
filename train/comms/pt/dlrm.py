@@ -1055,7 +1055,7 @@ class commsDLRMBench(paramCommsBench):
                 torch.ones_like(timeElapsedTensor) for _ in range(world_size)
             ]
             self.collectiveArgs.ipTensor = timeElapsedTensor
-            self.collectiveArgs.tensorList = tensor_list
+            self.collectiveArgs.opTensor = tensor_list
             self.collectiveArgs.asyncOp = False
             self.collectiveArgs.dataSize = (
                 timeElapsedTensor.nelement() * timeElapsedTensor.element_size()
@@ -1069,7 +1069,7 @@ class commsDLRMBench(paramCommsBench):
                 torch.ones_like(memory_tensor) for _ in range(world_size)
             ]
             self.collectiveArgs.ipTensor = memory_tensor
-            self.collectiveArgs.tensorList = memory_tensor_list
+            self.collectiveArgs.opTensor = memory_tensor_list
             self.backendFuncs.all_gather(self.collectiveArgs)
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
@@ -1327,7 +1327,7 @@ class commsDLRMBench(paramCommsBench):
         if self.expt_config["nw_stack"] == "pytorch-dist":
             # WARNING: expt_config is different from commsParams but using it as a placeholder here!
             # FIXME: can we make it common
-            self.backendFuncs = PyTorchDistBackend(comms_world_info, self.expt_config)
+            self.backendFuncs = PyTorchDistBackend(comms_world_info, self.commsParams)
             self.backendFuncs.initialize_backend(
                 comms_world_info.master_ip,
                 comms_world_info.master_port,
@@ -1444,6 +1444,8 @@ class commsDLRMBench(paramCommsBench):
         self.expt_config["warmup_batches"] = args.warmup_batches
         self.expt_config["device"] = "cuda"
         self.expt_config["backend"] = args.backend
+        # TODO: unify expt_config and commsParams
+        self.commsParams = comms_utils.commsParamsHolderBase(args)
 
         if mpi_env_params["global_rank"] == 0:
             print("\t expt_config: %s " % (self.expt_config))
