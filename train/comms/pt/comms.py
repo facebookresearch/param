@@ -752,6 +752,10 @@ class commsCollBench(paramCommsBench):
                 self.collectiveArgs.MMin2 = MMin2
                 self.collectiveArgs.MMin3 = MMin3
                 self.collectiveArgs.numComputePerColl = commsParams.num_compute
+                if global_rank == 0:
+                    print(
+                        f"[Rank {global_rank:>3}] mode: {commsParams.mode}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {mm_dim}"
+                    )
             elif commsParams.kernel == "emb_lookup":
                 computeFunc = self.backendFuncs.emb_lookup
 
@@ -759,9 +763,11 @@ class commsCollBench(paramCommsBench):
                 num_embeddings = commsParams.num_embs
                 avg_length = commsParams.avg_len
                 batch_size = commsParams.batch_size
-                print(
-                    f"emb_dim {emb_dim} num_embs {num_embeddings} avg_len {avg_length} bs {batch_size}"
-                )
+                if global_rank == 0:
+                    print(
+                        f"[Rank {global_rank:>3}] mode: {commsParams.mode}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, "
+                        f"emb_dim {emb_dim}, num_embs {num_embeddings}, avg_len {avg_length}, batch_size {batch_size}"
+                    )
                 self.collectiveArgs.EmbWeights = self.backendFuncs.alloc_empty(
                     [num_embeddings, emb_dim], torch.double, curDevice
                 )
