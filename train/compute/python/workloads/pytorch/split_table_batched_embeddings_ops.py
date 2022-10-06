@@ -13,6 +13,7 @@ from fbgemm_gpu.split_table_batched_embeddings_ops import (
     PoolingMode,
     SparseType,
     SplitTableBatchedEmbeddingBagsCodegen,
+    WeightDecayMode,
 )
 
 from ...lib.data import register_data_generator
@@ -253,9 +254,14 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
         weighted: bool,
         weights_precision: str,
         optimizer: str,
+        lr: float = 0.01,
+        eps: float = 1.0e-8,
+        weight_decay: float = 0.0,
+        weight_decay_mode: WeightDecayMode = WeightDecayMode.NONE,
     ):
         logger.debug(
-            f"build: [{num_tables}, {rows}, {dims}, {pooling}, {weighted}, {weights_precision}, {optimizer}]"
+            f"build: [{num_tables}, {rows}, {dims}, {pooling}, {weighted}, {weights_precision}, \
+            {optimizer}, {lr}, {eps}, {weight_decay}, {WeightDecayMode}]"
         )
         rows_list = rows if isinstance(rows, list) else [rows]
         dims_list = dims if isinstance(dims, list) else [dims]
@@ -288,6 +294,10 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
             cache_load_factor=0.0,
             cache_reserved_memory=12.0,
             device=torch.device(self.device),
+            learning_rate=lr,
+            eps=eps,
+            weight_decay=weight_decay,
+            weight_decay_mode=weight_decay_mode,
         )
 
         logger.debug(f"op embedding_specs: {self.op.embedding_specs}")

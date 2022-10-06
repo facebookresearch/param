@@ -1,7 +1,7 @@
 import re
 
 import torch
-from fbgemm_gpu.split_table_batched_embeddings_ops import PoolingMode
+from fbgemm_gpu.split_table_batched_embeddings_ops import PoolingMode, WeightDecayMode
 
 from param_bench.train.compute.python.lib.pytorch.config_util import create_op_args
 from param_bench.train.compute.python.tools.execution_graph import NodeType
@@ -24,6 +24,19 @@ TORCH_DTYPES_RNG = {
     "double": (torch.float64, torch.randn),
     "unsigned char": (torch.int8, torch.ones),
     "c10::Half": (torch.half, torch.ones),
+}
+
+TORCH_DTYPES_RNG_str = {
+    "bool": ("torch.bool", "torch.ones"),
+    "int8": ("torch.int8", "torch.ones"),
+    "half": ("torch.half", "torch.ones"),
+    "int": ("torch.int", "torch.ones"),
+    "long": ("torch.int64", "torch.ones"),
+    "long int": ("torch.int64", "torch.ones"),
+    "float": ("torch.float32", "torch.randn"),
+    "double": ("torch.float64", "torch.randn"),
+    "unsigned char": ("torch.int8", "torch.ones"),
+    "c10::Half": ("torch.half", "torch.ones"),
 }
 
 TORCH_DTYPES_BYTES = {
@@ -114,8 +127,8 @@ def skip_op(op):
         and op.parent is not None
         and (
             "embedding_lookup" in op.parent.name
-            or "param|SplitTableBatchedEmbeddingBagsCodegen"
-            in op.parent.name  # or "## forward:tw_global_sparse_arch ##" in op.parent.name or op.name == "fb::to_dense_representation" \
+            or "param|SplitTableBatchedEmbeddingBagsCodegen" in op.parent.name
+            # or "## forward:tw_global_sparse_arch ##" in op.parent.name or op.name == "fb::to_dense_representation" \
             or op.name == "fb::to_dense_representation"
             or (
                 "fbgemm::" in op.name
@@ -164,7 +177,7 @@ def get_input_tensors(n):
 
 def get_output_tensors(n):
     if is_fbgemm_forward(n):
-        return zip(n.output_types, [tuple(x) for x in n.outputs], n.output_shapes)
+        return list(zip(n.output_types, [tuple(x) for x in n.outputs], n.output_shapes))
     return n.get_output_tensors()
 
 
@@ -176,7 +189,11 @@ def c10_type_to_str(t):
 
 
 def get_optimizer_from_fbgemm_function_name(s):
-    opt = s[39:].split("_")[0]  # strip 'fbgemm::split_embedding_codegen_lookup_'
+    # strip 'fbgemm::split_embedding_codegen_lookup_*_function'
+    # opt = s[39:].split("_")[:-1] , # this one does not work with rowwise
+    opt = s[39:-9]
+    if "rowwise" in opt:
+        opt = opt.replace("rowwise", "row_wise")
     return "exact_{}".format(opt)  # Workaround, should be more accurate
 
 
@@ -205,6 +222,27 @@ def get_fbgemm_info(n):
     weighted = "Float" not in n.input_types[1]  # e.g. c10:Half
     weights_precision = c10_type_to_str(n.input_types[1])
     optimizer = get_optimizer_from_fbgemm_function_name(n.name)
+
+    if optimizer == "exact_sgd":
+        lr = n.inputs[20]
+    elif optimizer == "exact_row_wise_adagrad":
+        lr = n.inputs[25]
+    else:
+        lr = 0.01
+    if optimizer == "exact_row_wise_adagrad":
+        eps = n.inputs[24]
+        weight_decay = n.inputs[26]
+        if n.inputs[27] == 0:
+            weight_decay_mode = WeightDecayMode.NONE
+        elif n.inputs[27] == 1:
+            weight_decay_mode = WeightDecayMode.L2
+        else:
+            weight_decay_mode = WeightDecayMode.DECOUPLE
+    else:
+        eps = 1.0e-8
+        weight_decay = 0.0
+        weight_decay_mode = WeightDecayMode.NONE
+
     return (
         rows,
         num_tables,
@@ -214,6 +252,10 @@ def get_fbgemm_info(n):
         weighted,
         weights_precision,
         optimizer,
+        lr,
+        eps,
+        weight_decay,
+        weight_decay_mode,
     )
 
 
@@ -228,6 +270,10 @@ def build_fbgemm_func(n, device):
         weighted,
         weights_precision,
         optimizer,
+        lr,
+        eps,
+        weight_decay,
+        weight_decay_mode,
     ) = get_fbgemm_info(n)
     op = SplitTableBatchedEmbeddingBagsCodegenOp()
     op.device = device
@@ -240,6 +286,10 @@ def build_fbgemm_func(n, device):
             weighted,
             weights_precision,
             optimizer,
+            lr,
+            eps,
+            weight_decay,
+            weight_decay_mode,
         )
     else:
         op.build(
@@ -250,6 +300,10 @@ def build_fbgemm_func(n, device):
             weighted,
             weights_precision,
             optimizer,
+            lr,
+            eps,
+            weight_decay,
+            weight_decay_mode,
         )
     return op, len(n.outputs)
 
@@ -265,6 +319,10 @@ def generate_fbgemm_tensors(n, device):
         weighted,
         weights_precision,
         optimizer,
+        _,
+        _,
+        _,
+        _,
     ) = get_fbgemm_info(n)
     if num_tables == 1:
         rows = rows[0]
@@ -324,9 +382,15 @@ def build_torchscript_func(n):
         tmp[-1].lstrip(" (").rstrip(")").split(", ")
     )  # e.g. (Tensor, Tensor) -> [Tensor, Tensor]
     # print(n.id, input_types, output_types)
-    output_types = [
-        t if t == "Tensor[]" or "Tensor" not in t else "Tensor" for t in output_types
-    ]
+    tmp = []
+    for t in output_types:
+        if t == "Tensor[]" or t == "Tensor(a)[]":
+            tmp.append("Tensor[]")
+        elif "Tensor" in t:
+            tmp.append("Tensor")
+        else:
+            tmp.append(t)
+    output_types = tmp
     # print(n.id, input_types, output_types)
 
     inputStr = """
@@ -370,3 +434,87 @@ def build_torchscript_func(n):
         print("TorchScript error: ", n.id, e, input_types, "\n", inputStr)
         return None, None
     return func, output_count
+
+
+def generate_prefix(eg_input, cuda):
+    template_prefix = """import gc
+import json
+import time
+
+import torch
+from param_bench.train.compute.python.tools.eg_replay_utils import (
+    build_fbgemm_func,
+    build_torchscript_func,
+    generate_fbgemm_tensors,
+    is_fbgemm_backward,
+    is_fbgemm_forward,
+    is_qualified,
+)
+
+from param_bench.train.compute.python.tools.execution_graph import ExecutionGraph
+from param_bench.train.compute.python.tools.utility import trace_handler
+
+
+global dfs_traverse
+global funcs
+global skip_node_names
+global fbgemm_backward_ops
+
+funcs = {{}}
+skip_node_names = ["DataLoader", "aten::set_", "fb::", "c10d::allreduce_", "pyspeech::"]
+fbgemm_backward_ops = []
+
+
+def dfs_traverse(node):
+    for child in node.children:
+        if any(x in child.name for x in skip_node_names):
+            continue
+        if is_qualified(child):
+            if is_fbgemm_forward(child):
+                func, output_count = build_fbgemm_func(child, \"{cuda}\")
+                fbgemm_backward_ops.append((func.backward, child.id))
+                funcs[child.id] = (func.forward, output_count)
+            elif is_fbgemm_backward(child):
+                assert fbgemm_backward_ops
+                backward_op, forward_id = fbgemm_backward_ops.pop(-1)
+                funcs[child.id] = (backward_op, len(child.output_types))
+            else:
+                func, output_count = build_torchscript_func(child)
+                funcs[child.id] = (func, output_count)
+        else:
+            dfs_traverse(child)
+
+
+with open(\"{eg_input}\", 'r') as f:
+    exgr = ExecutionGraph(json.load(f))
+nodes = exgr.get_nodes(clean=True)
+node = nodes[1]
+dfs_traverse(node)
+gc.collect()
+torch.cuda.empty_cache()
+
+"""
+    return template_prefix.format(eg_input=eg_input, cuda=cuda)
+
+
+def generate_suffix(warmup_iter, replay_iter):
+    template_suffix = """
+with torch.profiler.profile(
+    activities=[
+        torch.profiler.ProfilerActivity.CPU,
+        torch.profiler.ProfilerActivity.CUDA,
+    ],
+    record_shapes=True,
+    on_trace_ready=trace_handler,
+) as prof:
+    for iter in range({warmup_iter} + {replay_iter}):
+        if iter == {warmup_iter}:
+            start_ns = time.time_ns()
+        run_ops()
+        torch.cuda.synchronize()
+        prof.step()
+    print("Execution finished!")
+    print("Avg execution time per iteration is {{}}ms".format((time.time_ns() - start_ns) / {replay_iter} / 1000000.0))
+
+"""
+    return template_suffix.format(warmup_iter=warmup_iter, replay_iter=replay_iter)

@@ -45,6 +45,8 @@ LABEL_MARKERS = [
     "clip-grads",
     "optimizer",
     "gans_torchscript_ops::",
+    "split_with_sizes",
+    "chunk",
 ]
 
 

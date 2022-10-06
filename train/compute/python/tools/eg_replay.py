@@ -17,6 +17,8 @@ from param_bench.train.compute.python.tools.eg_replay_utils import (
     build_torchscript_func,
     fbgemm_input_args_indices,
     generate_fbgemm_tensors,
+    generate_prefix,
+    generate_suffix,
     get_input_tensors,
     get_output_tensors,
     has_backward_parent,
@@ -30,6 +32,7 @@ from param_bench.train.compute.python.tools.eg_replay_utils import (
     skip_op,
     TORCH_DTYPES_BYTES,
     TORCH_DTYPES_RNG,
+    TORCH_DTYPES_RNG_str,
 )
 
 from param_bench.train.compute.python.tools.execution_graph import (
@@ -56,35 +59,43 @@ class ExgrReplayManager:
         self.batch = args.batch
         self.cuda_id = args.cuda
         self.debug = args.debug
+        self.generator = args.generator
+        self.exgr_input = exgr
+        self.dump = args.dump
+        self.dump_path = args.dump_path
 
-        # Permanent
+        # Permanent registry of the tensors that need to be initialized.
         self.tensor_registry_permanent = {}
+        # Registry of all input tensors. TODO: change to set
         self.dependency_permanent = defaultdict(int)
+        # Runtime registry of all tensors.
+        self.tensor_registry = {}
+        # Nodes/Ops to replay after preprocessing.
         self.sorted_nodes = []
+        # Reconstructed function registry for each node/op.
         self.funcs = {}
         # Mark some intermediate tensors (output of operators) as unchangeable.
         self.unchangeable_intermediate_tensors = set()
-        # Unique tensors in execution graph identified by [tensor_id, storage_id, offset, num_elem, elem_bytes].
+        # Unique tensors in execution graph identified by (tensor_id, storage_id, offset, num_elem, elem_bytes).
         self.original_unique_tensors = set()
-        # Number Unique tensors in replay since unique tensors in eg may have multiple shapes and to accommodate that
-        # in replay we treat tensors with same identifier but different shapes as different tensors.
+        # Number of unique tensors in replay since tensors may have multiple shapes and to accommodate that
+        # we treat tensors with same identifier tuple but different shapes as different tensors.
         self.replay_unique_tensor_num = 0
-        # Map unique tensor with the node id of its operator in eg to unique tensors in replay. We assume
-        # in either input or output, the shape of tensors with same id for an operator keeps the same.
+        # Map (tensor_id, node,id) in eg to unique tensor_id in replay.
+        # We assume in only input or only output of an op, the shape of tensors with same id keeps the same.
         # Same tensor in input and output may be different (e.g., aten::unsqueeze()).
         self.tensors_mapping = {}
         # Dict that stores the shape of each unique tensor in replay.
         self.replay_tensors_shapes = {}
-        # Dict that stores the shapes of a tensor that has appeared, for the convenience of quickly determining whether
-        # to create a unique tensor in replay if the identifier is same but shape is different.
+        # Dict that stores the shapes of a tensor, for the convenience of quickly determining whether
+        # to create a unique tensor in replay if the id is same but shape is different.
         self.tensor_shapes = defaultdict(set)
-        # Mark those tensors that occur first as an input in the original run as needing to be instantiated in replay
+        # Mark those tensors that occur first as an input in the original eg as needing to be instantiated in replay
         # at the very beginning.
         self.instantiate = set()
         # Tensors that should be instantiated on cpu, e.g., input of aten::pin_memory and aten::to.
         self.cpu_tensor = set()
-        # Tensors lookup dict at runtime.
-        self.tensor_registry = {}
+
         # Skip the node if their names contain any of the following strings.
         self.skip_node_names = [
             "DataLoader",
@@ -92,6 +103,8 @@ class ExgrReplayManager:
             "fb::",
             "c10d::allreduce_",
             "pyspeech::",
+            "All2All_Pooled_Wait",
+            "adagrad",
         ]
 
         if self.profile_memory:
@@ -109,10 +122,14 @@ class ExgrReplayManager:
 
         self.fbgemm_backward_ops = []
 
-        self.additional_tensors = set()
+        # Dict that stores the input and output tensors of an operator. This is used to detect the
+        # tensors that appear among the child operator and can not be observed at parent-level.
         self.top_tensors = {}
+        # Additional tensors we allocate since replay at parent-level.
+        self.additional_tensors = set()
         self.additional_tensors_size = 0
 
+        # Debug use, record the nodes we skip.
         self.actual_skip_nodes = []
         self.actual_skip_nodes_cnt = 0
 
@@ -122,28 +139,29 @@ class ExgrReplayManager:
         # the operators.
         self.tensor_device = {}
 
+        # Unrecognized nodes that are neither operators nor predefined label nodes.
         self.exceptional_nodes = set()
 
+        # Debug use for execution time breakdown.
         self.lookup_cnt = 0
         self.input_total_time = 0
         self.output_total_time = 0
-
         self.exec_time = []
         self.setup_time = []
 
     def detect_tensor_device(self, root):
         # Automatically detect whether the captured tensor information includes device.
-        # Just a util to accommodate old and new versions eg and can be removed later.
+        # Just a util to accommodate old and new versions eg and should be removed later.
         def _traverse(root):
             for child in root.children:
                 for _, t_id, _ in get_input_tensors(child):
                     if len(list(t_id)) == 5:
                         self.tensor_with_device = False
-                        return
+                    return
                 for _, t_id, _ in get_output_tensors(child):
                     if len(list(t_id)) == 5:
                         self.tensor_with_device = False
-                        return
+                    return
                 _traverse(child)
 
         _traverse(root)
@@ -200,7 +218,6 @@ class ExgrReplayManager:
                             if self.tensor_with_device:
                                 t_id = tuple(list(t_id)[:5])
                             self.dependency_permanent[t_id] += 1
-
                         func, output_count = self.build_func(child)
                         self.funcs[child.id] = (func, output_count)
                     else:
@@ -357,8 +374,7 @@ class ExgrReplayManager:
                     and replay_t_id not in self.tensor_registry_permanent.keys()
                     and (
                         node.name == "aten::embedding_bag"
-                        or node.name
-                        == "fbgemm::split_embedding_codegen_lookup_sgd_function"
+                        or "fbgemm::split_embedding_codegen_lookup" in node.name
                         or replay_t_id in self.instantiate
                     )
                 ):
@@ -367,10 +383,7 @@ class ExgrReplayManager:
                             self.tensor_registry_permanent[replay_t_id] = input_args[
                                 idx
                             ]
-                            if (
-                                node.name
-                                == "fbgemm::split_embedding_codegen_lookup_sgd_function"
-                            ):
+                            if "fbgemm::split_embedding_codegen_lookup" in node.name:
                                 self.unchangeable_intermediate_tensors.add(replay_t_id)
                         else:
                             dtype, rng = TORCH_DTYPES_RNG[
@@ -396,9 +409,16 @@ class ExgrReplayManager:
                 offsets_tensor_shape = node.input_shapes[2][0]
                 nnz = indices_tensor_shape / offsets_tensor_shape
                 for i in range(offsets_tensor_shape):
-                    self.tensor_registry_permanent[
-                        self.tensors_mapping[(node.id, node.inputs[2], True)]
-                    ][i] = (i * nnz)
+                    if self.tensor_with_device:
+                        self.tensor_registry_permanent[
+                            self.tensors_mapping[
+                                (node.id, tuple(node.inputs[2][:5]), True)
+                            ]
+                        ][i] = (i * nnz)
+                    else:
+                        self.tensor_registry_permanent[
+                            self.tensors_mapping[(node.id, tuple(node.inputs[2]), True)]
+                        ][i] = (i * nnz)
             ######
 
     def build_func(self, node):
@@ -436,19 +456,239 @@ class ExgrReplayManager:
             f"Tensor count with same identifier but different shapes:{tensor_with_multiple_shape_count}, total tensor: {len(self.tensor_shapes)}"
         )
 
-        self.allocate_tensors()
-        self.reset_registry()
+        if self.generator:
+            self.generate_code()
+        else:
+            self.allocate_tensors()
+            self.reset_registry()
+
+    def generate_code(self):
+        def _generate_tensor_allocation_str():
+            tensor_allocation_str = ""
+            tensor_allocate_template = """{tensor} = {rng}({shape}).to({dtype}){cuda}"""
+            for node in self.sorted_nodes:
+                if is_fbgemm_forward(node):
+                    tensor_allocation_str += f'input_args, _ = generate_fbgemm_tensors(nodes[{node.id}], "{self.cuda}")\n'
+                    input_args, _ = generate_fbgemm_tensors(node, self.cuda)
+                for idx, (dtype, t_id, shape) in enumerate(get_input_tensors(node)):
+                    if self.tensor_with_device:
+                        t_id = tuple(list(t_id)[:5])
+                    replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
+                    if (
+                        t_id in self.dependency_permanent.keys()
+                        and replay_t_id not in self.tensor_registry_permanent.keys()
+                        and (
+                            node.name == "aten::embedding_bag"
+                            or "fbgemm::split_embedding_codegen_lookup" in node.name
+                            or replay_t_id in self.instantiate
+                        )
+                    ):
+                        try:
+                            if is_fbgemm_forward(node):
+                                tensor_allocation_str += (
+                                    f"global tensor_{replay_t_id}\n"
+                                )
+                                tensor_allocation_str += (
+                                    f"tensor_{replay_t_id} = input_args[{idx}]\n"
+                                )
+                                if (
+                                    "fbgemm::split_embedding_codegen_lookup"
+                                    in node.name
+                                ):
+                                    self.unchangeable_intermediate_tensors.add(
+                                        replay_t_id
+                                    )
+                            else:
+                                if node.name == "aten::embedding_bag":
+                                    self.unchangeable_intermediate_tensors.add(
+                                        replay_t_id
+                                    )
+                                if node.name == "aten::pin_memory" and idx == 0:
+                                    self.cpu_tensor.add(replay_t_id)
+
+                                dtype_str, rng_str = TORCH_DTYPES_RNG_str[
+                                    dtype.lstrip("Tensor(").rstrip(")")
+                                ]
+                                tensor_str = f"tensor_{replay_t_id}"
+                                shape_str = "[" + ", ".join(str(d) for d in shape) + "]"
+                                cuda_str = ""
+                                if self.tensor_with_device:
+                                    if self.tensor_device[replay_t_id] != "cpu":
+                                        cuda_str = f'.cuda("{self.cuda}")'
+                                elif replay_t_id not in self.cpu_tensor:
+                                    cuda_str = f'.cuda("{self.cuda}")'
+
+                                tensor_allocation_str += f"global {tensor_str}\n"
+                                tensor_allocation_str += (
+                                    tensor_allocate_template.format(
+                                        tensor=tensor_str,
+                                        rng=rng_str,
+                                        shape=shape_str,
+                                        dtype=dtype_str,
+                                        cuda=cuda_str,
+                                    )
+                                    + "\n"
+                                )
+
+                            self.tensor_registry_permanent[replay_t_id] = 1
+                        except KeyError:
+                            if dtype != "Tensor(nullptr (uninitialized))":
+                                print("KeyError: ", node.id, t_id, dtype)
+                            tensor_allocation_str += f"global tensor{replay_t_id}\n"
+                            tensor_allocation_str += f"tensor_{replay_t_id} = None\n"
+                            self.tensor_registry_permanent[replay_t_id] = 1
+            return tensor_allocation_str
+
+        def _generate_inputs_str(node):
+            inputs = ""
+            if is_fbgemm_forward(node):
+                idx_list = fbgemm_input_args_indices(node)
+                for idx in idx_list:
+                    if self.tensor_with_device:
+                        inputs += f"tensor_{self.tensors_mapping[(node.id, tuple(node.inputs[idx][:5]), True)]}, "
+                    else:
+                        inputs += f"tensor_{self.tensors_mapping[(node.id, tuple(node.inputs[idx]), True)]}, "
+                if is_fbgemm_forward_unweighted(node):
+                    inputs += "None" + ", "
+            else:
+                for idx, item in enumerate(node.inputs):
+                    if (
+                        node.name == "aten::convolution_backward"
+                        and idx == len(node.inputs) - 1
+                    ):
+                        inputs += "[True, True, True], "
+                        continue
+                    if is_tensor(node, idx):
+                        if self.tensor_with_device:
+                            item = tuple(item[:5])
+                        # Workaround to handle tensor with same id but different data types (ads_cmf10x_single_iter_512_newest_eg.json).
+                        if idx == 3 and (
+                            node.name == "aten::index_add_"
+                            or (
+                                node.name == "aten::index_copy_"
+                                and node.input_types[3] == "Tensor(double)"
+                            )
+                        ):
+                            inputs += f"tensor_{self.tensors_mapping[(node.id, tuple(item), True)]}.to(torch.float64), "
+                        else:
+                            inputs += f"tensor_{self.tensors_mapping[(node.id, tuple(item), True)]}, "
+                    elif is_tensor_list(node, idx):
+                        inputs += "["
+                        if self.tensor_with_device:
+                            for t_id in item:
+                                inputs += f"tensor_{self.tensors_mapping[(node.id, tuple(t_id[:5]), True)]}, "
+                        else:
+                            for t_id in item:
+                                inputs += f"tensor_{self.tensors_mapping[(node.id, tuple(t_id), True)]}, "
+                        inputs = inputs[:-2] + "], "
+                    elif item == "<None>" or item == "<Generator>":
+                        inputs += "None" + ", "
+                    elif item == "inf" or item == "-inf":
+                        inputs += f'float("{item}"), '
+                    elif node.input_types[idx] == "Device" and "cuda" in item:
+                        inputs += f'"{self.cuda}", '
+                    elif isinstance(item, str):
+                        inputs += f'"{item}", '
+                    else:
+                        inputs += str(item) + ", "
+            return inputs[:-2]
+
+        def _generate_outputs_str(node):
+            def _generate_output_tensor_str(node, output_tensors):
+                (_, t_id, _) = output_tensors.pop(0)
+                if self.tensor_with_device:
+                    t_id = tuple(list(t_id)[:5])
+                if t_id in self.dependency_permanent.keys():
+                    replay_t_id = self.tensors_mapping[(node.id, t_id, False)]
+                    if (
+                        replay_t_id not in self.unchangeable_intermediate_tensors
+                        and replay_t_id not in self.instantiate
+                    ):
+                        return f"tensor_{replay_t_id}"
+                return "_"
+
+            def _parse_element_type(node, output_type, output_tensors):
+                outputs = ""
+                if output_type.startswith("Tensor"):
+                    outputs += _generate_output_tensor_str(node, output_tensors) + ", "
+                elif output_type.startswith("GenericList"):
+                    outputs += "["
+                    elements_type = output_type[12:-1].split(",")
+                    for element_type in elements_type:
+                        outputs += _parse_element_type(
+                            node, element_type, output_tensors
+                        )
+                    outputs = outputs[:-2] + "], "
+                else:
+                    outputs += "_, "
+                return outputs
+
+            try:
+                outputs = ""
+                output_tensors = get_output_tensors(node)
+                if len(output_tensors) == 0:
+                    return "_"
+
+                for output_type in node.output_types:
+                    outputs += _parse_element_type(node, output_type, output_tensors)
+
+                assert len(output_tensors) == 0
+                return outputs[:-2]
+            except Exception as e:
+                print("Generate outputs error: ", e, node.id)
+                exit(1)
+
+        code_str = ""
+        code_str += generate_prefix(self.exgr_input, self.cuda)
+        code_str += _generate_tensor_allocation_str()
+        code_str += "\n\n"
+
+        code_str += "def run_ops():\n"
+        exec_template = """    {outputs} = {func}[0]({inputs})"""
+        for node in self.sorted_nodes:
+            func, output_count = self.funcs[node.id]
+            if not func:
+                continue
+            func_str = f"funcs[{node.id}]"
+            inputs_str = _generate_inputs_str(node)
+            outputs_str = _generate_outputs_str(node)
+            code_str += f"    # node id: {node.id}\n"
+            code_str += (
+                exec_template.format(
+                    outputs=outputs_str, func=func_str, inputs=inputs_str
+                )
+                + "\n"
+            )
+
+        code_str += generate_suffix(self.numWarmupIters, self.numIters)
+        if self.dump:
+            with open(self.dump_path, "w") as f:
+                print(code_str, file=f)
+        exec(code_str)
+        exit(1)
 
     def get_inputs(self, node):
         try:
             if is_fbgemm_forward(node):
                 idx_list = fbgemm_input_args_indices(node)
-                inputs = [
-                    self.tensor_registry[
-                        self.tensors_mapping[(node.id, tuple(node.inputs[idx]), True)]
+                if self.tensor_with_device:
+                    inputs = [
+                        self.tensor_registry[
+                            self.tensors_mapping[
+                                (node.id, tuple(node.inputs[idx][:5]), True)
+                            ]
+                        ]
+                        for idx in idx_list
                     ]
-                    for idx in idx_list
-                ]
+                else:
+                    inputs = [
+                        self.tensor_registry[
+                            self.tensors_mapping[
+                                (node.id, tuple(node.inputs[idx]), True)
+                            ]
+                        ]
+                        for idx in idx_list
+                    ]
                 if is_fbgemm_forward_unweighted(node):
                     inputs.append(None)
             else:
@@ -497,7 +737,7 @@ class ExgrReplayManager:
                         inputs.append(item)
             return inputs
         except Exception as e:
-            print("Inputs error: ", e, node.id)
+            print(f"Inputs error: {e} at node: {node.id}")
 
     def run_op(self, node, iter):
         if self.debug and iter >= self.numWarmupIters:
@@ -536,6 +776,9 @@ class ExgrReplayManager:
                     tmp = func(*inputs)
                 # Flatten any tensor lists
                 # TODO: Simplify this
+                if not tmp:
+                    print(f"Not expect that {node.id} has no output.")
+                    return
                 for x in tmp:
                     if isinstance(x, list) and isinstance(x[0], torch.Tensor):
                         outputs.extend(x)
@@ -606,8 +849,9 @@ class ExgrReplayManager:
 
     def benchTime(self):
         start_time = datetime.now()
-
         self.preprocess_graph()
+        if self.generator:
+            return
         print("Start to execution: ")
         time.sleep(2)
         total_time = 0.0
@@ -797,10 +1041,30 @@ def main():
         "--cuda",
         type=int,
         default=-1,
-        help="cuda device id, if not specify, will use the default",
+        help="cuda device id, if not specify, will use the default cuda device.",
     )
     parser.add_argument(
         "-d", "--debug", action="store_true", default=False, help="Enable debug mode."
+    )
+    parser.add_argument(
+        "-g",
+        "--generator",
+        action="store_true",
+        default=False,
+        help="Enable code generator mode.",
+    )
+    parser.add_argument(
+        "--dump",
+        action="store_true",
+        default=False,
+        help="Dump generated benchmark source file.",
+    )
+    parser.add_argument(
+        "--dump_path",
+        type=str,
+        required=False,
+        default="./benchmark.py",
+        help="Path to dump generated benchmark file.",
     )
 
     args = parser.parse_args()
