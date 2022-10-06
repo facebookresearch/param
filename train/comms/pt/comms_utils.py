@@ -19,9 +19,10 @@ import time
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, Namespace
 from collections import OrderedDict
+from contextlib import ContextDecorator
 from dataclasses import dataclass
 from io import StringIO
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from torch._C._distributed_c10d import ProcessGroup
@@ -639,6 +640,28 @@ class paramProfile(record_function):
         super().__exit__(exc_type, exc_value, traceback)
 
 
+class paramStreamGuard(ContextDecorator):
+    """guard execution on a stream"""
+
+    def __init__(
+        self,
+        stream: Optional[torch.cuda.Stream],
+        curDevice: torch.device,
+        backendFuncs: backendFunctions,
+    ) -> None:
+        self.cur_stream = None
+        self.stream = stream
+        self.curDevice = curDevice
+        self.backendFuncs = backendFuncs
+
+    def __enter__(self) -> paramStreamGuard:
+        self.cur_stream = self.backendFuncs.switch_stream(self.stream, self.curDevice)
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.backendFuncs.switch_stream(self.cur_stream, self.curDevice)
+
+
 class backendFunctions(ABC):
     """Abstract base class, provides common abstraction for all the backends."""
 
@@ -1022,6 +1045,8 @@ class collectiveArgsHolder:
         self.quant_time = paramTimer()
         self.dequant_time = paramTimer()
         self.enable_profiler = False
+
+        self.compute_stream = None
 
 
 class paramCommsBench(ABC):

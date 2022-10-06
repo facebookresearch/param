@@ -6,6 +6,7 @@
 import logging
 import os
 from itertools import cycle
+from typing import Optional
 
 import numpy as np
 import torch
@@ -674,6 +675,25 @@ class PyTorchDistBackend(backendFunctions):
             torch.cuda.set_device(self.get_local_rank())
 
         logger.info(f"rank {self.get_global_rank()} set torch device to {dev_str}")
+
+    def get_new_stream(self):
+        """get/allocate a new stream"""
+        if self.commsParams.device == "cuda":
+            # TODO: optional to use high-priority stream
+            return torch.cuda.Stream(device=self.get_device(), priority=0)
+        else:
+            return None
+
+    def switch_stream(self, stream, device: Optional[torch.device]):
+        """switch to a new stream and return the current stream"""
+        if device is None:
+            device = self.get_device()
+        if stream is not None and device.type == "cuda":
+            cur_stream = torch.cuda.current_stream(device=device)
+            torch.cuda.set_stream(stream)
+            return cur_stream
+        else:
+            return None
 
     # Init functions
     def __init__(self, comms_world_info, commsParams):

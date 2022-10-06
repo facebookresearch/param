@@ -16,7 +16,7 @@ import numpy as np
 
 # pytorch
 import torch
-from comms_utils import ensureTensorFlush, paramCommsBench
+from comms_utils import ensureTensorFlush, paramCommsBench, paramStreamGuard
 
 ### TODO: add these to class variables?
 supportedCollectives = [
@@ -371,11 +371,16 @@ class commsCollBench(paramCommsBench):
             comm_fn_pair(self.collectiveArgs, pair=enable_comms_pair)
 
             if enable_compute:
-                for _ in range(self.collectiveArgs.numComputePerColl):
-                    # TODO: investigate the cache effect
-                    # Flush the cache
-                    # _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
-                    compute_fn(self.collectiveArgs)
+                with paramStreamGuard(
+                    stream=self.collectiveArgs.compute_stream,
+                    curDevice=self.collectiveArgs.device,
+                    backendFuncs=self.backendFuncs,
+                ):
+                    for _ in range(self.collectiveArgs.numComputePerColl):
+                        # TODO: investigate the cache effect
+                        # Flush the cache
+                        # _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
+                        compute_fn(self.collectiveArgs)
             if is_blocking:  # should be sychronous, wait for the collective
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             # Measuring time.
@@ -734,6 +739,7 @@ class commsCollBench(paramCommsBench):
         if (
             commsParams.mode != "comms"
         ):  # Compute mode related initialization if not in comms-only mode
+            self.collectiveArgs.compute_stream = self.backendFuncs.get_new_stream()
             if commsParams.kernel == "gemm":
                 computeFunc = self.backendFuncs.gemm
 
