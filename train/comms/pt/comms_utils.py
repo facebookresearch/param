@@ -28,6 +28,20 @@ import torch
 from torch._C._distributed_c10d import ProcessGroup
 from torch.autograd.profiler import record_function
 
+try:
+    # fbgemm_gpu can be downloaded from https://github.com/pytorch/FBGEMM/tree/main/fbgemm_gpu
+    from fbgemm_gpu.bench.bench_utils import generate_requests
+
+    from fbgemm_gpu.split_table_batched_embeddings_ops import (
+        ComputeDevice,
+        EmbeddingLocation,
+        SplitTableBatchedEmbeddingBagsCodegen,
+    )
+
+    is_fbgemm_gpu_available = True
+except ImportError:
+    is_fbgemm_gpu_available = False
+
 random.seed()
 
 logger = logging.getLogger(__name__)
@@ -965,9 +979,10 @@ class commsParamsHolder(commsParamsHolderBase):
         self.num_compute = args.num_compute
         self.mm_dim = args.mm_dim
         self.emb_dim = args.emb_dim
-        self.avg_len = args.avg_len
-        self.num_embs = args.num_embs
         self.batch_size = args.batch_size
+        self.num_embs = args.num_embs
+        self.num_emb_tables = args.num_emb_tables
+        self.bag_size = args.bag_size
         self.benchTime = benchTime
 
         self.pair = args.pair
@@ -1009,13 +1024,10 @@ class collectiveArgsHolder:
         self.MMin3 = {}
         self.numComputePerColl = 0
 
-        self.EmbWeights = {}
-        self.TableOffsets = {}
-        self.Indices = {}
-        self.Offsets = {}
+        self.emb = None
+        self.embRequests = None
         self.BTBlockSize = {}
         self.LookupOut = {}
-        self.AvgLengths = {}
 
         self.ipTensor_split = []
         self.opTensor_split = []
@@ -1719,6 +1731,7 @@ class paramCommsBench(ABC):
             format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
                 comms_env_params["global_rank"]
             ),
+            force=True,
         )
         # check master-ip and master-port with the following logic
         #   1) prefer the values passed to PARAM, i.e., through --master-ip and --master-port
@@ -1753,3 +1766,54 @@ class paramCommsBench(ABC):
                 )
         else:
             os.environ["MASTER_PORT"] = args.master_port
+
+
+def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
+    """
+    Initialize embedding table op
+
+    Args:
+        collectiveArgs: collective arguments.
+        commsParams: Holds parameters that affect tensor allocation.
+        backendFuncs: backend function
+    Returns:
+        None
+    """
+    if not is_fbgemm_gpu_available:
+        logger.error("benchmarking with emb_lookup kernels requires fbgemm_gpu library")
+        return
+    collectiveArgs.numComputePerColl = commsParams.num_compute
+    emb_dim = commsParams.emb_dim
+    num_embeddings = commsParams.num_embs
+    batch_size = commsParams.batch_size
+    num_tables = commsParams.num_emb_tables
+    bag_size = commsParams.bag_size
+    niter = 1
+
+    emb_dims = [emb_dim] * num_tables
+
+    collectiveArgs.embRequests = generate_requests(
+        niter, batch_size, num_tables, bag_size, num_embeddings
+    )
+
+    data_placement = (
+        EmbeddingLocation.DEVICE
+        if commsParams.device == "cuda"
+        else EmbeddingLocation.HOST
+    )
+
+    collectiveArgs.emb = SplitTableBatchedEmbeddingBagsCodegen(
+        embedding_specs=[
+            (
+                num_embeddings,
+                dim,
+                data_placement,
+                ComputeDevice.CUDA
+                if commsParams.device == "cuda"
+                else ComputeDevice.CPU,
+            )
+            for dim in emb_dims
+        ],
+        device=backendFuncs.get_device(),
+    )
+    collectiveArgs.emb = collectiveArgs.emb.to(backendFuncs.get_device())

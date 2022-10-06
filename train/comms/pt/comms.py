@@ -154,17 +154,24 @@ class commsCollBench(paramCommsBench):
             help="Embedding table hash size for Embedding table compute kernel",
         )  # Embedding table hash size
         parser.add_argument(
-            "--avg-len",
-            type=int,
-            default=28,
-            help="Average lookup operations per sample",
-        )  # Average #lookup per sample
-        parser.add_argument(
             "--batch-size",
             type=int,
             default=512,
             help="number of samples reading the table concurrently",
         )  # #Samples reading the table concurrently
+        parser.add_argument(
+            "--num-emb-tables",
+            "--ntables",
+            type=int,
+            default=32,
+            help="Number of embedding tables for Embedding table compute kernel",
+        )  # number of Embedding table
+        parser.add_argument(
+            "--bag-size",
+            type=int,
+            default=20,
+            help="bag size for Embedding table compute kernel",
+        )  # number of Embedding table
         parser.add_argument(
             "--root", type=int, default=0, help="root process for reduce benchmark"
         )  # root process for reduce and bcast (and gather, scatter, etc., if support in the future)
@@ -763,36 +770,15 @@ class commsCollBench(paramCommsBench):
                         f"[Rank {global_rank:>3}] mode: {commsParams.mode}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {mm_dim}"
                     )
             elif commsParams.kernel == "emb_lookup":
+                comms_utils.init_emb_lookup(
+                    self.collectiveArgs, commsParams, self.backendFuncs
+                )
                 computeFunc = self.backendFuncs.emb_lookup
-
-                emb_dim = commsParams.emb_dim
-                num_embeddings = commsParams.num_embs
-                avg_length = commsParams.avg_len
-                batch_size = commsParams.batch_size
                 if global_rank == 0:
                     print(
                         f"[Rank {global_rank:>3}] mode: {commsParams.mode}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, "
-                        f"emb_dim {emb_dim}, num_embs {num_embeddings}, avg_len {avg_length}, batch_size {batch_size}"
+                        f"emb_dim {commsParams.emb_dim}, num_embs {commsParams.num_embs}, batch_size {commsParams.batch_size}"
                     )
-                self.collectiveArgs.EmbWeights = self.backendFuncs.alloc_empty(
-                    [num_embeddings, emb_dim], torch.double, curDevice
-                )
-                self.collectiveArgs.TableOffsets = torch.LongTensor(
-                    [0, num_embeddings]
-                ).to(curDevice)
-                self.collectiveArgs.Indices = torch.LongTensor(
-                    np.random.randint(0, num_embeddings - 1, avg_length * batch_size)
-                ).to(curDevice)
-                lengths = np.ones((1, batch_size)) * avg_length
-                flat_lengths = lengths.flatten()
-                self.collectiveArgs.Offsets = torch.LongTensor(
-                    [0] + np.cumsum(flat_lengths).tolist()
-                ).to(curDevice)
-                self.collectiveArgs.LookupOut = self.backendFuncs.alloc_empty(
-                    [batch_size, emb_dim], torch.double, curDevice
-                )
-                self.collectiveArgs.AvgLengths = avg_length
-                self.collectiveArgs.numComputePerColl = commsParams.num_compute
 
         self.backendFuncs.sync_barrier(self.collectiveArgs)
         if global_rank == 0:

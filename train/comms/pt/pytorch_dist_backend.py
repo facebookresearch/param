@@ -526,6 +526,13 @@ class PyTorchDistBackend(backendFunctions):
         # Matrix multiplication as compute kernel
         collectiveArgs.MMout = torch.mm(collectiveArgs.MMin1, collectiveArgs.MMin2)
 
+    def emb_lookup(self, collectiveArgs):
+        # Embedding table lookup as compute kernel
+        for (indices, offsets, weights) in collectiveArgs.embRequests:
+            collectiveArgs.LookupOut = collectiveArgs.emb.forward(
+                indices, offsets, weights
+            )
+
     # Memory related
     def get_mem_size(self, collectiveArgs, pair=False):
         _sizeBytes = 0
