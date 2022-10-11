@@ -1022,7 +1022,7 @@ class collectiveArgsHolder:
         self.MMin1 = {}
         self.MMin2 = {}
         self.MMin3 = {}
-        self.numComputePerColl = 0
+        self.numComputePerIter = 0
 
         self.emb = None
         self.embRequests = None
@@ -1782,7 +1782,7 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
     if not is_fbgemm_gpu_available:
         logger.error("benchmarking with emb_lookup kernels requires fbgemm_gpu library")
         return
-    collectiveArgs.numComputePerColl = commsParams.num_compute
+    collectiveArgs.numComputePerIter = commsParams.num_compute
     emb_dim = commsParams.emb_dim
     num_embeddings = commsParams.num_embs
     batch_size = commsParams.batch_size

@@ -129,9 +129,10 @@ class commsCollBench(paramCommsBench):
         )  # Compute kernel: "gemm"
         parser.add_argument(
             "--num-compute",
+            "--num-compute-per-iteration",
             type=int,
             default=100,
-            help="one collective for every NUM_COMPUTE compute kernels",
+            help="number of compute kernels to execute for every iteration",
         )  # Launch one coll for every n compute kernels
         # For GEMM
         parser.add_argument(
@@ -383,7 +384,7 @@ class commsCollBench(paramCommsBench):
                     curDevice=self.collectiveArgs.device,
                     backendFuncs=self.backendFuncs,
                 ):
-                    for _ in range(self.collectiveArgs.numComputePerColl):
+                    for _ in range(self.collectiveArgs.numComputePerIter):
                         # TODO: investigate the cache effect
                         # Flush the cache
                         # _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
@@ -764,7 +765,7 @@ class commsCollBench(paramCommsBench):
                 self.collectiveArgs.MMin1 = MMin1
                 self.collectiveArgs.MMin2 = MMin2
                 self.collectiveArgs.MMin3 = MMin3
-                self.collectiveArgs.numComputePerColl = commsParams.num_compute
+                self.collectiveArgs.numComputePerIter = commsParams.num_compute
                 if global_rank == 0:
                     print(
                         f"[Rank {global_rank:>3}] mode: {commsParams.mode}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {mm_dim}"
@@ -1017,7 +1018,7 @@ class commsCollBench(paramCommsBench):
         )
 
         m = commsParams.mm_dim
-        tflop = (2 * m * m * m) * self.collectiveArgs.numComputePerColl * 1e-12
+        tflop = (2 * m * m * m) * self.collectiveArgs.numComputePerIter * 1e-12
         secs = results["timeUS"] * 1e-6
         tflops = tflop / secs
         p50 = np.percentile(latencyAcrossCommRanks, 50)
