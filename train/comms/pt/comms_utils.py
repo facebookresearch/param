@@ -28,20 +28,6 @@ import torch
 from torch._C._distributed_c10d import ProcessGroup
 from torch.autograd.profiler import record_function
 
-try:
-    # fbgemm_gpu can be downloaded from https://github.com/pytorch/FBGEMM/tree/main/fbgemm_gpu
-    from fbgemm_gpu.bench.bench_utils import generate_requests
-
-    from fbgemm_gpu.split_table_batched_embeddings_ops import (
-        ComputeDevice,
-        EmbeddingLocation,
-        SplitTableBatchedEmbeddingBagsCodegen,
-    )
-
-    is_fbgemm_gpu_available = True
-except ImportError:
-    is_fbgemm_gpu_available = False
-
 random.seed()
 
 logger = logging.getLogger(__name__)
@@ -1731,7 +1717,6 @@ class paramCommsBench(ABC):
             format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
                 comms_env_params["global_rank"]
             ),
-            force=True,
         )
         # check master-ip and master-port with the following logic
         #   1) prefer the values passed to PARAM, i.e., through --master-ip and --master-port
@@ -1779,7 +1764,16 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
     Returns:
         None
     """
-    if not is_fbgemm_gpu_available:
+    try:
+        # fbgemm_gpu can be downloaded from https://github.com/pytorch/FBGEMM/tree/main/fbgemm_gpu
+        from fbgemm_gpu.bench.bench_utils import generate_requests
+
+        from fbgemm_gpu.split_table_batched_embeddings_ops import (
+            ComputeDevice,
+            EmbeddingLocation,
+            SplitTableBatchedEmbeddingBagsCodegen,
+        )
+    except ImportError:
         logger.error("benchmarking with emb_lookup kernels requires fbgemm_gpu library")
         return
     collectiveArgs.numComputePerIter = commsParams.num_compute
