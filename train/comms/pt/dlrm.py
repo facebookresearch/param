@@ -650,7 +650,6 @@ class commsDLRMBench(paramCommsBench):
         super().__init__(supportedNwstacks=["pytorch-dist"])
         self.model = ""
         self.mixedDimFlag = False
-        self.expt_config = {}
         self.measured_regions = {}
         self.commDetails = []
         self.paramNN = paramDLRM_Net()
@@ -1202,7 +1201,14 @@ class commsDLRMBench(paramCommsBench):
                 )
 
     def benchTime(
-        self, global_rank, world_size, timers, mConfig, curDevice, curDeviceData, args
+        self,
+        global_rank,
+        world_size,
+        timers,
+        mConfig,
+        curDevice,
+        curDeviceData,
+        commsDlrmParams,
     ):
         memSizes = self.getMemSizes(curDeviceData)
         for batchNum, (_, lS_o, lS_i, _) in enumerate(mConfig.train_ld):
@@ -1210,7 +1216,7 @@ class commsDLRMBench(paramCommsBench):
 
             curIterSparseFeatures = SparseFeatures(
                 mConfig.num_sparse_fea,
-                self.expt_config["mini_batch_size"],
+                commsDlrmParams.mini_batch_size,
                 lS_o,
                 lS_i,
                 curDevice,
@@ -1255,7 +1261,7 @@ class commsDLRMBench(paramCommsBench):
                 self.collectiveArgs, initOp=True
             )  # else data won't actually be moved, evidently!
 
-            if args.perf_debug:
+            if commsDlrmParams.perf_debug:
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
                 self.backendFuncs.barrier(self.collectiveArgs)
 
@@ -1279,7 +1285,7 @@ class commsDLRMBench(paramCommsBench):
             self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
             timers["bwd_top_ar_end"] = time.monotonic()
 
-            if args.perf_debug:
+            if commsDlrmParams.perf_debug:
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
                 self.backendFuncs.barrier(self.collectiveArgs)
 
@@ -1294,7 +1300,7 @@ class commsDLRMBench(paramCommsBench):
             else:
                 tempB.backward(C)
 
-            if args.perf_debug:
+            if commsDlrmParams.perf_debug:
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
                 self.backendFuncs.barrier(self.collectiveArgs)
 
@@ -1318,25 +1324,23 @@ class commsDLRMBench(paramCommsBench):
             self.measured_regions["bwd_top_ar"]["memory"].append(sum(memSizes["top"]))
             self.measured_regions["bwd_bot_ar"]["memory"].append(sum(memSizes["bot"]))
 
-            if batchNum >= self.expt_config["warmup_batches"]:
+            if batchNum >= commsDlrmParams.warmup_batches:
                 self.computeTimes(timers)
             self.intermed_region_memory(timers)
 
-    def runBench(self, mpi_env_params, comms_world_info, args):
+    def runBench(self, comms_world_info, commsDlrmParams, args):
         """Run num-batches iterations of the model (only comms-operations)"""
-        if self.expt_config["nw_stack"] == "pytorch-dist":
-            # WARNING: expt_config is different from commsParams but using it as a placeholder here!
-            # FIXME: can we make it common
-            self.backendFuncs = PyTorchDistBackend(comms_world_info, self.commsParams)
+        if commsDlrmParams.nw_stack == "pytorch-dist":
+            self.backendFuncs = PyTorchDistBackend(comms_world_info, commsDlrmParams)
             self.backendFuncs.initialize_backend(
                 comms_world_info.master_ip,
                 comms_world_info.master_port,
-                backend=self.expt_config["backend"],
+                backend=commsDlrmParams.backend,
             )
         else:
             logger.error(
                 "\t Input nw_stack {} or backend {} not supported! ".format(
-                    self.expt_config["nw_stack"], self.expt_config["backend"]
+                    commsDlrmParams.nw_stack, commsDlrmParams.backend
                 )
             )
             sys.exit()
@@ -1379,15 +1383,21 @@ class commsDLRMBench(paramCommsBench):
         if global_rank >= 0:
             print(
                 "\n\t ****** Rank: G: %d L: %d host: %s starting new epoch, model: %s ***** \n"
-                % (global_rank, local_rank, host, args.model)
+                % (global_rank, local_rank, host, self.model)
             )
         # start runing benchmark and measuring latency
         self.benchTime(
-            global_rank, world_size, timers, mConfig, curDevice, curDeviceData, args
+            global_rank,
+            world_size,
+            timers,
+            mConfig,
+            curDevice,
+            curDeviceData,
+            commsDlrmParams,
         )
 
-        if args.print_comms:
-            folder = str(args.model) + "_np" + str(world_size)
+        if commsDlrmParams.print_comms:
+            folder = str(self.model) + "_np" + str(world_size)
             try:
                 subprocess.check_output(
                     ["mkdir", "-p", str(folder)], universal_newlines=True
@@ -1399,18 +1409,19 @@ class commsDLRMBench(paramCommsBench):
             with open(comms_file, "w") as write_file:
                 json.dump(self.commDetails, write_file)
 
-        measuredIters = (
-            self.expt_config["numBatches"] - self.expt_config["warmup_batches"]
-        )
+        measuredIters = commsDlrmParams.numBatches - commsDlrmParams.warmup_batches
         self.reportBenchTime(
             global_rank,
-            self.expt_config["warmup_batches"],
+            commsDlrmParams.warmup_batches,
             measuredIters,
             world_size,
             curDevice,
         )
 
-    def setBench(self, args, mpi_env_params):
+    def initBench(self, args, mpi_env_params) -> None:
+        """
+        placeholder function to initializes DLRM benchmarking parameters.
+        """
         args.embed_dtype = self.dtypeMap[args.embed_data_type]
         args.data_size = (
             mpi_env_params["world_size"] * args.num_batches * args.mini_batch_size
@@ -1424,32 +1435,6 @@ class commsDLRMBench(paramCommsBench):
             % (mpi_env_params["global_rank"], args.model, self.model)
         )
 
-        # Once layer-dimensions are inferred, we can use the rest of the code (I think!)
-        self.expt_config["numDevices"] = mpi_env_params["world_size"]
-        self.expt_config["numBatches"] = (
-            args.num_batches + args.warmup_batches
-        )  # NOTE: Should ensure that dataSize = int(N) * numDevices * batchSize
-        self.expt_config["numBatchesPerEpoch"] = args.mini_batch_size
-        self.expt_config["dataSize"] = (
-            mpi_env_params["world_size"]
-            * self.expt_config["numBatches"]
-            * self.expt_config["numBatchesPerEpoch"]
-        )
-        self.expt_config["embedLayers"] = []  # scaledEmbedLayers
-        self.expt_config["mini_batch_size"] = args.mini_batch_size
-        self.expt_config["arch_sparse_feature_size"] = args.arch_sparse_feature_size
-        self.expt_config["mpi_env_params"] = mpi_env_params
-        self.expt_config["nw_stack"] = args.nw_stack
-        self.expt_config["collective"] = "all_reduce"  # dummy params for now
-        self.expt_config["warmup_batches"] = args.warmup_batches
-        self.expt_config["device"] = "cuda"
-        self.expt_config["backend"] = args.backend
-        # TODO: unify expt_config and commsParams
-        self.commsParams = comms_utils.commsParamsHolderBase(args)
-
-        if mpi_env_params["global_rank"] == 0:
-            print("\t expt_config: %s " % (self.expt_config))
-
 
 def main():
 
@@ -1462,13 +1447,14 @@ def main():
     )
     args = dlrmBench.readArgs(parser)
     dlrmBench.checkArgs(args)
-    dlrmBench.setBench(args, mpi_env_params)
+    dlrmBench.initBench(args, mpi_env_params)
 
     time.sleep(1)
     comms_world_info = comms_utils.comms_world_info_holder(
         args.master_ip, args.master_port, args.num_tpu_cores, mpi_env_params
     )
-    dlrmBench.runBench(mpi_env_params, comms_world_info, args)
+    commsDlrmParams = comms_utils.commsDlrmParamsHolder(args, mpi_env_params)
+    dlrmBench.runBench(comms_world_info, commsDlrmParams, args)
 
 
 if __name__ == "__main__":
