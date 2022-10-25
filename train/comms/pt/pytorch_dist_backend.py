@@ -15,9 +15,17 @@ import torch.nn as nn
 from comms_utils import backendFunctions, collectiveArgsHolder, paramProfile
 
 try:
-    from internals import all_to_all_internal, all_to_allv_internal
+    from internals import all_to_all_internal, all_to_allv_internal, extend_distributed
+
+    has_ext_dist = True
 except ImportError:
-    pass
+    try:
+        # Open-source extend_distributed.py can be found in https://github.com/facebookresearch/dlrm
+        import extend_distributed
+
+        has_ext_dist = True
+    except ImportError:
+        has_ext_dist = False
 
 logger = logging.getLogger(__name__)
 
@@ -705,6 +713,7 @@ class PyTorchDistBackend(backendFunctions):
     # Init functions
     def __init__(self, comms_world_info, commsParams):
         super().__init__()
+        self.use_ext_dist = commsParams.use_ext_dist
         self.comms_world_info = comms_world_info
         self.commsParams = commsParams
         # extra ops supported (Note these are not supported in pytorch_tpu_backend.py)
@@ -745,6 +754,14 @@ class PyTorchDistBackend(backendFunctions):
             except ImportError:
                 raise RuntimeError("Unable to import Fairring")
 
+    def get_new_pg(self, group_ranks, backend):
+        if self.use_ext_dist:
+            return extend_distributed.new_extend_process_group(
+                ranks=group_ranks, backend=backend
+            )
+        else:
+            return dist.new_group(ranks=group_ranks, backend=backend)
+
     def initialize_backend(self, master_ip, master_port, backend="gloo"):
         # Set CUDA device before initializing backend
         # Required for backends that don't do lazy initialization, e.g. UCC
@@ -760,8 +777,17 @@ class PyTorchDistBackend(backendFunctions):
         if global_rank >= 0:
             os.environ["RANK"] = str(global_rank)
 
-        # init default group
-        dist.init_process_group(backend, rank=global_rank, world_size=world_size)
+        if has_ext_dist and self.use_ext_dist:
+            extend_distributed.init_distributed(
+                rank=global_rank, size=world_size, backend=backend
+            )
+        else:
+            self.use_ext_dist = False
+
+        if not dist.is_initialized():
+            # init default process group if not yet initialized or extend_distributed failed or is disabled
+            dist.init_process_group(backend, rank=global_rank, world_size=world_size)
+
         self.groups = {}
 
         # create additional groups
@@ -776,7 +802,7 @@ class PyTorchDistBackend(backendFunctions):
             ):  # this is the default group, it has already been created
                 pg = self.get_default_group()
             else:
-                pg = dist.new_group(ranks=group_ranks, backend=backend)
+                pg = self.get_new_pg(ranks=group_ranks, backend=backend)
             self.groups[pg_id] = pg
 
         if len(self.groups) == 0:  # if no groups were provided, use default group

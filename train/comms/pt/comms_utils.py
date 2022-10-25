@@ -927,6 +927,7 @@ class commsParamsHolderBase:
         self.groupRanks = (
             {}
         )  # record what ranks each process group will work on {pg_id, ranks}
+        self.use_ext_dist = args.use_ext_dist
 
 
 class commsDlrmParamsHolder(commsParamsHolderBase):
@@ -1713,6 +1714,13 @@ class paramCommsBench(ABC):
             help="enable data validation check",
             choices=[0, 1],
         )  # validation check
+        parser.add_argument(
+            "--use-ext-dist",
+            "--use-ext-pg",
+            action="store_true",
+            default=False,
+            help="use extend_distributed wrapper",
+        )  # use extend_distributed wrapper to init and create PGs
         pass
 
     @abstractmethod
