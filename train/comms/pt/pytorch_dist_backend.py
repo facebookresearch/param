@@ -336,9 +336,10 @@ class PyTorchDistBackend(backendFunctions):
             return retObj
 
     def reduce_scatter_base(self, collectiveArgs, retFlag=False, pair=False):
-        retObj = dist._reduce_scatter_base(
+        retObj = dist.reduce_scatter_tensor(
             output=collectiveArgs.opTensor,
             input=collectiveArgs.ipTensor,
+            op=collectiveArgs.op,
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
@@ -350,7 +351,7 @@ class PyTorchDistBackend(backendFunctions):
             return retObj
 
     def all_gather_base(self, collectiveArgs, retFlag=False, pair=False):
-        retObj = dist._all_gather_base(
+        retObj = dist.all_gather_into_tensor(
             output_tensor=collectiveArgs.opTensor,
             input_tensor=collectiveArgs.ipTensor,
             group=collectiveArgs.group,

@@ -195,6 +195,7 @@ def fixBeginSize(commsParams: commsParamsHolder, world_size: int) -> None:
         "all_gather",
         "all_gather_base",
         "gather",
+        "reduce_scatter_base",
     ):
         if (commsParams.beginSize / commsParams.element_size) < world_size:
             commsParams.beginSize = world_size * commsParams.element_size
