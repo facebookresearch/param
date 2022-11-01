@@ -1345,8 +1345,7 @@ class commsCollBench(paramCommsBench):
         try:
             backendObj.benchmark_comms()
         except ValueError as ve:
-            if commsParams.backend == "ucc":
-                logger.critical("PyTorch UCC not implemented? {}".format(repr(ve)))
+            logger.critical(repr(ve))
             raise
 
 
