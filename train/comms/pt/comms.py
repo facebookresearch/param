@@ -739,6 +739,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.pt2pt = commsParams.pt2pt
         self.collectiveArgs.window = commsParams.window
         self.collectiveArgs.asyncOp = False if commsParams.blockingFlag == 1 else True
+        self.collectiveArgs.numComputePerIter = commsParams.num_compute
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
@@ -765,7 +766,6 @@ class commsCollBench(paramCommsBench):
                 self.collectiveArgs.MMin1 = MMin1
                 self.collectiveArgs.MMin2 = MMin2
                 self.collectiveArgs.MMin3 = MMin3
-                self.collectiveArgs.numComputePerIter = commsParams.num_compute
                 if global_rank == 0:
                     print(
                         f"[Rank {global_rank:>3}] mode: {commsParams.mode}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {mm_dim}"

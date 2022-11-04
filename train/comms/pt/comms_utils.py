@@ -1816,7 +1816,6 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
     except ImportError:
         logger.error("benchmarking with emb_lookup kernels requires fbgemm_gpu library")
         return
-    collectiveArgs.numComputePerIter = commsParams.num_compute
     emb_dim = commsParams.emb_dim
     num_embeddings = commsParams.num_embs
     batch_size = commsParams.batch_size
