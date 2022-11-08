@@ -34,6 +34,30 @@ class TestGenerator(unittest.TestCase):
 
         self.assertEqual(result, expected)
 
+        # Case with IterableList with nested ListProduct
+        simple_list = IterableList([1, 2, ListProduct([1, full_range(3, 5)])])
+        result = []
+        for item in simple_list:
+            if isinstance(item, ListProduct):
+                this_result = []
+                for sub_item in item:
+                    this_result.append(copy.deepcopy(sub_item))
+                result.append(this_result)
+            else:
+                result.append(item)
+        expected = [1, 2, [[1, 3], [1, 4], [1, 5]]]
+
+        self.assertEqual(result, expected)
+
+        # Empty List Case
+        simple_list = IterableList([])
+        result = []
+        for item in simple_list:
+            result.append(item)
+        expected = []
+
+        self.assertEqual(result, expected)
+
     def test_list_product(self):
         iter_list = [1, full_range(3, 5), 2, full_range(7, 13, 3)]
         result = []
