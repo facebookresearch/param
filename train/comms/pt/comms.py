@@ -168,11 +168,12 @@ class commsCollBench(paramCommsBench):
             help="number of samples reading the table concurrently",
         )  # #Samples reading the table concurrently
         parser.add_argument(
-            "--num-emb-tables",
+            "--num-emb-tables-per-device",
             "--ntables",
+            "--num-emb-tables",
             type=int,
-            default=32,
-            help="Number of embedding tables for Embedding table compute kernel",
+            default=8,
+            help="Number of embedding tables (per device) for embedding table compute kernel",
         )  # number of Embedding table
         parser.add_argument(
             "--bag-size",

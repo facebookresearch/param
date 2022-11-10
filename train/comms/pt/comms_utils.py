@@ -1001,7 +1001,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.emb_dim = args.emb_dim
         self.batch_size = args.batch_size
         self.num_embs = args.num_embs
-        self.num_emb_tables = args.num_emb_tables
+        self.num_emb_tables_per_device = args.num_emb_tables_per_device
         self.bag_size = args.bag_size
         self.benchTime = benchTime
 
@@ -1821,14 +1821,14 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
     emb_dim = commsParams.emb_dim
     num_embeddings = commsParams.num_embs
     batch_size = commsParams.batch_size
-    num_tables = commsParams.num_emb_tables
+    num_tables_per_device = commsParams.num_emb_tables_per_device
     bag_size = commsParams.bag_size
     niter = 1
 
-    emb_dims = [emb_dim] * num_tables
+    emb_dims = [emb_dim] * num_tables_per_device
 
     collectiveArgs.embRequests = generate_requests(
-        niter, batch_size, num_tables, bag_size, num_embeddings
+        niter, batch_size, num_tables_per_device, bag_size, num_embeddings
     )
 
     data_placement = (
