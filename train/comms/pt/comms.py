@@ -134,6 +134,13 @@ class commsCollBench(paramCommsBench):
             default=100,
             help="number of compute kernels to execute for every iteration",
         )  # Launch one coll for every n compute kernels
+        parser.add_argument(
+            "--num-coll",
+            "--num-coll-per-iteration",
+            type=int,
+            default=1,
+            help="number of collective operations to execute for every iteration",
+        )  # Launch one coll for every n compute kernels
         # For GEMM
         parser.add_argument(
             "--mm-dim",
@@ -372,11 +379,12 @@ class commsCollBench(paramCommsBench):
                 self.backendFuncs.sync_barrier(self.collectiveArgs)
 
             start = time.monotonic()  # available only in py3
-            self.collectiveArgs.group = self.backendFuncs.get_next_group()
-            comm_fn(self.collectiveArgs)
-            # post another collecitve if on comms pair mode, otherwise it's noop
-            self.collectiveArgs.group = self.backendFuncs.get_next_group()
-            comm_fn_pair(self.collectiveArgs, pair=enable_comms_pair)
+            for _ in range(self.collectiveArgs.numCollPerIter):
+                self.collectiveArgs.group = self.backendFuncs.get_next_group()
+                comm_fn(self.collectiveArgs)
+                # post another collecitve if on comms pair mode, otherwise it's noop
+                self.collectiveArgs.group = self.backendFuncs.get_next_group()
+                comm_fn_pair(self.collectiveArgs, pair=enable_comms_pair)
 
             if enable_compute:
                 with paramStreamGuard(
@@ -411,7 +419,9 @@ class commsCollBench(paramCommsBench):
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
 
         avgIterNS, algBW = comms_utils.getAlgBW(
-            elapsedTimeNS, memSize, self.collectiveArgs.numIters
+            elapsedTimeNS,
+            memSize,
+            self.collectiveArgs.numIters * self.collectiveArgs.numCollPerIter,
         )
         busBW = self.backendFuncs.getBusBW(
             self.collectiveArgs.collective,
@@ -425,7 +435,9 @@ class commsCollBench(paramCommsBench):
             memSize += memSize_pair
 
             _, algBW_pair = comms_utils.getAlgBW(
-                elapsedTimeNS, memSize_pair, self.collectiveArgs.numIters
+                elapsedTimeNS,
+                memSize_pair,
+                self.collectiveArgs.numIters * self.collectiveArgs.numCollPerIter,
             )
             algBW += algBW_pair
 
@@ -571,7 +583,9 @@ class commsCollBench(paramCommsBench):
             )  # keeping time in NS, helps in divising data by nanosecond
         uniLatencyNS = [lat / self.collectiveArgs.window for lat in uniLatencyNS]
         uniLatencyNS = np.mean(np.array(uniLatencyNS))
-        _, avgUniBW = comms_utils.getAlgBW(uniLatencyNS, memSize, 1)
+        _, avgUniBW = comms_utils.getAlgBW(
+            uniLatencyNS, memSize, self.collectiveArgs.numCollPerIter
+        )
         logger.debug("STATUS: end UniBW test.")
         return avgUniBW
 
@@ -617,7 +631,9 @@ class commsCollBench(paramCommsBench):
             )  # keeping time in NS, helps in divising data by nanosecond
         biLatencyNS = [lat / self.collectiveArgs.window for lat in biLatencyNS]
         biLatencyNS = np.mean(np.array(biLatencyNS))
-        _, avgBiBW = comms_utils.getAlgBW(biLatencyNS, 2 * memSize, 1)
+        _, avgBiBW = comms_utils.getAlgBW(
+            biLatencyNS, 2 * memSize, self.collectiveArgs.numCollPerIter
+        )
         logger.debug("STATUS: end UniBW test.")
         return avgBiBW
 
@@ -740,6 +756,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.window = commsParams.window
         self.collectiveArgs.asyncOp = False if commsParams.blockingFlag == 1 else True
         self.collectiveArgs.numComputePerIter = commsParams.num_compute
+        self.collectiveArgs.numCollPerIter = commsParams.num_coll
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
@@ -768,7 +785,7 @@ class commsCollBench(paramCommsBench):
                 self.collectiveArgs.MMin3 = MMin3
                 if global_rank == 0:
                     print(
-                        f"[Rank {global_rank:>3}] mode: {commsParams.mode}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {mm_dim}"
+                        f"[Rank {global_rank:>3}] mode: {commsParams.mode}, num_coll: {commsParams.num_coll}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {mm_dim}"
                     )
             elif commsParams.kernel == "emb_lookup":
                 comms_utils.init_emb_lookup(
@@ -777,7 +794,7 @@ class commsCollBench(paramCommsBench):
                 computeFunc = self.backendFuncs.emb_lookup
                 if global_rank == 0:
                     print(
-                        f"[Rank {global_rank:>3}] mode: {commsParams.mode}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, "
+                        f"[Rank {global_rank:>3}] mode: {commsParams.mode}, num_coll: {commsParams.num_coll}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, "
                         f"emb_dim {commsParams.emb_dim}, num_embs {commsParams.num_embs}, batch_size {commsParams.batch_size}"
                     )
 

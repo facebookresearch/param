@@ -141,7 +141,7 @@ def getAlgBW(elapsedTimeNS: float, dataSize: int, numIters: int) -> (float, floa
     """
     avgIterNS = 0.0
     if numIters != 0:
-        avgIterNS = elapsedTimeNS / (numIters)
+        avgIterNS = elapsedTimeNS / numIters
 
     algBW = 0.0
     if avgIterNS != 0:
@@ -996,6 +996,7 @@ class commsParamsHolder(commsParamsHolderBase):
 
         self.kernel = args.kernel
         self.num_compute = args.num_compute
+        self.num_coll = args.num_coll
         self.mm_dim = args.mm_dim
         self.emb_dim = args.emb_dim
         self.batch_size = args.batch_size
@@ -1042,6 +1043,7 @@ class collectiveArgsHolder:
         self.MMin2 = {}
         self.MMin3 = {}
         self.numComputePerIter = 0
+        self.numCollPerIter = 0
 
         self.emb = None
         self.embRequests = None
