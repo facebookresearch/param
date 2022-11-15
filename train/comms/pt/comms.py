@@ -56,6 +56,7 @@ class MultilineFormatter(argparse.ArgumentDefaultsHelpFormatter):
 class commsCollBench(paramCommsBench):
     def __init__(self):
         super().__init__(supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu"])
+        self.tag = ""
 
     # def readCollArgs(self, parser):
     def readArgs(self, parser):
@@ -76,10 +77,18 @@ class commsCollBench(paramCommsBench):
             choices=["comms", "compute", "dlrm", "comms-compute"],
         )  # alternative is DLRM mode or comm-compute mode
         parser.add_argument(
-            "--b", type=str, default="8", help="minimum size, in bytes, to start with"
+            "--b",
+            "--begin-size",
+            type=str,
+            default="8",
+            help="minimum size, in bytes, to start with",
         )  # COMMS mode, begin the sweep at.
         parser.add_argument(
-            "--e", type=str, default="64", help="maximum size, in bytes, to end at"
+            "--e",
+            "--end-size",
+            type=str,
+            default="64",
+            help="maximum size, in bytes, to end at",
         )  # COMMS mode, end the sweep at.
         parser.add_argument(
             "--f", type=int, default=2, help="multiplication factor between sizes"
@@ -241,6 +250,12 @@ class commsCollBench(paramCommsBench):
             default=None,
             help="execute pytorch profiler at specified size",
         )  # execute pytorch profiler at specified size if applicable
+        parser.add_argument(
+            "--tag",
+            type=str,
+            default=None,
+            help="customized tag or keyword to be added into final output lines",
+        )  # execute pytorch profiler at specified size if applicable
 
         return parser.parse_known_args()
 
@@ -333,6 +348,8 @@ class commsCollBench(paramCommsBench):
 
         if args.size_start_profiler:
             args.size_start_profiler = comms_utils.parsesize(args.size_start_profiler)
+
+        self.tag = f"-{args.tag}" if args.tag is not None else ""
 
     def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None, dcheck=False):
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
@@ -961,8 +978,9 @@ class commsCollBench(paramCommsBench):
         dequant_p95 = np.percentile(dequantLatencyAcrossRanks, 95)
 
         print(
-            "\tCOMMS-RES-QUANT-{}\t{:>15}{:>18}{:>25}{:>15}{:>15}{:>15}".format(
+            "\tCOMMS-RES-QUANT-{}{}\t{:>15}{:>18}{:>25}{:>15}{:>15}{:>15}".format(
                 self.collectiveArgs.collective,
+                self.tag,
                 results["memSize"],
                 str("%d" % (results["numElements"])),
                 str("%.1f" % (quant_p95)),
@@ -1054,12 +1072,13 @@ class commsCollBench(paramCommsBench):
 
         if not self.collectiveArgs.pair:
             fmt = (
-                "\tCOMMS-RES-{}{:>15}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
+                "\tCOMMS-RES-{}{}{:>18}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
                 + tflops_fmt
             )
             print(
                 fmt.format(
                     self.collectiveArgs.collective,
+                    self.tag,
                     results["memSize"],
                     str("%d" % (results["numElements"])),
                     str("%.1f" % (p50)),
@@ -1080,12 +1099,13 @@ class commsCollBench(paramCommsBench):
                     // commsParams.comms_world_info.world_size
                 )
             fmt = (
-                "\tCOMMS-RES-{}{:>15}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
+                "\tCOMMS-RES-{}{}{:>18}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
                 + tflops_fmt
             )
             print(
                 fmt.format(
                     self.collectiveArgs.collective,
+                    self.tag,
                     results["memSize"],
                     str("%d" % (results["numElements"])),
                     str("%d" % (results["numElements_pair"])),
@@ -1155,8 +1175,9 @@ class commsCollBench(paramCommsBench):
         ping_pong_p95 = np.percentile(pingPongLatencyAcrossCommRanks, 95)
 
         print(
-            "\tCOMMS-RES-{}{:>15}{:>20}{:>10}{:>10}{:>25}{:>10}{:>10}{:>15}{:>15}{:>18}{:>18}".format(
+            "\tCOMMS-RES-{}{}{:>15}{:>20}{:>10}{:>10}{:>25}{:>10}{:>10}{:>15}{:>15}{:>18}{:>18}".format(
                 self.collectiveArgs.collective,
+                self.tag,
                 results["memSize"],
                 str("%.1f" % (ping_p50)),
                 str("%.1f" % (ping_p75)),
