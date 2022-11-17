@@ -279,22 +279,6 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
-    def all_gather_v(self, collectiveArgs, retFlag=False, pair=False):
-        retObjs = dist._all_gather_v(
-            output=collectiveArgs.opTensor,
-            input=collectiveArgs.ipTensor,
-            output_dist_sizes=collectiveArgs.opTensor_split,
-            group=self.get_collective_group(collectiveArgs),
-            async_op=collectiveArgs.asyncOp,
-        )  # synchronicity is maintained in runColl
-
-        if collectiveArgs.asyncOp:
-            for retObj in retObjs:
-                collectiveArgs.waitObj.append(retObj)
-
-        if retFlag:
-            return retObjs
-
     def gather(self, collectiveArgs, retFlag=False, pair=False):
         if pair:
             ipTensors = collectiveArgs.ipTensor_pair
@@ -359,22 +343,6 @@ class PyTorchDistBackend(backendFunctions):
                 group=collectiveArgs.group,
                 async_op=collectiveArgs.asyncOp,
             )  # synchronicity is maintained in runColl
-
-        if collectiveArgs.asyncOp:
-            collectiveArgs.waitObj.append(retObj)
-
-        if retFlag:
-            return retObj
-
-    def reduce_scatter_v(self, collectiveArgs, retFlag=False, pair=False):
-        retObj = dist._reduce_scatter_v(
-            output=collectiveArgs.opTensor,
-            input=collectiveArgs.ipTensor,
-            input_split_sizes=collectiveArgs.ipTensor_split,
-            op=collectiveArgs.op,
-            group=self.get_collective_group(collectiveArgs),
-            async_op=collectiveArgs.asyncOp,
-        )  # synchronicity is maintained in runColl
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(retObj)

@@ -417,10 +417,8 @@ def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
         "alltoallbase": "all_to_allv",
         "allreduce": "all_reduce",
         "allgather": "all_gather",
-        "allgatherv": "all_gather_v",
         "allgatherbase": "all_gather_base",
         "reducescatter": "reduce_scatter",
-        "reducescatterv": "reduce_scatter_v",
         "recvanysource": "recv",
     }
 
@@ -674,11 +672,9 @@ class backendFunctions(ABC):
             "broadcast": self.broadcast,
             "gather": self.gather,
             "all_gather": self.all_gather,
-            "all_gather_v": self.all_gather_v,
             "all_gather_base": self.all_gather_base,
             "reduce": self.reduce,
             "reduce_scatter": self.reduce_scatter,
-            "reduce_scatter_v": self.reduce_scatter_v,
             "reduce_scatter_base": self.reduce_scatter_base,
             "scatter": self.scatter,
             "barrier": self.barrier,
@@ -713,9 +709,7 @@ class backendFunctions(ABC):
             "all_to_allv",
             "gather",
             "all_gather",
-            "all_gather_v",
             "reduce_scatter",
-            "reduce_scatter_v",
             "reduce_scatter_base",
             "scatter",
             "all_gather_base",
@@ -1135,7 +1129,6 @@ class paramCommsBench(ABC):
             in (
                 "all_reduce",
                 "reduce_scatter",
-                "reduce_scatter_v",
                 "reduce_scatter_base",
             )
         ) or (
@@ -1320,44 +1313,6 @@ class paramCommsBench(ABC):
             )
         return (ipTensor, opTensor)
 
-    def _prep_all_gather_v(
-        self,
-        ipTensor: torch.tensor,
-        curComm: commsArgs,
-        commsParams: commsParamsHolderBase,
-        numElementsIn: int,
-        numElementsOut: int,
-        world_size: int,
-        curDevice: str,
-        dtype: torch.dtype,
-        scaleFactor: float,
-    ) -> (torch.Tensor, torch.Tensor):
-
-        out_split = (
-            curComm.outSplit
-            if (curComm.outSplit is not None)
-            else [(numElementsIn // world_size) for _ in range(world_size)]
-        )
-        global_rank = self.backendFuncs.get_global_rank()
-
-        if commsParams.dcheck == 1:
-            ipTensor = self.backendFuncs.alloc_ones(
-                [out_split[global_rank]],
-                curDevice,
-                dtype,
-                scaleFactor=self.initVal,
-            )
-        else:
-            ipTensor = self.backendFuncs.alloc_random(
-                [out_split[global_rank]], curDevice, dtype, scaleFactor
-            )
-
-        opTensor = self.backendFuncs.alloc_random(
-            [numElementsIn], curDevice, dtype, scaleFactor
-        )
-        self.collectiveArgs.opTensor_split = out_split
-        return (ipTensor, opTensor)
-
     def _prep_all_gather_base(
         self,
         ipTensor: torch.tensor,
@@ -1451,31 +1406,6 @@ class paramCommsBench(ABC):
         opTensor = self.backendFuncs.alloc_random(
             [numElementsOut // world_size], curDevice, dtype, scaleFactor
         )
-        return (ipTensor, opTensor)
-
-    def _prep_reduce_scatter_v(
-        self,
-        ipTensor: torch.tensor,
-        curComm: commsArgs,
-        commsParams: commsParamsHolderBase,
-        numElementsIn: int,
-        numElementsOut: int,
-        world_size: int,
-        curDevice: str,
-        dtype: torch.dtype,
-        scaleFactor: float,
-    ) -> (torch.Tensor, torch.Tensor):
-
-        in_split = (
-            curComm.inSplit
-            if (curComm.inSplit is not None)
-            else [(numElementsIn // world_size) for _ in range(world_size)]
-        )
-        global_rank = self.backendFuncs.get_global_rank()
-        opTensor = self.backendFuncs.alloc_random(
-            in_split[global_rank], curDevice, dtype, scaleFactor
-        )
-        self.collectiveArgs.ipTensor_split = in_split
         return (ipTensor, opTensor)
 
     def _prep_reduce_scatter_base(
@@ -1579,11 +1509,9 @@ class paramCommsBench(ABC):
             "all_to_all": self._prep_all_to_all,
             "all_gather": self._prep_all_gather,
             "gather": self._prep_all_gather,
-            "all_gather_v": self._prep_all_gather_v,
             "all_gather_base": self._prep_all_gather_base,
             "incast": self._prep_incast,
             "reduce_scatter": self._prep_reduce_scatter,
-            "reduce_scatter_v": self._prep_reduce_scatter_v,
             "reduce_scatter_base": self._prep_reduce_scatter_base,
             "scatter": self._prep_reduce_scatter,
             "pt2pt": self._prep_pt2pt,
