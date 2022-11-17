@@ -61,6 +61,12 @@ def _dequantize(obj):
 
 
 class PyTorchDistBackend(backendFunctions):
+    def get_collective_group(self, collectiveArgs):
+        if self.use_ext_dist:
+            return collectiveArgs.group.my_pg
+        else:
+            return collectiveArgs.group
+
     def sayHello(self):
         myhost = os.uname()[1]
         global_rank = self.get_global_rank()
@@ -111,12 +117,19 @@ class PyTorchDistBackend(backendFunctions):
             quantized = (
                 collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
             )
-        retObj = dist.all_reduce(
-            quantized,
-            op=collectiveArgs.op,
-            group=collectiveArgs.group,
-            async_op=collectiveArgs.asyncOp,
-        )  # synchronicity is maintained in runColl
+        if self.use_ext_dist:
+            retObj = collectiveArgs.group.all_reduce(
+                tensor=quantized,
+                op=collectiveArgs.op,
+                async_op=collectiveArgs.asyncOp,
+            )  # synchronicity is maintained in runColl
+        else:
+            retObj = dist.all_reduce(
+                quantized,
+                op=collectiveArgs.op,
+                group=collectiveArgs.group,
+                async_op=collectiveArgs.asyncOp,
+            )  # synchronicity is maintained in runColl
         if (id(quantized) != id(collectiveArgs.ipTensor)) and not pair:
             if collectiveArgs.asyncOp:
                 retObj = retObj.get_future().then(_dequantize)
@@ -148,11 +161,12 @@ class PyTorchDistBackend(backendFunctions):
             quantized = (
                 collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
             )
+
         retObj = dist.reduce(
             quantized,
             dst=collectiveArgs.srcOrDst,
             op=collectiveArgs.op,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
         if collectiveArgs.reduce_qcomm != 32 and not pair:
@@ -176,12 +190,13 @@ class PyTorchDistBackend(backendFunctions):
     ):
         # pair=True mode does not support quantization
         if collectiveArgs.all2all_qcomm and not pair:
+            collectiveArgs.use_ext_dist = self.use_ext_dist
             work = all_to_all_internal(collectiveArgs)
         else:
             work = dist.all_to_all(
                 collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
                 collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
-                group=collectiveArgs.group,
+                group=self.get_collective_group(collectiveArgs),
                 async_op=collectiveArgs.asyncOp,
             )
 
@@ -203,6 +218,18 @@ class PyTorchDistBackend(backendFunctions):
             and not pair
         ):
             work = all_to_allv_internal(collectiveArgs)
+        elif self.use_ext_dist:
+            work = collectiveArgs.group.alltoall_single(
+                collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
+                collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
+                collectiveArgs.opTensor_split
+                if not pair
+                else collectiveArgs.opTensor_split_pair,
+                collectiveArgs.ipTensor_split
+                if not pair
+                else collectiveArgs.ipTensor_split_pair,
+                async_op=collectiveArgs.asyncOp,
+            )
         else:
             work = dist.all_to_all_single(
                 collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
@@ -224,16 +251,27 @@ class PyTorchDistBackend(backendFunctions):
             return work
 
     def all_gather(self, collectiveArgs, retFlag=False, pair=False):
-        retObj = dist.all_gather(
-            tensor_list=collectiveArgs.opTensor
-            if not pair
-            else collectiveArgs.opTensor_pair,
-            tensor=collectiveArgs.ipTensor
-            if not pair
-            else collectiveArgs.ipTensor_pair,
-            group=collectiveArgs.group,
-            async_op=collectiveArgs.asyncOp,
-        )  # synchronicity is maintained in runColl
+        if self.use_ext_dist:
+            retObj = collectiveArgs.group.all_gather(
+                tensor_list=collectiveArgs.opTensor
+                if not pair
+                else collectiveArgs.opTensor_pair,
+                tensor=collectiveArgs.ipTensor
+                if not pair
+                else collectiveArgs.ipTensor_pair,
+                async_op=collectiveArgs.asyncOp,
+            )
+        else:
+            retObj = dist.all_gather(
+                tensor_list=collectiveArgs.opTensor
+                if not pair
+                else collectiveArgs.opTensor_pair,
+                tensor=collectiveArgs.ipTensor
+                if not pair
+                else collectiveArgs.ipTensor_pair,
+                group=collectiveArgs.group,
+                async_op=collectiveArgs.asyncOp,
+            )  # synchronicity is maintained in runColl
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(retObj)
@@ -246,7 +284,7 @@ class PyTorchDistBackend(backendFunctions):
             output=collectiveArgs.opTensor,
             input=collectiveArgs.ipTensor,
             output_dist_sizes=collectiveArgs.opTensor_split,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
 
@@ -271,7 +309,7 @@ class PyTorchDistBackend(backendFunctions):
             else None,
             tensor=ipTensors,
             dst=collectiveArgs.srcOrDst,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
 
@@ -295,7 +333,7 @@ class PyTorchDistBackend(backendFunctions):
             if (collectiveArgs.global_rank == collectiveArgs.srcOrDst)
             else None,
             src=collectiveArgs.srcOrDst,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
 
@@ -306,12 +344,21 @@ class PyTorchDistBackend(backendFunctions):
             return retObj
 
     def reduce_scatter(self, collectiveArgs, retFlag=False, pair=False):
-        retObj = dist.reduce_scatter(
-            output=collectiveArgs.opTensor,
-            input_list=collectiveArgs.ipTensor,
-            group=collectiveArgs.group,
-            async_op=collectiveArgs.asyncOp,
-        )  # synchronicity is maintained in runColl
+        if self.use_ext_dist:
+            retObj = collectiveArgs.group.reduce_scatter(
+                output=collectiveArgs.opTensor,
+                input_list=collectiveArgs.ipTensor,
+                op=collectiveArgs.op,
+                async_op=collectiveArgs.asyncOp,
+            )  # synchronicity is maintained in runColl
+        else:
+            retObj = dist.reduce_scatter(
+                output=collectiveArgs.opTensor,
+                input_list=collectiveArgs.ipTensor,
+                op=collectiveArgs.op,
+                group=collectiveArgs.group,
+                async_op=collectiveArgs.asyncOp,
+            )  # synchronicity is maintained in runColl
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(retObj)
@@ -325,7 +372,7 @@ class PyTorchDistBackend(backendFunctions):
             input=collectiveArgs.ipTensor,
             input_split_sizes=collectiveArgs.ipTensor_split,
             op=collectiveArgs.op,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
 
@@ -340,7 +387,7 @@ class PyTorchDistBackend(backendFunctions):
             output=collectiveArgs.opTensor,
             input=collectiveArgs.ipTensor,
             op=collectiveArgs.op,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
 
@@ -354,7 +401,7 @@ class PyTorchDistBackend(backendFunctions):
         retObj = dist.all_gather_into_tensor(
             output_tensor=collectiveArgs.opTensor,
             input_tensor=collectiveArgs.ipTensor,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
 
@@ -372,7 +419,7 @@ class PyTorchDistBackend(backendFunctions):
                 retObj = dist.irecv(
                     tensor=collectiveArgs.opTensor[idx],
                     src=src_rank,
-                    group=collectiveArgs.group,
+                    group=self.get_collective_group(collectiveArgs),
                     tag=0,
                 )
                 collectiveArgs.waitObj.append(retObj)
@@ -392,7 +439,7 @@ class PyTorchDistBackend(backendFunctions):
             if not pair
             else collectiveArgs.opTensor_pair,
             src=collectiveArgs.srcOrDst,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl
 
@@ -422,7 +469,7 @@ class PyTorchDistBackend(backendFunctions):
         dist.send(
             tensor=collectiveArgs.ipTensor,
             dst=dst_rank,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             tag=tag,
         )
 
@@ -430,7 +477,7 @@ class PyTorchDistBackend(backendFunctions):
         dist.recv(
             tensor=collectiveArgs.opTensor,
             src=src_rank,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             tag=tag,
         )
 
@@ -438,7 +485,7 @@ class PyTorchDistBackend(backendFunctions):
         retObj = dist.isend(
             tensor=collectiveArgs.ipTensor,
             dst=dst_rank,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             tag=tag,
         )
 
@@ -451,7 +498,7 @@ class PyTorchDistBackend(backendFunctions):
         retObj = dist.irecv(
             tensor=collectiveArgs.opTensor,
             src=src_rank,
-            group=collectiveArgs.group,
+            group=self.get_collective_group(collectiveArgs),
             tag=tag,
         )
 
@@ -507,7 +554,10 @@ class PyTorchDistBackend(backendFunctions):
                 waitObj.wait()
 
     def barrier(self, collectiveArgs, name="dummy", retFlag=False):
-        retObj = dist.barrier(collectiveArgs.group, async_op=collectiveArgs.asyncOp)
+        if self.use_ext_dist:
+            retObj = collectiveArgs.group.barrier(async_op=collectiveArgs.asyncOp)
+        else:
+            retObj = dist.barrier(collectiveArgs.group, async_op=collectiveArgs.asyncOp)
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(retObj)
@@ -662,8 +712,11 @@ class PyTorchDistBackend(backendFunctions):
         self.get_device()
 
     def get_default_group(self):
-        # return the world group to always perform collectives on default PG
-        return dist.GroupMember.WORLD
+        if self.use_ext_dist:
+            return extend_distributed.from_process_group(dist.GroupMember.WORLD)
+        else:
+            # return the world group to always perform collectives on default PG
+            return dist.GroupMember.WORLD
 
     def get_groups(self):
         return self.groups

@@ -1080,6 +1080,7 @@ class collectiveArgsHolder:
         self.enable_profiler = False
 
         self.compute_stream = None
+        self.use_ext_dist = False
 
 
 class paramCommsBench(ABC):
