@@ -6,7 +6,7 @@ from datetime import datetime
 
 import torch
 from torch.autograd.profiler import record_function
-from torch.profiler import ExecutionGraphObserver
+from torch.profiler import _ExperimentalConfig, ExecutionGraphObserver
 
 from ..lib import __version__, pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
@@ -157,6 +157,31 @@ def main():
         help="Enable profiler and tracing.",
     )
     parser.add_argument(
+        "--cupti-profiler",
+        action="store_true",
+        help="Run CUPTI Profiler to measure performance events directly,"
+        "The measurements will be written to the profile trace file."
+        "See --cupti_profiler_metrics for supported metrics.",
+    )
+    parser.add_argument(
+        "--cupti-profiler-metrics",
+        type=str,
+        default="kineto__cuda_core_flops",
+        help="Comma separated list of metrics to measure on the CUDA device"
+        "You can use any metrics available here: "
+        "https://docs.nvidia.com/cupti/r_main.html#r_host_metrics_api\n"
+        " eg: L2 misses, L1 bank conflicts.\n "
+        "Additionally, Two special metrics are useful for measuring FLOPS\n"
+        "-  kineto__cuda_core_flops = CUDA floating point op counts\n"
+        "-  kineto__tensor_core_insts = Tensor core op couunts\n",
+    )
+    parser.add_argument(
+        "--cupti-profiler-measure-per-kernel",
+        action="store_true",
+        help="Run CUPTI Profiler measurements for every GPU kernel"
+        "Warning : this can be slow",
+    )
+    parser.add_argument(
         "--eg",
         action="store_true",
         help="Collect execution graph.",
@@ -236,6 +261,13 @@ def main():
         with open(args.nsys_args_file, "r") as nsys_file:
             run_options["nsys_args"] = nsys_file.read().strip()
 
+    if args.cupti_profiler and not run_options["device"].startswith("cuda"):
+        logger.warning("Cannot use --cupti_profiler when not running on cuda device")
+        args.cupti_profiler = False
+    if args.cupti_profiler and not args.profile:
+        logger.warning("Enabling pytorch profiler as --cupti_profiler was added")
+        args.profiler = True
+
     run_options["cmd_args"] = args.__dict__
 
     with open(out_file_name, write_option) as out_file:
@@ -247,6 +279,15 @@ def main():
             "start_time": start_time.isoformat(timespec="seconds"),
         }
         print(json.dumps(benchmark_setup, default=str), file=out_file)
+        # This hack is necessary for Kineto profiler library to be initialized
+        # and thus be able to track active CUDA contexts.
+        if args.cupti_profiler:
+            with torch.autograd.profiler.profile(
+                enabled=True,
+                use_cuda=True,
+                use_kineto=True,
+            ) as _:
+                logger.info("Running dummy profiler warmup for CUPTI.")
 
         bench_config = BenchmarkConfig(run_options)
         bench_config.load_json_file(args.config)
@@ -262,8 +303,25 @@ def main():
             eg.register_callback(eg_file)
             eg.start()
 
+        cupti_profiler_config = (
+            _ExperimentalConfig(
+                profiler_metrics=args.cupti_profiler_metrics.split(","),
+                profiler_measure_per_kernel=args.cupti_profiler_measure_per_kernel,
+            )
+            if args.cupti_profiler
+            else None
+        )
+
         with torch.autograd.profiler.profile(
-            args.profile, use_cuda=use_cuda, use_kineto=True, record_shapes=False
+            args.profile,
+            use_cuda=use_cuda,
+            use_kineto=True,
+            record_shapes=False,
+            experimental_config=cupti_profiler_config,
+            # CUPTI Profiler mode is not allowed when also instrumenting CPU operators,
+            # use_cpu enables profiling and recodring of CPU pytorch operators.
+            # Thus this needs to be disabled while using CUPTI profiler.
+            use_cpu=not args.cupti_profiler,
         ) as prof:
             with record_function(f"[param|{run_options['device']}]"):
                 benchmark.run()
