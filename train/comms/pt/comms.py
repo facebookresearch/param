@@ -259,44 +259,77 @@ class commsCollBench(paramCommsBench):
 
         return parser.parse_known_args()
 
+    def _checkPt2Pt(self, args):
+        if args.pt2pt is None:
+            return args.collective
+        if args.pt2pt not in pt2ptPatterns:
+            logger.error(
+                f"Specified pt2pt pattern: {args.pt2pt} is not one of the supported pt2pt patterns: {str(pt2ptPatterns)}"
+            )
+            comms_utils.gracefulExit()
+        return "pt2pt"
+
+    def _check_for_in_out_split(self, args, element_size):
+        if args.i is None and args.o is None:
+            return args.b, args.e
+
+        if args.i is not None:
+            supported_split_coll = ["reduce_scatter_v", "all_to_allv"]
+            inout_len = sum(args.i)
+        else:
+            supported_split_coll = ["all_gather_v", "all_to_allv"]
+            inout_len = sum(args.o)
+
+        if not any(coll in args.collective.split(",") for coll in supported_split_coll):
+            logger.error(
+                "Collective does not support input-split argument (--i) or output-split argument (--o)"
+            )
+            comms_utils.gracefulExit()
+
+        logger.warning(
+            f"Overwriting begin-size (--b {args.b}) and end-size (--e {args.e}) to match requested input-split (--i) or output-split (--o)"
+        )
+
+        begin = inout_len * element_size
+        end = begin
+        return begin, end
+
+    def _check_device_type(self, args):
+        if args.device == "cpu" and args.backend == "nccl":
+            raise ValueError(f"NCCL is not supported for device type {args.device}")
+
+        # Overwrite user-input rocm device as we internally use cuda for both GPUs
+        if args.device == "rocm":
+            return "cuda"
+        return args.device
+
+    def _check_bitwidth(self, args):
+        if args.bitwidth >= 32:
+            return
+        if args.device != "cuda":
+            logger.error(
+                f"collective quantization may not be fully supported for {args.device}"
+            )
+        for coll in args.collective.split(","):
+            comms_utils.checkQuantArgs(
+                coll,
+                args.dtype,
+                args.b,
+                args.quant_a2a_embedding_dim,
+                args.z,
+            )
+
     def checkArgs(self, args):
         super().checkArgs(args)
 
-        if args.pt2pt is not None:
-            args.collective = "pt2pt"
-            if args.pt2pt not in pt2ptPatterns:
-                logger.error(
-                    f"Specified pt2pt pattern: {args.pt2pt} is not one of the supported pt2pt patterns: {str(pt2ptPatterns)}"
-                )
-                comms_utils.gracefulExit()
+        args.collective = self._checkPt2Pt(args)
 
         args.b = comms_utils.parsesize(args.b)
         args.e = comms_utils.parsesize(args.e)
         args.dtype = self.dtypeMap[args.data_type]
         element_size = torch.ones([1], dtype=args.dtype).element_size()
 
-        if args.i is not None:
-            in_split_coll = ["reduce_scatter_v", "all_to_allv"]
-            if not any(coll in args.collective.split(",") for coll in in_split_coll):
-                logger.error("Collective does not support input-split argument (--i)")
-                comms_utils.gracefulExit()
-            logger.warning(
-                f"Overwriting begin-size (--b {args.b}) and end-size (--e {args.e}) to match requested input-split (--i)"
-            )
-            input_len = sum(args.i)
-            args.b = input_len * element_size
-            args.e = args.b
-        elif args.o is not None:
-            out_split_coll = ["all_gather_v", "all_to_allv"]
-            if not any(coll in args.collective.split(",") for coll in out_split_coll):
-                logger.error("Collective does not support output-split argument (--o)")
-                comms_utils.gracefulExit()
-            logger.warning(
-                f"Overwriting begin-size (--b {args.b}) and end-size (--e {args.e}) to match requested output-split (--o)"
-            )
-            output_len = sum(args.o)
-            args.b = output_len * element_size
-            args.e = args.b
+        args.b, args.e = self._check_for_in_out_split(args, element_size)
 
         if args.b < 1:
             logger.warning(
@@ -313,12 +346,7 @@ class commsCollBench(paramCommsBench):
             logger.error("Step size bytes must be a multiple of element size")
             comms_utils.gracefulExit()
 
-        if args.device == "cpu" and args.backend == "nccl":
-            raise ValueError(f"NCCL is not supported for device type {args.device}")
-
-        # Overwrite user-input rocm device as we internally use cuda for both GPUs
-        if args.device == "rocm":
-            args.device = "cuda"
+        args.device = self._check_device_type(args)
 
         reduce_ops = ["all_reduce", "reduce", "reduce_scatter", "reduce_scatter_v"]
         if (
@@ -332,19 +360,7 @@ class commsCollBench(paramCommsBench):
             args.c = 0
 
         # run a few sanity checks
-        if args.bitwidth < 32:
-            if args.device != "cuda":
-                logger.error(
-                    f"collective quantization may not be fully supported for {args.device}"
-                )
-            for coll in args.collective.split(","):
-                comms_utils.checkQuantArgs(
-                    coll,
-                    args.dtype,
-                    args.b,
-                    args.quant_a2a_embedding_dim,
-                    args.z,
-                )
+        self._check_bitwidth(args)
 
         if args.size_start_profiler:
             args.size_start_profiler = comms_utils.parsesize(args.size_start_profiler)
