@@ -1737,7 +1737,7 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
     """
     try:
         # fbgemm_gpu can be downloaded from https://github.com/pytorch/FBGEMM/tree/main/fbgemm_gpu
-        from fbgemm_gpu.bench.bench_utils import generate_requests
+        from fbgemm_gpu.split_embedding_utils import generate_requests
 
         from fbgemm_gpu.split_table_batched_embeddings_ops import (
             ComputeDevice,
