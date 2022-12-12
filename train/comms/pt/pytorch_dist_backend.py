@@ -6,7 +6,7 @@
 import logging
 import os
 from itertools import cycle
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 import torch
@@ -192,7 +192,33 @@ class PyTorchDistBackend(backendFunctions):
         if collectiveArgs.all2all_qcomm and not pair:
             collectiveArgs.use_ext_dist = self.use_ext_dist
             work = all_to_all_internal(collectiveArgs)
+        elif collectiveArgs.num_emb_tables_batched != -1 and self.use_ext_dist:
+            work: List[extend_distributed.Request] = []
+            dim_sum_per_rank = [
+                collectiveArgs.num_emb_tables_batched * collectiveArgs.emb_dim
+            ] * collectiveArgs.world_size
+
+            for i in range(collectiveArgs.num_emb_ops):
+                pooled_embs = collectiveArgs.emb[i](*collectiveArgs.embRequests[i])
+                work += [
+                    collectiveArgs.group.alltoall_pooled(
+                        pooled_embs.reshape(
+                            collectiveArgs.batch_size,
+                            -1,
+                            collectiveArgs.emb_dim,
+                        ),
+                        dim_sum_per_rank,
+                    )
+                ]
+
+            for r in work:
+                r.wait()
         else:
+            if collectiveArgs.num_emb_tables_batched != -1:
+                logger.warn(
+                    "Not using batched embedding tables because extend distributed package not in use"
+                )
+
             work = dist.all_to_all(
                 collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
                 collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
@@ -554,11 +580,21 @@ class PyTorchDistBackend(backendFunctions):
         collectiveArgs.MMout = torch.mm(collectiveArgs.MMin1, collectiveArgs.MMin2)
 
     def emb_lookup(self, collectiveArgs):
-        # Embedding table lookup as compute kernel
-        for (indices, offsets, weights) in collectiveArgs.embRequests:
-            collectiveArgs.LookupOut = collectiveArgs.emb.forward(
-                indices, offsets, weights
-            )
+        # If we are using the batched embedding lookup with alltoall, don't do the embedding
+        # lookup here, but pool it with the alltoalls in the collective
+        if not (
+            collectiveArgs.collective == "all_to_all"
+            and collectiveArgs.num_emb_tables_batched != -1
+            and self.use_ext_dist
+        ):
+            # Embedding table lookup as compute kernel
+            for i in range(len(collectiveArgs.embRequests)):
+                (indices, offsets, weights) = collectiveArgs.embRequests[i]
+                collectiveArgs.LookupOut = collectiveArgs.emb[i].forward(
+                    indices,
+                    offsets,
+                    weights,
+                )
 
     # Memory related
     def get_mem_size(self, collectiveArgs, pair=False):

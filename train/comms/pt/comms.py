@@ -185,6 +185,12 @@ class commsCollBench(paramCommsBench):
             help="Number of embedding tables (per device) for embedding table compute kernel",
         )  # number of Embedding table
         parser.add_argument(
+            "--num-emb-tables-batched",
+            type=int,
+            default=-1,
+            help="Number of embedding tables to batch together when doing embedding lookups and communication (-1 means to do no batching)",
+        )  # number of Embedding table batched
+        parser.add_argument(
             "--bag-size",
             type=int,
             default=20,

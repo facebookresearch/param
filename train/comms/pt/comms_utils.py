@@ -996,6 +996,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.batch_size = args.batch_size
         self.num_embs = args.num_embs
         self.num_emb_tables_per_device = args.num_emb_tables_per_device
+        self.num_emb_tables_batched = args.num_emb_tables_batched
         self.bag_size = args.bag_size
         self.benchTime = benchTime
 
@@ -1038,9 +1039,13 @@ class collectiveArgsHolder:
         self.MMin3 = {}
         self.numComputePerIter = 0
         self.numCollPerIter = 0
+        self.batch_size = 0
 
         self.emb = None
         self.embRequests = None
+        self.emb_dim = 0
+        self.num_emb_tables_batched = 0
+        self.num_emb_ops = 0
         self.BTBlockSize = {}
         self.LookupOut = {}
 
@@ -1742,42 +1747,51 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
         from fbgemm_gpu.split_table_batched_embeddings_ops import (
             ComputeDevice,
             EmbeddingLocation,
+            OptimType,
             SplitTableBatchedEmbeddingBagsCodegen,
         )
     except ImportError:
         logger.error("benchmarking with emb_lookup kernels requires fbgemm_gpu library")
         return
-    emb_dim = commsParams.emb_dim
+    collectiveArgs.emb_dim = commsParams.emb_dim
     num_embeddings = commsParams.num_embs
-    batch_size = commsParams.batch_size
+    collectiveArgs.batch_size = commsParams.batch_size
     num_tables_per_device = commsParams.num_emb_tables_per_device
+    collectiveArgs.num_emb_tables_batched = commsParams.num_emb_tables_batched
     bag_size = commsParams.bag_size
-    niter = 1
 
-    emb_dims = [emb_dim] * num_tables_per_device
+    num_emb_tables_batched = (
+        num_tables_per_device
+        if collectiveArgs.num_emb_tables_batched == -1
+        else collectiveArgs.num_emb_tables_batched
+    )
+    collectiveArgs.num_emb_ops = num_tables_per_device // num_emb_tables_batched
+
+    collectiveArgs.emb = [
+        SplitTableBatchedEmbeddingBagsCodegen(
+            embedding_specs=[
+                (
+                    num_embeddings,
+                    collectiveArgs.emb_dim,
+                    EmbeddingLocation.DEVICE
+                    if commsParams.device == "cuda"
+                    else EmbeddingLocation.HOST,
+                    ComputeDevice.CUDA
+                    if commsParams.device == "cuda"
+                    else ComputeDevice.CPU,
+                )
+                for _ in range(num_emb_tables_batched)
+            ],
+            device=backendFuncs.get_device(),
+            optimizer=OptimType.EXACT_ROWWISE_ADAGRAD,
+        )
+        for _ in range(collectiveArgs.num_emb_ops)
+    ]
 
     collectiveArgs.embRequests = generate_requests(
-        niter, batch_size, num_tables_per_device, bag_size, num_embeddings
+        iters=collectiveArgs.num_emb_ops,
+        B=collectiveArgs.batch_size,
+        T=num_emb_tables_batched,
+        L=bag_size,
+        E=num_embeddings,
     )
-
-    data_placement = (
-        EmbeddingLocation.DEVICE
-        if commsParams.device == "cuda"
-        else EmbeddingLocation.HOST
-    )
-
-    collectiveArgs.emb = SplitTableBatchedEmbeddingBagsCodegen(
-        embedding_specs=[
-            (
-                num_embeddings,
-                dim,
-                data_placement,
-                ComputeDevice.CUDA
-                if commsParams.device == "cuda"
-                else ComputeDevice.CPU,
-            )
-            for dim in emb_dims
-        ],
-        device=backendFuncs.get_device(),
-    )
-    collectiveArgs.emb = collectiveArgs.emb.to(backendFuncs.get_device())
