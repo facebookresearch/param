@@ -138,7 +138,7 @@ def generate_requests(
 
 
 class SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator:
-    def get_data(self, config, device):
+    def get_data(self, config, device, alpha=1):
         logger.debug(f"data generator config: {config}")
         # batch size * pooling_factor
         num_tables = config["args"][0]["value"]
@@ -159,6 +159,7 @@ class SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator:
         distribution = os.getenv("split_embedding_distribution")
         if distribution is None:
             distribution = 1
+        distribution = alpha
         logger.debug(f"distribution = {distribution}")
 
         target_device = torch.device(device)

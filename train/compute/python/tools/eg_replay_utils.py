@@ -22,8 +22,10 @@ TORCH_DTYPES_RNG = {
     "long int": (torch.int64, torch.ones),
     "float": (torch.float32, torch.randn),
     "double": (torch.float64, torch.randn),
+    "signed char": (torch.int8, torch.ones),
     "unsigned char": (torch.int8, torch.ones),
     "c10::Half": (torch.half, torch.ones),
+    "c10::BFloat16": (torch.bfloat16, torch.ones),
 }
 
 TORCH_DTYPES_RNG_str = {
@@ -35,8 +37,10 @@ TORCH_DTYPES_RNG_str = {
     "long int": ("torch.int64", "torch.ones"),
     "float": ("torch.float32", "torch.randn"),
     "double": ("torch.float64", "torch.randn"),
+    "signed char": ("torch.int8", "torch.ones"),
     "unsigned char": ("torch.int8", "torch.ones"),
     "c10::Half": ("torch.half", "torch.ones"),
+    "c10::BFloat16": ("torch.bfloat16", "torch.ones"),
 }
 
 TORCH_DTYPES_BYTES = {
@@ -48,8 +52,10 @@ TORCH_DTYPES_BYTES = {
     "long int": 8,
     "float": 4,
     "double": 8,
+    "signed char": 1,
     "unsigned char": 1,
     "c10::Half": 2,
+    "c10::BFloat16": 2,
 }
 
 
@@ -128,13 +134,10 @@ def skip_op(op):
         and (
             "embedding_lookup" in op.parent.name
             or "param|SplitTableBatchedEmbeddingBagsCodegen" in op.parent.name
-            # or "## forward:tw_global_sparse_arch ##" in op.parent.name or op.name == "fb::to_dense_representation" \
-            or op.name == "fb::to_dense_representation"
             or (
                 "fbgemm::" in op.name
                 and "fbgemm::split_embedding_codegen_lookup_" not in op.name
             )
-            or ("SymInt" in op.op_schema)
         )
         or ("fused" in op.name)
         or (
@@ -150,6 +153,8 @@ def skip_op(op):
             and "thread" in op.parent.name
             and op.tid == 2
         )
+        or (op.name == "record_param_comms" and op.inputs[3] == "init")
+        or (op.name == "aten::view" and "aten::view.dtype" in op.op_schema)
     )
 
 
@@ -197,9 +202,9 @@ def get_optimizer_from_fbgemm_function_name(s):
     return "exact_{}".format(opt)  # Workaround, should be more accurate
 
 
-def get_fbgemm_info(n):
+def get_fbgemm_info(n, rows_per_table):
     num_tables = n.input_shapes[6][0] - 1
-    rows = [1024] * num_tables
+    rows = [rows_per_table] * num_tables
     batch_size = int((n.input_shapes[12][0] - 1) / num_tables)
     assert batch_size == n.output_shapes[0][0]
 
@@ -217,7 +222,8 @@ def get_fbgemm_info(n):
             dims[pos] += addition
             addition = 0
         pos -= 1
-    pooling_factor = [1] * num_tables
+
+    pooling_mode = [n.inputs[13]] * num_tables
 
     weighted = "Float" not in n.input_types[1]  # e.g. c10:Half
     weights_precision = c10_type_to_str(n.input_types[1])
@@ -248,7 +254,7 @@ def get_fbgemm_info(n):
         num_tables,
         dims,
         batch_size,
-        pooling_factor,
+        pooling_mode,
         weighted,
         weights_precision,
         optimizer,
@@ -259,14 +265,14 @@ def get_fbgemm_info(n):
     )
 
 
-def build_fbgemm_func(n, device):
+def build_fbgemm_func(n, device, rows_per_table):
     assert n.parent is not None
     (
         rows,
         num_tables,
         dims,
         _,
-        _,
+        pooling_mode,
         weighted,
         weights_precision,
         optimizer,
@@ -274,7 +280,7 @@ def build_fbgemm_func(n, device):
         eps,
         weight_decay,
         weight_decay_mode,
-    ) = get_fbgemm_info(n)
+    ) = get_fbgemm_info(n, rows_per_table)
     op = SplitTableBatchedEmbeddingBagsCodegenOp()
     op.device = device
     if num_tables == 1:
@@ -282,7 +288,7 @@ def build_fbgemm_func(n, device):
             num_tables,
             rows[0],
             dims[0],
-            PoolingMode.SUM,
+            PoolingMode(pooling_mode[0]),
             weighted,
             weights_precision,
             optimizer,
@@ -296,7 +302,7 @@ def build_fbgemm_func(n, device):
             num_tables,
             rows,
             dims,
-            PoolingMode.SUM,
+            PoolingMode(pooling_mode[0]),
             weighted,
             weights_precision,
             optimizer,
@@ -308,14 +314,14 @@ def build_fbgemm_func(n, device):
     return op, len(n.outputs)
 
 
-def generate_fbgemm_tensors(n, device):
+def generate_fbgemm_tensors(n, device, rows_per_table, pooling_factor, alpha):
     assert n.parent is not None
     (
         rows,
         num_tables,
         dims,
         batch_size,
-        pooling_factor,
+        _,
         weighted,
         weights_precision,
         optimizer,
@@ -323,11 +329,14 @@ def generate_fbgemm_tensors(n, device):
         _,
         _,
         _,
-    ) = get_fbgemm_info(n)
+    ) = get_fbgemm_info(n, rows_per_table)
+
     if num_tables == 1:
         rows = rows[0]
         dims = dims[0]
-        pooling_factor = pooling_factor[0]
+        pooling_factors = pooling_factor
+    else:
+        pooling_factors = [pooling_factor] * num_tables
 
     data_generator_config = create_op_args(
         [
@@ -335,7 +344,7 @@ def generate_fbgemm_tensors(n, device):
             {"type": "int", "name": "rows", "value": rows},
             {"type": "int", "name": "dim", "value": dims},
             {"type": "int", "name": "batch_size", "value": batch_size},
-            {"type": "int", "name": "pooling_factor", "value": pooling_factor},
+            {"type": "int", "name": "pooling_factor", "value": pooling_factors},
             {"type": "bool", "name": "weighted", "value": weighted},
             {"type": "str", "name": "weights_precision", "value": weights_precision},
         ],
@@ -344,7 +353,9 @@ def generate_fbgemm_tensors(n, device):
 
     input_data_gen = SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator()
 
-    (input_args, input_kwargs) = input_data_gen.get_data(data_generator_config, device)
+    (input_args, input_kwargs) = input_data_gen.get_data(
+        data_generator_config, device, alpha
+    )
     if is_fbgemm_forward_unweighted(n):
         input_args.pop(-1)
 
@@ -355,11 +366,7 @@ def build_torchscript_func(n):
     input_count = len(n.input_types)
     output_count = len(n.output_types)
 
-    if (
-        "pyspeech" in n.op_schema
-        or n.op_schema == ""
-        or n.name == "aten::record_stream"
-    ):
+    if n.op_schema == "" or n.name == "aten::record_stream":
         return None, None
 
     tmp = n.op_schema.split(") -> ")
@@ -436,12 +443,18 @@ def build_torchscript_func(n):
     return func, output_count
 
 
-def generate_prefix(eg_input, cuda):
+def generate_prefix(label, skip_nodes, eg_input, cuda, compute_only, tf32, rows):
     template_prefix = """import gc
+import argparse
 import json
+import logging
+import os
 import time
+from datetime import datetime
+import comms_utils
 
 import torch
+from param_bench.train.comms.pt import commsTraceReplay
 from param_bench.train.compute.python.tools.eg_replay_utils import (
     build_fbgemm_func,
     build_torchscript_func,
@@ -455,66 +468,188 @@ from param_bench.train.compute.python.tools.execution_graph import ExecutionGrap
 from param_bench.train.compute.python.tools.utility import trace_handler
 
 
+print("PyTorch version: ", torch.__version__)
+
+tf32 = {tf32}
+if tf32:
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+
 global dfs_traverse
 global funcs
 global skip_node_names
 global fbgemm_backward_ops
+global sorted_nodes
 
 funcs = {{}}
-skip_node_names = ["DataLoader", "aten::set_", "fb::", "c10d::allreduce_", "pyspeech::"]
+skip_node_names = [{skip_nodes}]
 fbgemm_backward_ops = []
-
+sorted_nodes = []
 
 def dfs_traverse(node):
     for child in node.children:
+        if "{label}" and "{label}" in child.name:
+            sorted_nodes.append(child)
+
         if any(x in child.name for x in skip_node_names):
             continue
+
         if is_qualified(child):
-            if is_fbgemm_forward(child):
-                func, output_count = build_fbgemm_func(child, \"{cuda}\")
-                fbgemm_backward_ops.append((func.backward, child.id))
-                funcs[child.id] = (func.forward, output_count)
-            elif is_fbgemm_backward(child):
-                assert fbgemm_backward_ops
-                backward_op, forward_id = fbgemm_backward_ops.pop(-1)
-                funcs[child.id] = (backward_op, len(child.output_types))
-            else:
-                func, output_count = build_torchscript_func(child)
-                funcs[child.id] = (func, output_count)
+            sorted_nodes.append(child)
         else:
             dfs_traverse(child)
 
+if "://" in \"{eg_input}\":
+    try:
+        from param_bench.train.compute.python.tools.fb.internals import (
+            read_remote_trace,
+        )
+    except ImportError:
+        logging.info("FB internals not present")
+        exit(1)
+    else:
+        eg_trace, _ = read_remote_trace(\"{eg_input}\")
+        exgr = ExecutionGraph(json.load(eg_trace))
+else:
+    with open(\"{eg_input}\", 'r') as f:
+        exgr = ExecutionGraph(json.load(f))
 
-with open(\"{eg_input}\", 'r') as f:
-    exgr = ExecutionGraph(json.load(f))
 nodes = exgr.get_nodes(clean=True)
 node = nodes[1]
 dfs_traverse(node)
-gc.collect()
-torch.cuda.empty_cache()
+
+operators_count = [0]
+sorted_nodes = sorted(sorted_nodes, key=lambda x: x.id)
+
+for i in range(len(sorted_nodes)):
+    if "{label}" and "{label}" in sorted_nodes[i].name:
+        operators_count.append(i)
+if len(operators_count) > 1:
+    sorted_nodes = sorted_nodes[
+        operators_count[1] + 1 : operators_count[2]
+    ]
+
+print("#Operators to execute: ", len(sorted_nodes))
+
+for node in sorted_nodes:
+    if is_fbgemm_forward(node):
+        func, output_count = build_fbgemm_func(node, \"{cuda}\", {rows})
+        fbgemm_backward_ops.append((func.backward, node.id))
+        funcs[node.id] = (func.forward, output_count)
+    elif is_fbgemm_backward(node):
+        assert fbgemm_backward_ops
+        backward_op, forward_id = fbgemm_backward_ops.pop(-1)
+        funcs[node.id] = (backward_op, len(node.output_types))
+    else:
+        func, output_count = build_torchscript_func(node)
+        funcs[node.id] = (func, output_count)
+
+compute_only = {compute_only}
+if not compute_only:
+    comms_env_params = comms_utils.read_comms_env_vars()
+    global traceBench
+    traceBench = commsTraceReplay.commsTraceReplayBench()
+    traceBench.trace_file = \"{eg_input}\"
+    if "://" in \"{eg_input}\":
+            traceBench.use_remote_trace = True
+
+    parser = argparse.ArgumentParser(
+        description="PARAM-Comms Trace Replay Mode",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    args = traceBench.readArgs(parser)
+    traceBench.checkArgs(args)
+
+    time.sleep(1)
+    comms_world_info = comms_utils.comms_world_info_holder(
+        args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
+    )
+    global commsParams
+    commsParams = comms_utils.commsParamsHolderBase(args)
+    traceBench.initBench(commsParams, args)
+    traceBench.replayInit(comms_world_info, commsParams)
 
 """
-    return template_prefix.format(eg_input=eg_input, cuda=cuda)
+    return template_prefix.format(
+        label=label,
+        skip_nodes=skip_nodes,
+        eg_input=eg_input,
+        cuda=cuda,
+        compute_only=str(compute_only),
+        tf32=str(tf32),
+        rows=rows,
+    )
 
 
-def generate_suffix(warmup_iter, replay_iter):
+def generate_suffix(warmup_iter, replay_iter, cuda_id, profile_replay):
     template_suffix = """
-with torch.profiler.profile(
-    activities=[
-        torch.profiler.ProfilerActivity.CPU,
-        torch.profiler.ProfilerActivity.CUDA,
-    ],
-    record_shapes=True,
-    on_trace_ready=trace_handler,
-) as prof:
+start_time = datetime.now()
+
+if {cuda_id} != -1:
+    s1 = torch.cuda.Stream(device=(torch.device("cuda:{cuda_id}")))
+else:
+    s1 = torch.cuda.Stream(device=(torch.device("cuda")))
+
+profile_replay = {profile_replay}
+if profile_replay:
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA,
+        ],
+        schedule=torch.profiler.schedule(
+            wait=0,
+            warmup={warmup_iter},
+            active={replay_iter}
+        ),
+        record_shapes=True,
+        on_trace_ready=trace_handler,
+    ) as prof:
+        for iter in range({warmup_iter} + {replay_iter}):
+            if iter == {warmup_iter}:
+                start_ns = time.time_ns()
+            try:
+                run_ops(iter, s1)
+            except Exception as e:
+                print(os.getpid(), e)
+                exit(1)
+            # if {cuda_id} != -1:
+            #     torch.cuda.synchronize(torch.device("cuda:{cuda_id}"))
+            # else:
+            #     torch.cuda.synchronize(torch.device("cuda"))
+            prof.step()
+else:
     for iter in range({warmup_iter} + {replay_iter}):
         if iter == {warmup_iter}:
             start_ns = time.time_ns()
-        run_ops()
-        torch.cuda.synchronize()
-        prof.step()
-    print("Execution finished!")
-    print("Avg execution time per iteration is {{}}ms".format((time.time_ns() - start_ns) / {replay_iter} / 1000000.0))
+        try:
+            run_ops(iter, s1)
+        except Exception as e:
+            print(os.getpid(), e)
+            exit(1)
+        # if {cuda_id} != -1:
+        #     torch.cuda.synchronize(torch.device("cuda:{cuda_id}"))
+        # else:
+        #     torch.cuda.synchronize(torch.device("cuda"))
+
+print("Execution finished!")
+print("Avg execution time per iteration is {{}}ms".format((time.time_ns() - start_ns) / {replay_iter} / 1000000.0))
+end_time = datetime.now()
+
+try:
+    from param_bench.train.compute.python.tools.fb.internals import (
+        generate_query_url,
+    )
+except ImportError:
+    logging.info("FB internals not present")
+else:
+    generate_query_url(start_time, end_time, {cuda_id})
 
 """
-    return template_suffix.format(warmup_iter=warmup_iter, replay_iter=replay_iter)
+    return template_suffix.format(
+        warmup_iter=warmup_iter,
+        replay_iter=replay_iter,
+        cuda_id=cuda_id,
+        profile_replay=profile_replay,
+    )

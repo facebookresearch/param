@@ -47,6 +47,10 @@ LABEL_MARKERS = [
     "gans_torchscript_ops::",
     "split_with_sizes",
     "chunk",
+    "All2All_Pooled_ReqBackward",
+    "All2All_Pooled_Req",
+    "All2All_Pooled_Wait",
+    "c10d::",
 ]
 
 
@@ -236,8 +240,8 @@ class Node:
             any(name.startswith(x) for x in LABEL_MARKERS)
             # and not outputs
         ):
-            if outputs:
-                print(f"{name} has outputs, not expected.")
+            # if outputs:
+            #     print(f"{name} has outputs, not expected.")
             return NodeType.LABEL
         else:
             return NodeType.OPERATOR

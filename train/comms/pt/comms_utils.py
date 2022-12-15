@@ -543,6 +543,7 @@ class commsArgs:
         worldSize: World size of current process group.
         markerStack: Current markers that this collective is a part of.
         root: Used to determine if collective is src or dst.
+        eg_id: Node id in captured execution graph.
     """
 
     def __init__(self, **kwargs) -> None:
@@ -563,6 +564,7 @@ class commsArgs:
         self.worldSize = kwargs["worldSize"] if "worldSize" in kwargs else None
         self.markerStack = kwargs["markerStack"] if "markerStack" in kwargs else None
         self.root = kwargs["root"] if "root" in kwargs else None
+        self.eg_id = kwargs["eg_id"] if "eg_id" in kwargs else None
 
     def toDict(self) -> Dict:
         """
@@ -636,6 +638,7 @@ class paramProfile(record_function):
         if isinstance(self.timer, paramTimer):
             self.timer.incrTimeNS(self.intervalNS)
         logger.debug(f"{self.description} took {self.intervalNS} ns")
+        print(f"{self.description} took {self.intervalNS} ns")
         super().__exit__(exc_type, exc_value, traceback)
 
 
@@ -1220,13 +1223,16 @@ class paramCommsBench(ABC):
         curDevice: str,
         dtype: torch.dtype,
         scaleFactor: float,
+        allocate: bool = True,
     ) -> (torch.Tensor, torch.Tensor):
         """Prepare the all_to_allv mode"""
 
-        # all_to_allv requires two tensors
-        opTensor = self.backendFuncs.alloc_random(
-            [numElementsOut], curDevice, dtype, scaleFactor
-        )
+        opTensor = []
+        if allocate:
+            # all_to_allv requires two tensors
+            opTensor = self.backendFuncs.alloc_random(
+                [numElementsOut], curDevice, dtype, scaleFactor
+            )
         # all_to_allv requires tensors to specify split
         self.collectiveArgs.opTensor_split = (
             curComm.outSplit
@@ -1251,37 +1257,39 @@ class paramCommsBench(ABC):
         curDevice: str,
         dtype: torch.dtype,
         scaleFactor: float,
+        allocate: bool = True,
     ) -> (torch.Tensor, torch.Tensor):
         # all_to_all requires two tensor lists, e.g., List[torch.Tensor]
 
         ipTensor = []
         opTensor = []
-        if commsParams.dcheck == 1:
-            for _ in range(world_size):
-                ipTensor.append(
-                    self.backendFuncs.alloc_ones(
-                        [(numElementsIn // world_size)],
-                        curDevice,
-                        commsParams.dtype,
-                        self.initVal,
+        if allocate:
+            if commsParams.dcheck == 1:
+                for _ in range(world_size):
+                    ipTensor.append(
+                        self.backendFuncs.alloc_ones(
+                            [(numElementsIn // world_size)],
+                            curDevice,
+                            commsParams.dtype,
+                            self.initVal,
+                        )
                     )
-                )
-        else:
+            else:
+                for _ in range(world_size):
+                    ipTensor.append(
+                        self.backendFuncs.alloc_random(
+                            [(numElementsIn // world_size)],
+                            curDevice,
+                            commsParams.dtype,
+                            scaleFactor,
+                        )
+                    )
             for _ in range(world_size):
-                ipTensor.append(
+                opTensor.append(
                     self.backendFuncs.alloc_random(
-                        [(numElementsIn // world_size)],
-                        curDevice,
-                        commsParams.dtype,
-                        scaleFactor,
+                        [(numElementsOut // world_size)], curDevice, dtype, scaleFactor
                     )
                 )
-        for _ in range(world_size):
-            opTensor.append(
-                self.backendFuncs.alloc_random(
-                    [(numElementsOut // world_size)], curDevice, dtype, scaleFactor
-                )
-            )
         return (ipTensor, opTensor)
 
     def _prep_all_gather(
@@ -1295,27 +1303,29 @@ class paramCommsBench(ABC):
         curDevice: str,
         dtype: torch.dtype,
         scaleFactor: float,
+        allocate: bool = True,
     ) -> (torch.Tensor, torch.Tensor):
         opTensor = []
 
-        if commsParams.dcheck == 1:
-            ipTensor = self.backendFuncs.alloc_ones(
-                [numElementsIn // world_size],
-                curDevice,
-                dtype,
-                scaleFactor=self.initVal,
-            )
-        else:
-            ipTensor = self.backendFuncs.alloc_random(
-                [numElementsIn // world_size], curDevice, dtype, scaleFactor
-            )
-        # allgather requires a tensor list, e.g., List[torch.Tensor]
-        for _ in range(world_size):
-            opTensor.append(
-                self.backendFuncs.alloc_random(
+        if allocate:
+            if commsParams.dcheck == 1:
+                ipTensor = self.backendFuncs.alloc_ones(
+                    [numElementsIn // world_size],
+                    curDevice,
+                    dtype,
+                    scaleFactor=self.initVal,
+                )
+            else:
+                ipTensor = self.backendFuncs.alloc_random(
                     [numElementsIn // world_size], curDevice, dtype, scaleFactor
                 )
-            )
+            # allgather requires a tensor list, e.g., List[torch.Tensor]
+            for _ in range(world_size):
+                opTensor.append(
+                    self.backendFuncs.alloc_random(
+                        [numElementsIn // world_size], curDevice, dtype, scaleFactor
+                    )
+                )
         return (ipTensor, opTensor)
 
     def _prep_all_gather_base(
@@ -1329,26 +1339,29 @@ class paramCommsBench(ABC):
         curDevice: str,
         dtype: torch.dtype,
         scaleFactor: float,
+        allocate: bool = True,
     ) -> (torch.Tensor, torch.Tensor):
 
-        if commsParams.dcheck == 1:
-            ipTensor = self.backendFuncs.alloc_ones(
-                [numElementsIn // world_size],
+        opTensor = []
+        if allocate:
+            if commsParams.dcheck == 1:
+                ipTensor = self.backendFuncs.alloc_ones(
+                    [numElementsIn // world_size],
+                    curDevice,
+                    dtype,
+                    scaleFactor=self.initVal,
+                )
+            else:
+                ipTensor = self.backendFuncs.alloc_random(
+                    [numElementsIn // world_size], curDevice, dtype, scaleFactor
+                )
+            # this is a single all gather with flat output tensor
+            opTensor = self.backendFuncs.alloc_random(
+                numElementsIn,
                 curDevice,
                 dtype,
-                scaleFactor=self.initVal,
+                scaleFactor,
             )
-        else:
-            ipTensor = self.backendFuncs.alloc_random(
-                [numElementsIn // world_size], curDevice, dtype, scaleFactor
-            )
-        # this is a single all gather with flat output tensor
-        opTensor = self.backendFuncs.alloc_random(
-            numElementsIn,
-            curDevice,
-            dtype,
-            scaleFactor,
-        )
         return (ipTensor, opTensor)
 
     def _prep_incast(
@@ -1362,16 +1375,18 @@ class paramCommsBench(ABC):
         curDevice: str,
         dtype: torch.dtype,
         scaleFactor: float,
+        allocate: bool = True,
     ) -> (torch.Tensor, torch.Tensor):
         # incast requires a tensor list with length of src_ranks, e.g., List[torch.Tensor]
         opTensor = []
 
-        for _ in self.collectiveArgs.src_ranks:
-            opTensor.append(
-                self.backendFuncs.alloc_random(
-                    [numElementsOut], curDevice, dtype, scaleFactor
+        if allocate:
+            for _ in self.collectiveArgs.src_ranks:
+                opTensor.append(
+                    self.backendFuncs.alloc_random(
+                        [numElementsOut], curDevice, dtype, scaleFactor
+                    )
                 )
-            )
         return (ipTensor, opTensor)
 
     def _prep_reduce_scatter(
@@ -1385,32 +1400,35 @@ class paramCommsBench(ABC):
         curDevice: str,
         dtype: torch.dtype,
         scaleFactor: float,
+        allocate: bool = True,
     ) -> (torch.Tensor, torch.Tensor):
 
         ipTensor = []
-        if commsParams.dcheck == 1:
-            for _ in range(world_size):
-                ipTensor.append(
-                    self.backendFuncs.alloc_ones(
-                        [numElementsOut // world_size],
-                        curDevice,
-                        commsParams.dtype,
-                        self.initVal,
+        opTensor = []
+        if allocate:
+            if commsParams.dcheck == 1:
+                for _ in range(world_size):
+                    ipTensor.append(
+                        self.backendFuncs.alloc_ones(
+                            [numElementsOut // world_size],
+                            curDevice,
+                            commsParams.dtype,
+                            self.initVal,
+                        )
                     )
-                )
-        else:
-            for _ in range(world_size):
-                ipTensor.append(
-                    self.backendFuncs.alloc_random(
-                        [numElementsOut // world_size],
-                        curDevice,
-                        commsParams.dtype,
-                        scaleFactor,
+            else:
+                for _ in range(world_size):
+                    ipTensor.append(
+                        self.backendFuncs.alloc_random(
+                            [numElementsOut // world_size],
+                            curDevice,
+                            commsParams.dtype,
+                            scaleFactor,
+                        )
                     )
-                )
-        opTensor = self.backendFuncs.alloc_random(
-            [numElementsOut // world_size], curDevice, dtype, scaleFactor
-        )
+            opTensor = self.backendFuncs.alloc_random(
+                [numElementsOut // world_size], curDevice, dtype, scaleFactor
+            )
         return (ipTensor, opTensor)
 
     def _prep_reduce_scatter_base(
@@ -1424,26 +1442,29 @@ class paramCommsBench(ABC):
         curDevice: str,
         dtype: torch.dtype,
         scaleFactor: float,
+        allocate: bool = True,
     ) -> (torch.Tensor, torch.Tensor):
 
         ipTensor = []
-        if commsParams.dcheck == 1:
-            ipTensor = self.backendFuncs.alloc_ones(
-                numElementsOut,
-                curDevice,
-                commsParams.dtype,
-                self.initVal,
+        opTensor = []
+        if allocate:
+            if commsParams.dcheck == 1:
+                ipTensor = self.backendFuncs.alloc_ones(
+                    numElementsOut,
+                    curDevice,
+                    commsParams.dtype,
+                    self.initVal,
+                )
+            else:
+                ipTensor = self.backendFuncs.alloc_random(
+                    numElementsOut,
+                    curDevice,
+                    commsParams.dtype,
+                    scaleFactor,
+                )
+            opTensor = self.backendFuncs.alloc_random(
+                [numElementsOut // world_size], curDevice, dtype, scaleFactor
             )
-        else:
-            ipTensor = self.backendFuncs.alloc_random(
-                numElementsOut,
-                curDevice,
-                commsParams.dtype,
-                scaleFactor,
-            )
-        opTensor = self.backendFuncs.alloc_random(
-            [numElementsOut // world_size], curDevice, dtype, scaleFactor
-        )
         return (ipTensor, opTensor)
 
     def _prep_pt2pt(
@@ -1457,18 +1478,24 @@ class paramCommsBench(ABC):
         curDevice: str,
         dtype: torch.dtype,
         scaleFactor: float,
+        allocate: bool = True,
     ) -> (torch.Tensor, torch.Tensor):
         # pt2pt or out-of-place collectives
-        opTensor = self.backendFuncs.alloc_random(
-            [numElementsOut],
-            curDevice,
-            dtype,
-            scaleFactor,
-        )
+        opTensor = []
+        if allocate:
+            opTensor = self.backendFuncs.alloc_random(
+                [numElementsOut],
+                curDevice,
+                dtype,
+                scaleFactor,
+            )
         return (ipTensor, opTensor)
 
     def prepComm(
-        self, curComm: commsArgs, commsParams: commsParamsHolderBase
+        self,
+        curComm: commsArgs,
+        commsParams: commsParamsHolderBase,
+        allocate: bool = True,
     ) -> (torch.Tensor, torch.Tensor):
         """
         Allocate the tensors for collective.
@@ -1497,16 +1524,18 @@ class paramCommsBench(ABC):
         scaleFactor = numElementsOut * numElementsOut
         opTensor = []
 
-        if commsParams.dcheck == 1:
-            # use predictable values for data validation check
-            ipTensor = self.backendFuncs.alloc_ones(
-                [numElementsIn], curDevice, dtype, scaleFactor=self.initVal
-            )
+        if allocate:
+            if commsParams.dcheck == 1:
+                # use predictable values for data validation check
+                ipTensor = self.backendFuncs.alloc_ones(
+                    [numElementsIn], curDevice, dtype, scaleFactor=self.initVal
+                )
+            else:
+                ipTensor = self.backendFuncs.alloc_random(
+                    [numElementsIn], curDevice, dtype, scaleFactor
+                )
         else:
-            ipTensor = self.backendFuncs.alloc_random(
-                [numElementsIn], curDevice, dtype, scaleFactor
-            )
-
+            ipTensor = []
         # TODO: consider using this dictionary to check valid keywords rather than silently defaulting
 
         dispatchDict = {
@@ -1534,6 +1563,7 @@ class paramCommsBench(ABC):
                 curDevice,
                 dtype,
                 scaleFactor,
+                allocate,
             )
         else:
             # in-place case for other collectives such as allreduce, reduce, broadcast
@@ -1620,7 +1650,7 @@ class paramCommsBench(ABC):
         parser.add_argument(
             "--z",
             type=int,
-            default=1,
+            default=0,
             help="use blocking mode for collectives",
             choices=[0, 1],
         )  # 'sync/blocking' : 1 , 'async/non-blocking' : 0
