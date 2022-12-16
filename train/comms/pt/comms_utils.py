@@ -638,7 +638,6 @@ class paramProfile(record_function):
         if isinstance(self.timer, paramTimer):
             self.timer.incrTimeNS(self.intervalNS)
         logger.debug(f"{self.description} took {self.intervalNS} ns")
-        print(f"{self.description} took {self.intervalNS} ns")
         super().__exit__(exc_type, exc_value, traceback)
 
 

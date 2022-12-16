@@ -549,9 +549,6 @@ if not compute_only:
     comms_env_params = comms_utils.read_comms_env_vars()
     global traceBench
     traceBench = commsTraceReplay.commsTraceReplayBench()
-    traceBench.trace_file = \"{eg_input}\"
-    if "://" in \"{eg_input}\":
-            traceBench.use_remote_trace = True
 
     parser = argparse.ArgumentParser(
         description="PARAM-Comms Trace Replay Mode",
@@ -559,6 +556,7 @@ if not compute_only:
     )
 
     args = traceBench.readArgs(parser)
+    traceBench.setTraceFile(args, comms_env_params)
     traceBench.checkArgs(args)
 
     time.sleep(1)
