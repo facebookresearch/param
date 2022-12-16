@@ -529,9 +529,10 @@ class commsTraceReplayBench(paramCommsBench):
             )
 
         commsParams.dtype = self.dtypeMap[curComm.dtype]
-
-        # Allocate input/output tensors if first time replay, otherwise the previous ones.
-        if curComm.eg_id in self.eg_to_tensors:
+        if not curComm.eg_id:
+            return super().prepComm(curComm, commsParams)
+        elif curComm.eg_id in self.eg_to_tensors:
+            # Allocate input/output tensors if first time replay, otherwise the previous ones.
             super().prepComm(curComm, commsParams, False)
             (ipTensor, opTensor) = self.eg_to_tensors[curComm.eg_id]
         else:
