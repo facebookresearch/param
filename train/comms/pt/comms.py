@@ -121,6 +121,14 @@ class commsCollBench(paramCommsBench):
             help="benchmark only specified sizes, comma-separated",
         )  # COMMS mode, use specified sizes instead of increasing from small to large
         parser.add_argument(
+            "--data-types",
+            "--data-type",
+            type=lambda s: [str(item) for item in s.split(",") if item],
+            default="float32",
+            help="comma-separated list of datatypes, supports "
+            + str(self.supportedDtype),
+        )  # The comma-separated list of data-types
+        parser.add_argument(
             "--collective",
             "--collectives",
             type=str,
@@ -325,6 +333,20 @@ class commsCollBench(paramCommsBench):
                 args.z,
             )
 
+    def syncCommBenchDataTypes(self, args):
+        args.data_types = list(set(args.data_types))
+        if args.data_types is None:
+            # If args --data-types is missing, replace it with value passed for --data-type arg.
+            if args.data_type is not None:
+                args.data_types = [args.data_type]
+
+            # If both --data-types and --data-type are not present, args.data_types is set to default value for dtype(ie; "float32")
+            else:
+                key = [
+                    key for key, value in self.dtypeMap.items() if value == self.dtype
+                ][0]
+                args.data_types = [key]
+
     def checkArgs(self, args):
         super().checkArgs(args)
 
@@ -332,6 +354,18 @@ class commsCollBench(paramCommsBench):
 
         args.b = comms_utils.parsesize(args.b)
         args.e = comms_utils.parsesize(args.e)
+
+        if args.data_type not in self.supportedDtype:
+            logger.error(
+                f"Specified dtype: {args.data_type} is not one of the supported commstyle: {str(self.supportedDtype)}"
+            )
+            super().gracefulExit()
+        if args.data_type == "bfloat16" and args.backend == "gloo":
+            logger.error(
+                f"Specified dtype: {args.data_type} does not work with gloo backend"
+            )
+            super().gracefulExit()
+
         args.dtype = self.dtypeMap[args.data_type]
         element_size = torch.ones([1], dtype=args.dtype).element_size()
 
@@ -897,7 +931,7 @@ class commsCollBench(paramCommsBench):
 
         if self.collectiveArgs.collective == "pt2pt":
             fmt = (
-                "{:>15}{:>20}{:>10}{:>10}{:>25}{:>10}{:>10}{:>15}{:>15}{:>18}{:>18}"
+                "{:>40}{:>20}{:>10}{:>10}{:>25}{:>10}{:>10}{:>15}{:>15}{:>18}{:>18}"
                 + tflops_fmt
             )
             header += fmt.format(
@@ -916,7 +950,7 @@ class commsCollBench(paramCommsBench):
             )
         else:
             if commsParams.bitwidth < 32:
-                fmt = "-QUANT\t{:>15}{:>18}{:>25}{:>15}{:>15}{:>15}" + tflops_fmt
+                fmt = "-QUANT\t{:>40}{:>18}{:>25}{:>15}{:>15}{:>15}" + tflops_fmt
                 header += fmt.format(
                     "size (B)",
                     "nElementsPerRank",
@@ -928,7 +962,7 @@ class commsCollBench(paramCommsBench):
                 )
             elif not self.collectiveArgs.pair:
                 fmt = (
-                    "{:>15}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
+                    "{:>40}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
                     + tflops_fmt
                 )
                 header += fmt.format(
@@ -945,7 +979,7 @@ class commsCollBench(paramCommsBench):
                 )
             else:
                 fmt = (
-                    "{:>15}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
+                    "{:>40}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
                     + tflops_fmt
                 )
                 header += fmt.format(
@@ -1000,8 +1034,9 @@ class commsCollBench(paramCommsBench):
         dequant_p95 = np.percentile(dequantLatencyAcrossRanks, 95)
 
         print(
-            "\tCOMMS-RES-QUANT-{}{}\t{:>15}{:>18}{:>25}{:>15}{:>15}{:>15}".format(
+            "\tCOMMS-RES-QUANT-{}-{}{}\t{:>15}{:>18}{:>25}{:>15}{:>15}{:>15}".format(
                 self.collectiveArgs.collective,
+                self.collectiveArgs.data_type,
                 self.tag,
                 results["memSize"],
                 str("%d" % (results["numElements"])),
@@ -1094,12 +1129,13 @@ class commsCollBench(paramCommsBench):
 
         if not self.collectiveArgs.pair:
             fmt = (
-                "\tCOMMS-RES-{}{}{:>18}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
+                "\tCOMMS-RES-{}-{}{}{:>18}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
                 + tflops_fmt
             )
             print(
                 fmt.format(
                     self.collectiveArgs.collective,
+                    self.collectiveArgs.data_type,
                     self.tag,
                     results["memSize"],
                     str("%d" % (results["numElements"])),
@@ -1121,12 +1157,13 @@ class commsCollBench(paramCommsBench):
                     // commsParams.comms_world_info.world_size
                 )
             fmt = (
-                "\tCOMMS-RES-{}{}{:>18}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
+                "\tCOMMS-RES-{}-{}{}{:>18}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
                 + tflops_fmt
             )
             print(
                 fmt.format(
                     self.collectiveArgs.collective,
+                    self.collectiveArgs.data_type,
                     self.tag,
                     results["memSize"],
                     str("%d" % (results["numElements"])),
@@ -1197,8 +1234,9 @@ class commsCollBench(paramCommsBench):
         ping_pong_p95 = np.percentile(pingPongLatencyAcrossCommRanks, 95)
 
         print(
-            "\tCOMMS-RES-{}{}{:>15}{:>20}{:>10}{:>10}{:>25}{:>10}{:>10}{:>15}{:>15}{:>18}{:>18}".format(
+            "\tCOMMS-RES-{}-{}{}{:>15}{:>20}{:>10}{:>10}{:>25}{:>10}{:>10}{:>15}{:>15}{:>18}{:>18}".format(
                 self.collectiveArgs.collective,
+                self.collectiveArgs.data_type,
                 self.tag,
                 results["memSize"],
                 str("%.1f" % (ping_p50)),
@@ -1299,6 +1337,7 @@ class commsCollBench(paramCommsBench):
                     commsParams=commsParams,
                 )
 
+            self.collectiveArgs.data_type = commsParams.data_type
             if commsParams.size_start_profiler == curSize:
                 self.collectiveArgs.enable_profiler = comms_utils.startProfiler(
                     rank=self.backendFuncs.get_global_rank(),
@@ -1420,18 +1459,16 @@ def main():
     )
     args, leftovers = collBenchObj.readArgs(parser)
 
-    collBenchObj.checkArgs(args)
-
     comms_env_params = comms_utils.read_comms_env_vars()
     if comms_env_params["global_rank"] == 0:
         print("\t MPI environment: %s " % (str(comms_env_params)))
         print(
-            "\t backend: %s nw-stack: %s mode: %s args.dtype: %s args.b: %d args.e: %d args.f: %d args.z: %s args.master_ip: %s "
+            "\t backend: %s nw-stack: %s mode: %s args.data_types: %s args.b: %s args.e: %s args.f: %s args.z: %s args.master_ip: %s "
             % (
                 args.backend,
                 args.nw_stack,
                 args.mode,
-                args.dtype,
+                args.data_types,
                 args.b,
                 args.e,
                 args.f,
@@ -1440,26 +1477,34 @@ def main():
             )
         )
 
-    element_size = torch.ones([1], dtype=args.dtype).element_size()
-    comms_world_info = comms_utils.comms_world_info_holder(
-        args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
-    )
+    # Dedupes and syncs value for args.data_types based on args.data_type/args.dtype if not passed in args.
+    collBenchObj.syncCommBenchDataTypes(args)
 
-    if args.i is not None and (comms_world_info.world_size != len(args.i)):
-        logger.error("An input split must be provided for all participating ranks")
-        comms_utils.gracefulExit()
+    for data_type in args.data_types:
+        args.data_type = data_type
 
-    if args.o is not None and (comms_world_info.world_size != len(args.o)):
-        logger.error("An output split must be provided for all participating ranks")
-        comms_utils.gracefulExit()
+        collBenchObj.checkArgs(args)
 
-    commsParams = comms_utils.commsParamsHolder(
-        args, comms_world_info, element_size, collBenchObj.benchTime
-    )
+        element_size = torch.ones([1], dtype=args.dtype).element_size()
+        comms_world_info = comms_utils.comms_world_info_holder(
+            args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
+        )
 
-    if args.pair and args.overlap_pair_pgs:
-        commsParams.num_pgs = 2
-    collBenchObj.runBench(comms_world_info, commsParams)
+        if args.i is not None and (comms_world_info.world_size != len(args.i)):
+            logger.error("An input split must be provided for all participating ranks")
+            comms_utils.gracefulExit()
+
+        if args.o is not None and (comms_world_info.world_size != len(args.o)):
+            logger.error("An output split must be provided for all participating ranks")
+            comms_utils.gracefulExit()
+
+        commsParams = comms_utils.commsParamsHolder(
+            args, comms_world_info, element_size, collBenchObj.benchTime
+        )
+
+        if args.pair and args.overlap_pair_pgs:
+            commsParams.num_pgs = 2
+        collBenchObj.runBench(comms_world_info, commsParams)
 
 
 if __name__ == "__main__":

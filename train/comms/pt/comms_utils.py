@@ -65,7 +65,14 @@ def parsesize(ipValue: str) -> int:
     size = 0.0
 
     value = ""
-    if ipValue.find("G") != -1:
+
+    # This function would be invoked in a loop - once for each data-type. For  first iteration, ipValue is of type string but after that,
+    # the type of ipValue equals the returntype of prior iteration ie; int. Hence, type check is moved up as first condition.
+    if isinstance(ipValue, int) or ipValue.isnumeric():
+        units = 1
+        value = ipValue
+
+    elif ipValue.find("G") != -1:
         units = 1024 * 1024 * 1024
         unitIdx = ipValue.find("G")
         value = ipValue[0:unitIdx]
@@ -79,9 +86,7 @@ def parsesize(ipValue: str) -> int:
         units = 1024
         unitIdx = ipValue.find("K")
         value = ipValue[0:unitIdx]
-    elif ipValue.isnumeric():
-        units = 1
-        value = ipValue
+
     else:
         logger.error(f"Could not parse input size {ipValue}")
         gracefulExit()
@@ -977,6 +982,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.maxSize = int(args.e // self.element_size)
         self.inSplit = args.i
         self.outSplit = args.o
+        self.data_type = args.data_type
         self.stepFactor = args.f
         self.stepBytes = args.sb
         self.srcOrDst = args.root
@@ -1024,6 +1030,7 @@ class collectiveArgsHolder:
         self.num_pgs = 0
         self.device = {}
         self.world_size = 0
+        self.data_type = ""
 
         self.numIters = 0
         self.numWarmupIters = 0
@@ -1612,13 +1619,7 @@ class paramCommsBench(ABC):
         )  # The network stack to profile.
         parser.add_argument(
             "--dtype", type=torch.dtype, default=torch.float32
-        )  # will be overwritten based on args.data_type and dtypeMap.
-        parser.add_argument(
-            "--data-type",
-            type=str,
-            default="float32",
-            help="the base data type, supports " + str(self.supportedDtype),
-        )  # The data type
+        )  # will be overwritten based on args.data_types and dtypeMap.
         parser.add_argument(
             "--num-tpu-cores",
             type=int,
@@ -1695,16 +1696,6 @@ class paramCommsBench(ABC):
         if args.nw_stack not in self.supportedNwstacks:
             logger.error(
                 f"Specified backend: {args.nw_stack} is not one of the supported backends: {str(self.supportedNwstacks)}. Make sure the input is using the correct case."
-            )
-            gracefulExit()
-        if args.data_type not in self.supportedDtype:
-            logger.error(
-                f"Specified dtype: {args.data_type} is not one of the supported commstyle: {str(self.supportedDtype)}"
-            )
-            gracefulExit()
-        if args.data_type == "bfloat16" and args.backend == "gloo":
-            logger.error(
-                f"Specified dtype: {args.data_type} does not work with gloo backend"
             )
             gracefulExit()
         if args.num_tpu_cores not in self.supported_tpu_core_valuses:

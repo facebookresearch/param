@@ -725,7 +725,7 @@ class commsDLRMBench(paramCommsBench):
 
         parser.add_argument(
             "--embed-dtype", type=torch.dtype, default=torch.float32
-        )  # will be overwritten based on args.data_type and dtypeMap.
+        )  # will be overwritten based on args.embed_data_type and dtypeMap.
         parser.add_argument(
             "--embed-data-type",
             type=str,
@@ -740,7 +740,7 @@ class commsDLRMBench(paramCommsBench):
         if args.embed_data_type not in self.supportedDtype:
             print(
                 "\t ERROR: Specified dtype: %d is not one of the supported commstyle: %s"
-                % (args.data_type, str(self.supportedDtype))
+                % (args.embed_data_type, str(self.supportedDtype))
             )
             comms_utils.gracefulExit()
 
