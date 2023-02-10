@@ -456,7 +456,10 @@ class commsTraceReplayBench(paramCommsBench):
             logger.error("Unsupported balancing policy. Ignoring.")
 
     def prepComms(
-        self, curComm: commsArgs, commsParams: commsParamsHolderBase
+        self,
+        curComm: commsArgs,
+        commsParams: commsParamsHolderBase,
+        regenerateTensors: bool = True,
     ) -> (torch.Tensor, torch.Tensor):
         """
         Prepares the appropriate tensors for the current collective communication.
@@ -464,6 +467,7 @@ class commsTraceReplayBench(paramCommsBench):
         Args:
             curComm: The current communication that we are preparing the correct tensor for.
             commsParams: Holds the comms param arguments that will determine tensor attributes.
+            regenerateTensors: when a eg_id is being replayed multiple times, setting this to false will use temsors from previous runs
         Returns:
             (ipTensor, opTensor) if the current communication requires tensors, None otherwise.
         """
@@ -531,14 +535,17 @@ class commsTraceReplayBench(paramCommsBench):
         commsParams.dtype = self.dtypeMap[curComm.dtype]
         if not curComm.eg_id:
             return super().prepComm(curComm, commsParams)
-        elif curComm.eg_id in self.eg_to_tensors:
-            # Allocate input/output tensors if first time replay, otherwise the previous ones.
-            super().prepComm(curComm, commsParams, False)
-            (ipTensor, opTensor) = self.eg_to_tensors[curComm.eg_id]
-        else:
-            (ipTensor, opTensor) = super().prepComm(curComm, commsParams, True)
-            self.eg_to_tensors[curComm.eg_id] = (ipTensor, opTensor)
 
+        if regenerateTensors:
+            return super().prepComm(curComm, commsParams)
+        else:
+            if curComm.eg_id in self.eg_to_tensors:
+                # Allocate input/output tensors if first time replay, otherwise the previous ones.
+                super().prepComm(curComm, commsParams, False)
+                (ipTensor, opTensor) = self.eg_to_tensors[curComm.eg_id]
+            else:
+                (ipTensor, opTensor) = super().prepComm(curComm, commsParams, True)
+                self.eg_to_tensors[curComm.eg_id] = (ipTensor, opTensor)
         return (ipTensor, opTensor)
 
     def warmUpBench(self, commsParams: commsParamsHolderBase) -> None:
@@ -633,10 +640,9 @@ class commsTraceReplayBench(paramCommsBench):
             # skip not supported ops
 
             # if blocking, post outstanding ops and wait for them to complete. if nonblocking, just post op
-            if self.is_blocking:
-                self.backendFuncs.complete_accel_ops(
-                    self.collectiveArgs, devSync=self.is_blocking
-                )
+            self.backendFuncs.complete_accel_ops(
+                self.collectiveArgs, devSync=self.is_blocking
+            )
 
             # if nonblocking, then store the pair {reqID, future} so that we can wait on it later
             # check if req id is recorded in trace for backwards compatibility
@@ -767,9 +773,7 @@ class commsTraceReplayBench(paramCommsBench):
                 )
 
     def replaySingle(
-        self,
-        commsParams: commsParamsHolderBase,
-        eg_id: int,
+        self, commsParams: commsParamsHolderBase, eg_id: int, regenerateTensors: True
     ) -> torch.tensor:
         """
         Replay comms trace.
@@ -802,7 +806,7 @@ class commsTraceReplayBench(paramCommsBench):
                 (
                     self.collectiveArgs.ipTensor,
                     self.collectiveArgs.opTensor,
-                ) = self.prepComms(curComm, commsParams)
+                ) = self.prepComms(curComm, commsParams, regenerateTensors)
 
                 # send comm request to pytorch backend
                 (latency, global_latency) = self.runComms(

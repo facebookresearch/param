@@ -70,6 +70,7 @@ class ExgrReplayManager:
         self.commsBench = None
         self.comms_world_info = None
         self.commsParams = None
+        self.regenerate_tensors = None
 
         self.cuda = "cuda"
         self.device = torch.device(self.cuda)
@@ -871,14 +872,14 @@ class ExgrReplayManager:
                             code_str += "        with torch.cuda.stream(s1):\n"
                         start_special = True
                         code_str += f"            # node id: {node.id}\n"
-                        code_str += f"            _ = traceBench.replaySingle(commsParams, {node.id})\n"
+                        code_str += f"            _ = traceBench.replaySingle(commsParams, {node.id}, {self.regenerate_tensors})\n"
                         if "wait" in node.inputs or "barrier" in node.inputs:
                             if self.wait_delay != 0:
                                 code_str += f"            time.sleep({self.wait_delay / 1000.0})\n"
                     else:
                         start_special = False
                         code_str += f"        # node id: {node.id}\n"
-                        code_str += f"        _ = traceBench.replaySingle(commsParams, {node.id})\n"
+                        code_str += f"        _ = traceBench.replaySingle(commsParams, {node.id}, {self.regenerate_tensors})\n"
                         if "wait" in node.inputs or "barrier" in node.inputs:
                             if self.wait_delay != 0:
                                 code_str += (
@@ -1062,7 +1063,9 @@ class ExgrReplayManager:
 
     def run_op(self, node, iter):
         if node.name == "record_param_comms" and not self.compute_only:
-            opTensor = self.commsBench.replaySingle(self.commsParams, node.id)
+            opTensor = self.commsBench.replaySingle(
+                self.commsParams, node.id, self.regenerate_tensors
+            )
             # Wait, barrier has no output tensor.
             if "wait" in node.inputs or "barrier" in node.inputs:
                 if self.wait_delay != 0:
@@ -1597,6 +1600,12 @@ class ExgrReplayManager:
             action="store_true",
             default=False,
             help="Replay on cpu.",
+        )
+        parser.add_argument(
+            "--regenerate_tensors",
+            action="store_true",
+            default=True,
+            help="when a eg_id is being replayed multiple times, setting this to false will use temsors from previous runs.",
         )
         self.args, _ = parser.parse_known_args()
 
