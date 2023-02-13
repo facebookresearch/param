@@ -173,7 +173,7 @@ def main():
         " eg: L2 misses, L1 bank conflicts.\n "
         "Additionally, Two special metrics are useful for measuring FLOPS\n"
         "-  kineto__cuda_core_flops = CUDA floating point op counts\n"
-        "-  kineto__tensor_core_insts = Tensor core op couunts\n",
+        "-  kineto__tensor_core_insts = Tensor core op counts\n",
     )
     parser.add_argument(
         "--cupti-profiler-measure-per-kernel",
@@ -318,10 +318,9 @@ def main():
             use_kineto=True,
             record_shapes=False,
             experimental_config=cupti_profiler_config,
-            # CUPTI Profiler mode is not allowed when also instrumenting CPU operators,
             # use_cpu enables profiling and recodring of CPU pytorch operators.
-            # Thus this needs to be disabled while using CUPTI profiler.
-            use_cpu=not args.cupti_profiler,
+            # This is useful in CUPTI profiler mode if we are measuring per GPU kernel metrics.
+            use_cpu=(not args.cupti_profiler) or args.cupti_profiler_measure_per_kernel,
         ) as prof:
             with record_function(f"[param|{run_options['device']}]"):
                 benchmark.run()
