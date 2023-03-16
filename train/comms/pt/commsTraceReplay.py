@@ -167,9 +167,9 @@ class commsTraceReplayBench(paramCommsBench):
             help="Only replay first N operations (0 means no limit)",
         )
         parser.add_argument(
-            "--no-warm-up",
+            "--do-warm-up",
             action="store_true",
-            default=False,
+            default=self.do_warm_up,
             help="Toggle to disable performing extra replaying for warm-up",
         )
         parser.add_argument(
@@ -208,7 +208,7 @@ class commsTraceReplayBench(paramCommsBench):
         parser.add_argument(
             "--num-replays",
             type=int,
-            default=1,
+            default=self.num_replays,
             help="Number of times to replay the given trace, used to get more accurate replay for small traces.",
         )
         args, _ = parser.parse_known_args()
@@ -567,9 +567,8 @@ class commsTraceReplayBench(paramCommsBench):
                 logger.debug(
                     f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(commEntry)}\n"
                 )
-                print(
-                    f"[Warm-up][{cnt} / {self.max_msg_cnt}] Replaying {commName:>10}...",
-                    end="\r",
+                logger.info(
+                    f"[Warm-up][{cnt} / {self.max_msg_cnt}] Replaying {commName:>10}..."
                 )
 
             # read fields and prepare the tensors
@@ -637,7 +636,11 @@ class commsTraceReplayBench(paramCommsBench):
                 retObj = self.backendFuncs.collectiveFunc[collName](
                     self.collectiveArgs, retFlag=True
                 )
-            # skip not supported ops
+            else:
+                # skip not supported ops
+                logger.warn(
+                    f"Unsupported collective name: {collName}. Skipping replaying the collective"
+                )
 
             # if blocking, post outstanding ops and wait for them to complete. if nonblocking, just post op
             self.backendFuncs.complete_accel_ops(
@@ -704,9 +707,8 @@ class commsTraceReplayBench(paramCommsBench):
 
             if self.backendFuncs.get_global_rank() == 0:
                 logger.debug(
-                    f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(curComm.comms)}\n"
+                    f"[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {str(curComm.comms)} "
                 )
-                print(f"[{cnt} / {self.max_msg_cnt}]", end="\r")
 
             # read fields and prepare the tensors
             (
@@ -887,7 +889,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.backendFuncs.sync_barrier(self.collectiveArgs)
 
         if self.backendFuncs.get_global_rank() == 0:
-            print(
+            logger.info(
                 f"\n+ {self.max_msg_cnt} messages in the trace...replaying (if present) {list(self.allowList)}"
             )
             for coll, sizes in self.collInMsgSizes.items():
@@ -896,7 +898,7 @@ class commsTraceReplayBench(paramCommsBench):
         traceStartTime = time.monotonic_ns()
         for i in range(self.num_replays):
             if self.backendFuncs.get_global_rank() == 0:
-                print(f"Replay #{i}")
+                logger.info(f"Replay #{i}")
 
             # replay comms trace
             self.replayTrace(commsParams)
@@ -932,9 +934,6 @@ class commsTraceReplayBench(paramCommsBench):
         logger.info(
             f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}"
         )
-        self.comm_size = comms_world_info.world_size
-        self.global_rank = comms_world_info.global_rank
-
         self.readTrace(remotePath=self.trace_file)
 
         self.initTraceStat()
@@ -944,7 +943,7 @@ class commsTraceReplayBench(paramCommsBench):
             # start benchmark
             self.benchTime(commsParams)
         elif comms_world_info.global_rank == 0:
-            print(
+            logger.info(
                 "+ Dry run mode...No replaying, Only Rank 0 read and analyze the trace..."
             )
 
@@ -982,9 +981,6 @@ class commsTraceReplayBench(paramCommsBench):
         logger.info(
             f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}"
         )
-        self.comm_size = comms_world_info.world_size
-        self.global_rank = comms_world_info.global_rank
-
         self.readTrace(remotePath=self.trace_file)
 
         self.initTraceStat()
@@ -1082,7 +1078,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.shrink = args.auto_shrink
         self.max_msg_cnt = args.max_msg_cnt
         self.is_blocking = args.z
-        self.do_warm_up = not args.no_warm_up
+        self.do_warm_up = args.do_warm_up
         self.allowList = args.allow_ops
         self.out_path = args.output_path
         self.colls_per_batch = args.colls_per_batch
@@ -1208,7 +1204,6 @@ def main() -> None:
     traceBench.setTraceFile(args, comms_env_params)
     traceBench.checkArgs(args)
 
-    time.sleep(1)
     comms_world_info = comms_utils.comms_world_info_holder(
         args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
     )

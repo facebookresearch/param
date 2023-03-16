@@ -1651,7 +1651,7 @@ class paramCommsBench(ABC):
             "--z",
             type=int,
             default=0,
-            help="use blocking mode for collectives",
+            help="use blocking/non-blocking mode for collectives",
             choices=[0, 1],
         )  # 'sync/blocking' : 1 , 'async/non-blocking' : 0
         parser.add_argument(
