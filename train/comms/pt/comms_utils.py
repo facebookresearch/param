@@ -1053,7 +1053,7 @@ class collectiveArgsHolder:
         self.emb = None
         self.embRequests = None
         self.emb_dim = 0
-        self.num_emb_tables_batched = 0
+        self.num_emb_tables_batched = -1
         self.num_emb_ops = 0
         self.BTBlockSize = {}
         self.LookupOut = {}

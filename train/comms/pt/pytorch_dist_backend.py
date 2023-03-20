@@ -192,7 +192,7 @@ class PyTorchDistBackend(backendFunctions):
         if collectiveArgs.all2all_qcomm and not pair:
             collectiveArgs.use_ext_dist = self.use_ext_dist
             work = all_to_all_internal(collectiveArgs)
-        elif collectiveArgs.num_emb_tables_batched != -1 and self.use_ext_dist:
+        elif collectiveArgs.num_emb_tables_batched > 0 and self.use_ext_dist:
             work: List[extend_distributed.Request] = []
             dim_sum_per_rank = [
                 collectiveArgs.num_emb_tables_batched * collectiveArgs.emb_dim
@@ -214,7 +214,7 @@ class PyTorchDistBackend(backendFunctions):
             for r in work:
                 r.wait()
         else:
-            if collectiveArgs.num_emb_tables_batched != -1:
+            if collectiveArgs.num_emb_tables_batched > 0:
                 logger.warn(
                     "Not using batched embedding tables because extend distributed package not in use"
                 )
