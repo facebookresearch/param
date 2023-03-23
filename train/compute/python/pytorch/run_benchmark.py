@@ -266,7 +266,7 @@ def main():
         args.cupti_profiler = False
     if args.cupti_profiler and not args.profile:
         logger.warning("Enabling pytorch profiler as --cupti_profiler was added")
-        args.profiler = True
+        args.profile = True
 
     run_options["cmd_args"] = args.__dict__
 
