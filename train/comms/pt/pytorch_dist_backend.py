@@ -860,7 +860,7 @@ class PyTorchDistBackend(backendFunctions):
             ):  # this is the default group, it has already been created
                 pg = self.get_default_group()
             else:
-                pg = self.get_new_pg(ranks=group_ranks, backend=backend)
+                pg = self.get_new_pg(group_ranks=group_ranks, backend=backend)
             self.groups[pg_id] = pg
 
         if len(self.groups) == 0:  # if no groups were provided, use default group
