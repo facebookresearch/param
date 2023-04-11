@@ -688,6 +688,9 @@ class PyTorchDistBackend(backendFunctions):
     def get_world_size(self):
         return self.comms_world_info.world_size
 
+    def get_group_rank(self, group):
+        return dist.get_rank(group)
+
     def get_device(self):
         """get current device: 'cpu' or 'cuda'"""
         # TODO: this is a temporary workaround; need to unify the type of commsParams in comms and dlrm

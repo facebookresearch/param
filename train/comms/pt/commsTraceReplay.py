@@ -462,6 +462,26 @@ class commsTraceReplayBench(paramCommsBench):
         self.collectiveArgs.group = self.backendFuncs.get_default_group()
         self.world_size = self.backendFuncs.get_world_size()
 
+    def getCommGroupInfo(
+        self, curComm: commsArgs, commsParams: commsParamsHolderBase
+    ) -> (int, str):
+        """
+        Return the group infomation of the current process group
+        including group rank of the local process, and a description string for logging purpose.
+        A -1 group rank indicates an invalid process group on the local process.
+        """
+
+        # If a PG is associated, the process needs to be included in the PG (group_rank != -1);
+        # otherwise invalid communication to the local process.
+        if curComm.pgId is not None and not self.shrink:
+            group = self.collectiveArgs.groups[curComm.pgId]
+            groupDesc = f"PG: id={curComm.pgId}, world_ranks={commsParams.groupRanks[curComm.pgId]}"
+        else:
+            group = self.backendFuncs.get_default_group()
+            groupDesc = "PG: default group"
+
+        return (self.backendFuncs.get_group_rank(group), groupDesc)
+
     def prepComms(
         self,
         curComm: commsArgs,
@@ -568,14 +588,15 @@ class commsTraceReplayBench(paramCommsBench):
             # Make a copy of the comm to not modify it before real run.
             commEntry = copy.deepcopy(curComm)
             commName = paramToCommName(commEntry.comms)
-            if commName not in self.allowList:
+
+            (groupRank, groupDesc) = self.getCommGroupInfo(commEntry, commsParams)
+            # Skip comm if the local process doesn't belong to the PG or encounter an unexpected collective
+            if commName not in self.allowList or groupRank == -1:
                 continue
-            if self.backendFuncs.get_global_rank() == 0:
-                logger.debug(
-                    f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(commEntry)}\n"
-                )
+
+            if groupRank == 0:
                 logger.info(
-                    f"[Warm-up][{cnt} / {self.max_msg_cnt}] Replaying {commName:>10}..."
+                    f"[Warm-up][{cnt} / {self.max_msg_cnt}] Replaying {commName:>10} with {groupDesc}..."
                 )
 
             # read fields and prepare the tensors
@@ -704,7 +725,10 @@ class commsTraceReplayBench(paramCommsBench):
         startTime = time.monotonic_ns()
         for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
             collName = paramToCommName(curComm.comms)
-            if collName not in self.allowList:
+
+            (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
+            # Skip comm if the local process doesn't belong to the PG or encounter an unexpected collective
+            if collName not in self.allowList or groupRank == -1:
                 continue
 
             curBlocks = curComm.markerStack if curComm.markerStack is not None else []
@@ -712,9 +736,9 @@ class commsTraceReplayBench(paramCommsBench):
                 " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
             )
 
-            if self.backendFuncs.get_global_rank() == 0:
-                logger.debug(
-                    f"[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {str(curComm.comms)} "
+            if groupRank == 0:
+                logger.info(
+                    f"[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {str(curComm.comms)} with {groupDesc}"
                 )
 
             # read fields and prepare the tensors
