@@ -455,6 +455,13 @@ class commsTraceReplayBench(paramCommsBench):
         else:
             logger.error("Unsupported balancing policy. Ignoring.")
 
+    def resetComms(self):
+        """
+        Reset collective group to default PG
+        """
+        self.collectiveArgs.group = self.backendFuncs.get_default_group()
+        self.world_size = self.backendFuncs.get_world_size()
+
     def prepComms(
         self,
         curComm: commsArgs,
@@ -884,6 +891,7 @@ class commsTraceReplayBench(paramCommsBench):
         # warm-up
         if self.do_warm_up:
             self.warmUpBench(commsParams)
+        self.resetComms()
 
         # sync everything before starting real runs
         self.backendFuncs.sync_barrier(self.collectiveArgs)
@@ -902,6 +910,7 @@ class commsTraceReplayBench(paramCommsBench):
 
             # replay comms trace
             self.replayTrace(commsParams)
+            self.resetComms()
 
             # make sure all ops are completed, in the case of nonblocking, this will enqueue all remaining operations that did not have a wait op
             self.backendFuncs.sync_barrier(self.collectiveArgs)
