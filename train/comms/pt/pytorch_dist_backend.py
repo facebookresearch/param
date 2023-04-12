@@ -77,17 +77,17 @@ class PyTorchDistBackend(backendFunctions):
 
         hello_msg = f"[Rank {global_rank:3}] host {myhost}, device: {device}, local_rank: {local_rank} world_size: {world_size}, master_ip: {master_ip}"
 
-        try:
-            from mpi4py import MPI
-        except ImportError:
-            print(hello_msg)
-        else:
-            # if mpi4py exists, use mpi to collect info and print prettier message :)
-            comm = MPI.COMM_WORLD
+        self.store_set(f"hello_msg_{global_rank}", hello_msg)
+        if global_rank == 0:
+            for rank in range(0, world_size):
+                rank_hello_msg = self.store_get(f"hello_msg_{rank}").decode()
+                print(f"Hello from Rank {rank}: {rank_hello_msg}")
 
-            all_hello_msgs = comm.gather(hello_msg, root=0)
-            if global_rank == 0:
-                print(all_hello_msgs)
+    def store_get(self, key):
+        return self.tcp_store.get(key)
+
+    def store_set(self, key, val):
+        self.tcp_store.set(key, val)
 
     # Collectives
     def all_reduce(self, collectiveArgs, retFlag=False, pair=False):
@@ -823,6 +823,13 @@ class PyTorchDistBackend(backendFunctions):
         else:
             return dist.new_group(ranks=group_ranks, backend=backend)
 
+    def initialize_tcpstore(self, master_ip, master_port):
+        global_rank = self.get_global_rank()
+        world_size = self.get_world_size()
+        self.tcp_store = dist.TCPStore(
+            master_ip, int(master_port), world_size, is_master=(global_rank == 0)
+        )
+
     def initialize_backend(self, master_ip, master_port, backend="gloo"):
         # Set CUDA device before initializing backend
         # Required for backends that don't do lazy initialization, e.g. UCC
@@ -830,6 +837,9 @@ class PyTorchDistBackend(backendFunctions):
 
         global_rank = self.get_global_rank()
         world_size = self.get_world_size()
+
+        # TCP store initializaiton for generic CPU data
+        self.initialize_tcpstore(master_ip, master_port)
 
         # Torch initializaiton
         # NOTE: MASTER_ADDR and MASTER_PORT should be set already in `comms_utils.py`
@@ -847,7 +857,9 @@ class PyTorchDistBackend(backendFunctions):
 
         if not dist.is_initialized():
             # init default process group if not yet initialized or extend_distributed failed or is disabled
-            dist.init_process_group(backend, rank=global_rank, world_size=world_size)
+            dist.init_process_group(
+                backend, rank=global_rank, world_size=world_size, store=self.tcp_store
+            )
 
         self.groups = {}
 
