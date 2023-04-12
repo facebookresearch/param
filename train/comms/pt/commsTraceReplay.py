@@ -967,7 +967,7 @@ class commsTraceReplayBench(paramCommsBench):
         logger.info(
             f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}"
         )
-        self.readTrace(remotePath=self.trace_file)
+        self.readTrace(remotePath=self.trace_file, rank=comms_world_info.global_rank)
 
         self.initTraceStat()
         # only setup and perform collectives if not dry run mode
@@ -1014,7 +1014,7 @@ class commsTraceReplayBench(paramCommsBench):
         logger.info(
             f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}"
         )
-        self.readTrace(remotePath=self.trace_file)
+        self.readTrace(remotePath=self.trace_file, rank=comms_world_info.global_rank)
 
         self.initTraceStat()
         # only setup and perform collectives if not dry run mode
@@ -1124,17 +1124,12 @@ class commsTraceReplayBench(paramCommsBench):
 
     def setTraceFile(self, args, comms_env_params):
         # TODO: file name may get changed later
-        if args.use_one_trace:
-            self.trace_file = args.trace_path
-        else:
-            self.trace_file = (
-                f"{args.trace_path}/rank{comms_env_params['global_rank']}.json"
-            )
+        self.trace_file = args.trace_path
         # assume the prefix is always "xxx://" when reading remote trace, e.g., http://xxx
         if "://" in args.trace_path:
             self.use_remote_trace = True
 
-    def readTrace(self, remotePath: str) -> None:
+    def readTrace(self, remotePath: str, rank: int) -> None:
         """
         Read trace file from remote server or local disk. This will also convert/parse traces files if needed.
 
@@ -1144,9 +1139,8 @@ class commsTraceReplayBench(paramCommsBench):
             None
         """
         if self.use_remote_trace:
-            protocol = remotePath.split("://", 2)[
-                0
-            ]  # format "<protocol prefix>://<url or path>"
+            # format "<protocol prefix>://<url or path>"
+            protocol = remotePath.split("://", 2)[0]
             raw_comms_trace = []
             if protocol in ("http", "https", "ftp"):
                 raw_comms_trace = comms_utils.commonUrlRead(remotePath=remotePath)
@@ -1158,7 +1152,9 @@ class commsTraceReplayBench(paramCommsBench):
                         f"Not supported protocol for the URL provided {remotePath}"
                     )
                 else:
-                    raw_comms_trace = readFbRemoteTrace(remotePath=remotePath)
+                    raw_comms_trace = readFbRemoteTrace(
+                        remotePath=remotePath, rank=rank
+                    )
 
             self.comms_trace = json.load(raw_comms_trace)
         else:
