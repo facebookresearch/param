@@ -98,7 +98,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.is_blocking = True
         self.do_warm_up = True
         self.allowList = ""
-        self.out_path = "/tmp/paramReplayedTrace"
+        self.out_path = ""
         self.colls_per_batch = -1
         self.use_timestamp = False
         self.num_replays = 1
