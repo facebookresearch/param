@@ -838,9 +838,6 @@ class PyTorchDistBackend(backendFunctions):
         global_rank = self.get_global_rank()
         world_size = self.get_world_size()
 
-        # TCP store initializaiton for generic CPU data
-        self.initialize_tcpstore(master_ip, master_port)
-
         # Torch initializaiton
         # NOTE: MASTER_ADDR and MASTER_PORT should be set already in `comms_utils.py`
         if world_size > 0:
@@ -852,8 +849,13 @@ class PyTorchDistBackend(backendFunctions):
             extend_distributed.init_distributed(
                 rank=global_rank, size=world_size, backend=backend
             )
+            self.tcp_store = extend_distributed.my_store
         else:
             self.use_ext_dist = False
+
+        if self.tcp_store is None:
+            # TCP store initializaiton for generic CPU data
+            self.initialize_tcpstore(master_ip, master_port)
 
         if not dist.is_initialized():
             # init default process group if not yet initialized or extend_distributed failed or is disabled
