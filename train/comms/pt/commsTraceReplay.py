@@ -91,6 +91,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.comms_trace = {}
         self.trace_file = ""
         self.use_remote_trace = False
+        self.use_one_trace = False
         self.is_dry_run = False
         self.shrink = False
         self.max_msg_cnt = 0  # 0 means no limit
@@ -1126,6 +1127,8 @@ class commsTraceReplayBench(paramCommsBench):
         # TODO: file name may get changed later
         self.trace_file = args.trace_path
         # assume the prefix is always "xxx://" when reading remote trace, e.g., http://xxx
+        if args.use_one_trace:
+            self.use_one_trace = True
         if "://" in args.trace_path:
             self.use_remote_trace = True
 
@@ -1153,7 +1156,9 @@ class commsTraceReplayBench(paramCommsBench):
                     )
                 else:
                     raw_comms_trace = readFbRemoteTrace(
-                        remotePath=remotePath, rank=rank
+                        remotePath=remotePath,
+                        rank=rank,
+                        full_trace_path=self.use_one_trace,
                     )
 
             self.comms_trace = json.load(raw_comms_trace)
