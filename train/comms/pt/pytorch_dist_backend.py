@@ -863,14 +863,22 @@ class PyTorchDistBackend(backendFunctions):
                 backend, rank=global_rank, world_size=world_size, store=self.tcp_store
             )
 
+        # default 1 group, maybe overwritten by user created groups via initialize_groups
         self.groups = {}
+        self.groups[0] = self.get_default_group()
+        self.num_pgs = len(self.groups)
+        self.round_robin_group = cycle(list(self.groups.values()))
+
+    def initialize_groups(self, backend="gloo"):
+        groups = {}
+        world_size = self.get_world_size()
 
         # create additional groups
         for pg_id, group_ranks in self.commsParams.groupRanks.items():
             if (
                 len(group_ranks) > world_size
             ):  # this means that --auto-shrink is enabled, only use default pg
-                self.groups.clear()
+                groups.clear()
                 break
             if (
                 len(group_ranks) == world_size
@@ -878,10 +886,11 @@ class PyTorchDistBackend(backendFunctions):
                 pg = self.get_default_group()
             else:
                 pg = self.get_new_pg(group_ranks=group_ranks, backend=backend)
-            self.groups[pg_id] = pg
+            groups[pg_id] = pg
 
-        if len(self.groups) == 0:  # if no groups were provided, use default group
-            self.groups[0] = self.get_default_group()
+        # if additional groups are created, overwrite the default groups list
+        if len(groups):
+            self.groups = groups
 
         self.num_pgs = len(self.groups)
 

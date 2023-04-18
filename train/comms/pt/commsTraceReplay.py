@@ -965,6 +965,9 @@ class commsTraceReplayBench(paramCommsBench):
         Returns:
             None
         """
+        if not self.is_dry_run:
+            self.initBackend(comms_world_info, commsParams)
+
         logger.info(
             f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}"
         )
@@ -973,7 +976,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.initTraceStat()
         # only setup and perform collectives if not dry run mode
         if not self.is_dry_run:
-            self.setBench(comms_world_info, commsParams)
+            self.setBench(commsParams)
             # start benchmark
             self.benchTime(commsParams)
         elif comms_world_info.global_rank == 0:
@@ -1020,15 +1023,15 @@ class commsTraceReplayBench(paramCommsBench):
         self.initTraceStat()
         # only setup and perform collectives if not dry run mode
         if not self.is_dry_run:
-            self.setBench(comms_world_info, commsParams)
+            self.setBench(commsParams)
 
-    def setBench(
+    def initBackend(
         self,
         comms_world_info: comms_world_info_holder,
         commsParams: commsParamsHolderBase,
     ) -> None:
         """
-        Initializes the replay backend.
+        Initializes backend.
 
         Args:
             comms_world_info: Holds current environment information.
@@ -1036,12 +1039,6 @@ class commsTraceReplayBench(paramCommsBench):
         Returns:
             None
         """
-        # init process groups
-        for curComm in self.comms_trace[: self.max_msg_cnt]:
-            # record process group info
-            if curComm.comms == "init":
-                commsParams.groupRanks[curComm.pgId] = curComm.groupRanks
-
         # init backend and corresponding function pointers
         if commsParams.nw_stack == "pytorch-dist":
             from pytorch_dist_backend import PyTorchDistBackend
@@ -1061,6 +1058,25 @@ class commsTraceReplayBench(paramCommsBench):
             backend=commsParams.backend,
         )
         self.backendFuncs.sayHello()
+
+    def setBench(
+        self,
+        commsParams: commsParamsHolderBase,
+    ) -> None:
+        """
+        Initializes replay basic collective info.
+
+        Args:
+            commsParams: Holds comms params to pass into backend for initialization.
+        Returns:
+            None
+        """
+        # init process groups
+        for curComm in self.comms_trace[: self.max_msg_cnt]:
+            # record process group info
+            if curComm.comms == "init":
+                commsParams.groupRanks[curComm.pgId] = curComm.groupRanks
+        self.backendFuncs.initialize_groups(commsParams.backend)
 
         # set basic collective info
         (
