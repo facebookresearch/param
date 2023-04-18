@@ -672,6 +672,7 @@ class backendFunctions(ABC):
     """Abstract base class, provides common abstraction for all the backends."""
 
     def __init__(self) -> None:
+        self.tcp_store = None
         self.collectiveFunc = {
             "all_to_all": self.all_to_all,
             "all_to_allv": self.all_to_allv,
