@@ -91,6 +91,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.trace_file = ""
         self.use_remote_trace = False
         self.use_one_trace = False
+        self.disable_parallel_read = False
         self.is_dry_run = False
         self.shrink = False
         self.max_msg_cnt = 0  # 0 means no limit
@@ -147,6 +148,13 @@ class commsTraceReplayBench(paramCommsBench):
             action="store_true",
             default=False,
             help="Toggle to use only one trace for all ranks",
+        )
+        parser.add_argument(
+            "--disable-parallel-read",
+            action="store_true",
+            default=False,
+            help="Disable parallel read from input trace path. Instead, rank 0 will read and broadcast to other ranks. "
+            + "Valid only when `--use-one-trace` is used.",
         )
         parser.add_argument(
             "--dry-run",
@@ -231,6 +239,11 @@ class commsTraceReplayBench(paramCommsBench):
         ):
             raise ValueError(
                 f"Trace file {self.trace_file} does not exist or is not a file! Please specify the correct path by using --trace-path."
+            )
+            comms_utils.gracefulExit()
+        if args.disable_parallel_read and not args.use_one_trace:
+            raise ValueError(
+                "--disable-parallel-read is valid only when --use-one-trace is used."
             )
             comms_utils.gracefulExit()
 
@@ -1134,6 +1147,8 @@ class commsTraceReplayBench(paramCommsBench):
         self.use_timestamp = args.use_timestamp
         self.rebalance_policy = args.rebalance_policy.lower()
         self.num_replays = args.num_replays
+        self.disable_parallel_read = args.disable_parallel_read
+        self.use_one_trace = args.use_one_trace
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
@@ -1142,14 +1157,12 @@ class commsTraceReplayBench(paramCommsBench):
         # TODO: file name may get changed later
         self.trace_file = args.trace_path
         # assume the prefix is always "xxx://" when reading remote trace, e.g., http://xxx
-        if args.use_one_trace:
-            self.use_one_trace = True
         if "://" in args.trace_path:
             self.use_remote_trace = True
 
-    def readTrace(self, remotePath: str, rank: int) -> None:
+    def readRawTrace(self, remotePath: str, rank: int) -> None:
         """
-        Read trace file from remote server or local disk. This will also convert/parse traces files if needed.
+        Read trace file from remote server or local disk.
 
         Args:
             remotePath: Path to read from remotely if use_remote_trace is enabled.
@@ -1181,6 +1194,37 @@ class commsTraceReplayBench(paramCommsBench):
             # read the json file from local disk
             with open(self.trace_file) as f:
                 self.comms_trace = json.load(f)
+
+    def readTrace(self, remotePath: str, rank: int) -> None:
+        """
+        Read trace file and convert/parse traces files.
+
+        Args:
+            remotePath: Path to read from remotely if use_remote_trace is enabled.
+            globalRead: Whether to read trace on all ranks
+        Returns:
+            None
+        """
+
+        if self.disable_parallel_read and not self.is_dry_run:
+            # checkArgs already checks whether disable_parallel_read is used together with use_one_trace. Sanity check here.
+            assert self.use_one_trace
+            # Rank 0 loads trace and broadcast
+            if rank == 0:
+                logger.info(f"[Rank-{rank}] reading trace from {remotePath}")
+                self.readRawTrace(remotePath=remotePath, rank=rank)
+
+                comms_trace_str = json.dumps(self.comms_trace)
+                logger.info(f"[Rank-{rank}] broadcasting comms_trace")
+                self.backendFuncs.store_set(remotePath, comms_trace_str)
+
+            logger.info(f"[Rank-{rank}] receiving comms_trace with key {remotePath}")
+            comms_trace_str = self.backendFuncs.store_get(remotePath)
+            self.comms_trace = json.loads(comms_trace_str.decode())
+            logger.info(f"[Rank-{rank}] received trace")
+        else:
+            # By default everyone loads trace in parallel
+            self.readRawTrace(remotePath=remotePath, rank=rank)
 
         # Convert trace to comms trace.
         try:
