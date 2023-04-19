@@ -23,10 +23,9 @@ from comms_utils import (
     commsArgs,
     commsParamsHolderBase,
     paramCommsBench,
-    paramProfile,
-    paramTimer,
     paramToCommName,
 )
+from param_profile import paramProfile, paramTimer
 
 logger = logging.getLogger(__name__)
 
@@ -1204,7 +1203,7 @@ def extractCommsInfo(in_trace: List[Dict]) -> List[commsArgs]:
     newCommsTrace = []
     for cnt, curComm in enumerate(in_trace):
         newComm = commsArgs()
-        newComm.comms = comms_utils.paramToCommName(curComm["comms"].lower())
+        newComm.comms = paramToCommName(curComm["comms"].lower())
         newComm.seqnum = cnt
         if "req" in curComm:
             newComm.req = curComm["req"]
@@ -1254,10 +1253,10 @@ def main() -> None:
     traceBench.setTraceFile(args, comms_env_params)
     traceBench.checkArgs(args)
 
-    comms_world_info = comms_utils.comms_world_info_holder(
+    comms_world_info = comms_world_info_holder(
         args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
     )
-    commsParams = comms_utils.commsParamsHolderBase(args)
+    commsParams = commsParamsHolderBase(args)
     traceBench.initBench(commsParams, args)
     traceBench.runBench(comms_world_info, commsParams)
 

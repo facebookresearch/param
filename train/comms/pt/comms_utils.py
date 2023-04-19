@@ -15,18 +15,16 @@ import logging
 import os
 import random
 import sys
-import time
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, Namespace
 from collections import OrderedDict
 from contextlib import ContextDecorator
-from dataclasses import dataclass
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
+from param_profile import paramTimer
 from torch._C._distributed_c10d import ProcessGroup
-from torch.autograd.profiler import record_function
 
 random.seed()
 
@@ -508,27 +506,6 @@ def sampleProfiler(stop: bool = False) -> None:
         logger.debug("Internal profiler is not available, skip...")
 
 
-@dataclass
-class paramTimer:
-    """
-    Timer for param profiler.
-    """
-
-    elapsedTimeNS: float = 0.0  # keeping time in NS
-
-    def reset(self, newTime: float = 0.0) -> None:
-        self.elapsedTimeNS = newTime
-
-    def incrTimeNS(self, timeNS: float) -> None:
-        self.elapsedTimeNS += timeNS
-
-    def getTimeUS(self) -> float:
-        return self.elapsedTimeNS / 1e3
-
-    def getTimeNS(self) -> float:
-        return self.elapsedTimeNS
-
-
 class commsArgs:
     """
     This class contains all of the args that we can use to perform a single collective.
@@ -621,29 +598,6 @@ class commsArgs:
         Print out the commsArgs in human readable format.
         """
         return self.__dict__.__str__()
-
-
-class paramProfile(record_function):
-    """Inherit from PyTorch profiler to enable autoguard profiling while measuring the time interval in PARAM"""
-
-    def __init__(self, timer: paramTimer = None, description: str = "") -> None:
-        self.description = description
-        self.timer = timer
-        super().__init__(name=description)
-
-    def __enter__(self) -> paramProfile:
-        super().__enter__()
-        self.start = time.monotonic()
-        return self
-
-    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
-        self.end = time.monotonic()
-        self.intervalNS = (self.end - self.start) * 1e9  # keeping time in NS
-        # if given a valid paramTimer object, directly update the measured time interval
-        if isinstance(self.timer, paramTimer):
-            self.timer.incrTimeNS(self.intervalNS)
-        logger.debug(f"{self.description} took {self.intervalNS} ns")
-        super().__exit__(exc_type, exc_value, traceback)
 
 
 class paramStreamGuard(ContextDecorator):

@@ -12,7 +12,8 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from comms_utils import backendFunctions, collectiveArgsHolder, paramProfile
+from comms_utils import backendFunctions, collectiveArgsHolder
+from param_profile import paramProfile
 
 try:
     from internals import all_to_all_internal, all_to_allv_internal, extend_distributed
