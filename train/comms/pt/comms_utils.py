@@ -885,6 +885,7 @@ class commsParamsHolderBase:
             {}
         )  # record what ranks each process group will work on {pg_id, ranks}
         self.use_ext_dist = args.use_ext_dist
+        self.size_from_trace = False
 
 
 class commsDlrmParamsHolder(commsParamsHolderBase):
@@ -1268,23 +1269,26 @@ class paramCommsBench(ABC):
     ) -> (torch.Tensor, torch.Tensor):
         opTensor = []
 
+        if not commsParams.size_from_trace:
+            numElementsIn = numElementsIn // world_size
+
         if allocate:
             if commsParams.dcheck == 1:
                 ipTensor = self.backendFuncs.alloc_ones(
-                    [numElementsIn // world_size],
+                    [numElementsIn],
                     curDevice,
                     dtype,
                     scaleFactor=self.initVal,
                 )
             else:
                 ipTensor = self.backendFuncs.alloc_random(
-                    [numElementsIn // world_size], curDevice, dtype, scaleFactor
+                    [numElementsIn], curDevice, dtype, scaleFactor
                 )
             # allgather requires a tensor list, e.g., List[torch.Tensor]
             for _ in range(world_size):
                 opTensor.append(
                     self.backendFuncs.alloc_random(
-                        [numElementsIn // world_size], curDevice, dtype, scaleFactor
+                        [numElementsIn], curDevice, dtype, scaleFactor
                     )
                 )
         return (ipTensor, opTensor)
@@ -1304,21 +1308,24 @@ class paramCommsBench(ABC):
     ) -> (torch.Tensor, torch.Tensor):
 
         opTensor = []
+        if not commsParams.size_from_trace:
+            numElementsOut = numElementsIn
+            numElementsIn = numElementsIn // world_size
         if allocate:
             if commsParams.dcheck == 1:
                 ipTensor = self.backendFuncs.alloc_ones(
-                    [numElementsIn // world_size],
+                    numElementsIn,
                     curDevice,
                     dtype,
                     scaleFactor=self.initVal,
                 )
             else:
                 ipTensor = self.backendFuncs.alloc_random(
-                    [numElementsIn // world_size], curDevice, dtype, scaleFactor
+                    numElementsIn, curDevice, dtype, scaleFactor
                 )
             # this is a single all gather with flat output tensor
             opTensor = self.backendFuncs.alloc_random(
-                numElementsIn,
+                numElementsOut,
                 curDevice,
                 dtype,
                 scaleFactor,
@@ -1366,12 +1373,17 @@ class paramCommsBench(ABC):
 
         ipTensor = []
         opTensor = []
+        if not commsParams.size_from_trace:
+            numElementsIn = numElementsOut // world_size
+            numElementsOut = numElementsOut // world_size
+        else:
+            numElementsIn = numElementsIn // world_size
         if allocate:
             if commsParams.dcheck == 1:
                 for _ in range(world_size):
                     ipTensor.append(
                         self.backendFuncs.alloc_ones(
-                            [numElementsOut // world_size],
+                            [numElementsIn],
                             curDevice,
                             commsParams.dtype,
                             self.initVal,
@@ -1381,14 +1393,14 @@ class paramCommsBench(ABC):
                 for _ in range(world_size):
                     ipTensor.append(
                         self.backendFuncs.alloc_random(
-                            [numElementsOut // world_size],
+                            [numElementsIn],
                             curDevice,
                             commsParams.dtype,
                             scaleFactor,
                         )
                     )
             opTensor = self.backendFuncs.alloc_random(
-                [numElementsOut // world_size], curDevice, dtype, scaleFactor
+                [numElementsOut], curDevice, dtype, scaleFactor
             )
         return (ipTensor, opTensor)
 
@@ -1408,23 +1420,26 @@ class paramCommsBench(ABC):
 
         ipTensor = []
         opTensor = []
+        if not commsParams.size_from_trace:
+            numElementsIn = numElementsOut
+            numElementsOut = numElementsOut // world_size
         if allocate:
             if commsParams.dcheck == 1:
                 ipTensor = self.backendFuncs.alloc_ones(
-                    numElementsOut,
+                    numElementsIn,
                     curDevice,
                     commsParams.dtype,
                     self.initVal,
                 )
             else:
                 ipTensor = self.backendFuncs.alloc_random(
-                    numElementsOut,
+                    numElementsIn,
                     curDevice,
                     commsParams.dtype,
                     scaleFactor,
                 )
             opTensor = self.backendFuncs.alloc_random(
-                [numElementsOut // world_size], curDevice, dtype, scaleFactor
+                [numElementsOut], curDevice, dtype, scaleFactor
             )
         return (ipTensor, opTensor)
 

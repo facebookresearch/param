@@ -572,6 +572,9 @@ class commsTraceReplayBench(paramCommsBench):
                 f"shrink message sizes to curInNumElem {curComm.inMsgSize}, curOutNumElem {curComm.outMsgSize}"
             )
 
+        # Use exactly specified inMsgSize/outMsgSize if call from trace replay
+        # This avoid regenerating sizes such as in _prep_all_gather_base
+        commsParams.size_from_trace = True
         commsParams.dtype = self.dtypeMap[curComm.dtype]
         if not curComm.eg_id:
             return super().prepComm(curComm, commsParams)
