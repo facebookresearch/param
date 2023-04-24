@@ -964,7 +964,6 @@ class commsTraceReplayBench(paramCommsBench):
 
     def runBench(
         self,
-        bootstrap_info: bootstrap_info_holder,
         commsParams: commsParamsHolderBase,
     ) -> None:
         """
@@ -975,18 +974,14 @@ class commsTraceReplayBench(paramCommsBench):
         4) report stats and performance (if not dry-run)
 
         Args:
-            bootstrap_info: Holds information on the current environment.
             commsParams: Holds comms params to pass into inner functions.
         Returns:
             None
         """
-        if not self.is_dry_run:
-            self.initBackend(bootstrap_info, commsParams)
 
-        logger.info(
-            f"[Rank-{bootstrap_info.global_rank}] reading trace from {self.trace_file}"
-        )
-        self.readTrace(remotePath=self.trace_file, rank=bootstrap_info.global_rank)
+        global_rank = self.backendFuncs.get_global_rank()
+        logger.info(f"[Rank-{global_rank}] reading trace from {self.trace_file}")
+        self.readTrace(remotePath=self.trace_file, rank=global_rank)
 
         self.initTraceStat()
         # only setup and perform collectives if not dry run mode
@@ -994,21 +989,21 @@ class commsTraceReplayBench(paramCommsBench):
             self.setBench(commsParams)
             # start benchmark
             self.benchTime(commsParams)
-        elif bootstrap_info.global_rank == 0:
+        elif global_rank == 0:
             logger.info(
                 "+ Dry run mode...No replaying, Only Rank 0 read and analyze the trace..."
             )
 
         # rank 0 reports statistics
-        if bootstrap_info.global_rank == 0:
+        if global_rank == 0:
             self.reportBenchTime()
-            # writeCommDetails(self.comms_blocks, rank=bootstrap_info.global_rank)
+            # writeCommDetails(self.comms_blocks, rank=global_rank)
 
         if not self.is_dry_run:
             writeCommDetails(
                 self.traceWithPerf,
                 folder=self.out_path,
-                rank=bootstrap_info.global_rank,
+                rank=global_rank,
             )
             # TODO: collect perf. from all ranks to rank 0 and detect any imbalanced perf?
             self.backendFuncs.barrier(self.collectiveArgs)
@@ -1016,7 +1011,6 @@ class commsTraceReplayBench(paramCommsBench):
 
     def replayInit(
         self,
-        bootstrap_info: bootstrap_info_holder,
         commsParams: commsParamsHolderBase,
     ) -> None:
         """
@@ -1025,15 +1019,13 @@ class commsTraceReplayBench(paramCommsBench):
         2) First pass of the trace to ensure the format is valid and get basic stats
 
         Args:
-            bootstrap_info: Holds information on the current environment.
             commsParams: Holds comms params to pass into inner functions.
         Returns:
             None
         """
-        logger.info(
-            f"[Rank-{bootstrap_info.global_rank}] reading trace from {self.trace_file}"
-        )
-        self.readTrace(remotePath=self.trace_file, rank=bootstrap_info.global_rank)
+        global_rank = self.backendFuncs.get_global_rank()
+        logger.info(f"[Rank-{global_rank}] reading trace from {self.trace_file}")
+        self.readTrace(remotePath=self.trace_file, rank=global_rank)
 
         self.initTraceStat()
         # only setup and perform collectives if not dry run mode
@@ -1304,8 +1296,11 @@ def main() -> None:
         args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
     )
     commsParams = commsParamsHolderBase(args)
+    # always initialize backend
+    traceBench.initBackend(bootstrap_info, commsParams)
+
     traceBench.initBench(commsParams, args)
-    traceBench.runBench(bootstrap_info, commsParams)
+    traceBench.runBench(commsParams)
 
 
 if __name__ == "__main__":
