@@ -735,7 +735,7 @@ class PyTorchDistBackend(backendFunctions):
     def get_next_group(self):
         return next(self.round_robin_group)
 
-    def set_device(self):
+    def set_device(self, local_rank, global_rank):
         """set current device: 'cpu' or 'cuda'"""
         dev_str = (
             self.commsParams["device"]
@@ -743,15 +743,15 @@ class PyTorchDistBackend(backendFunctions):
             else self.commsParams.device
         )
         if dev_str.startswith("cuda"):
-            if self.get_local_rank() > torch.cuda.device_count():
+            if local_rank > torch.cuda.device_count():
                 raise ValueError(
                     "Insufficient #GPUs: "
                     f"available {torch.cuda.device_count()} "
-                    f"requested {self.get_local_rank()}"
+                    f"requested {local_rank}"
                 )
-            torch.cuda.set_device(self.get_local_rank())
+            torch.cuda.set_device(local_rank)
 
-        logger.info(f"rank {self.get_global_rank()} set torch device to {dev_str}")
+        logger.info(f"rank {global_rank} set torch device to {dev_str}:{local_rank}")
 
     def get_new_stream(self):
         """get/allocate a new stream"""
@@ -825,8 +825,8 @@ class PyTorchDistBackend(backendFunctions):
             return dist.new_group(ranks=group_ranks, backend=backend)
 
     def initialize_tcpstore(self, master_ip, master_port):
-        global_rank = self.get_global_rank()
-        world_size = self.get_world_size()
+        global_rank = self.bootstrap_info.global_rank
+        world_size = self.bootstrap_info.world_size
         self.tcp_store = dist.TCPStore(
             master_ip, int(master_port), world_size, is_master=(global_rank == 0)
         )
@@ -834,17 +834,10 @@ class PyTorchDistBackend(backendFunctions):
     def initialize_backend(self, master_ip, master_port, backend="gloo"):
         # Set CUDA device before initializing backend
         # Required for backends that don't do lazy initialization, e.g. UCC
-        self.set_device()
+        self.set_device(self.bootstrap_info.local_rank, self.bootstrap_info.global_rank)
 
-        global_rank = self.get_global_rank()
-        world_size = self.get_world_size()
-
-        # Torch initializaiton
-        # NOTE: MASTER_ADDR and MASTER_PORT should be set already in `comms_utils.py`
-        if world_size > 0:
-            os.environ["WORLD_SIZE"] = str(world_size)
-        if global_rank >= 0:
-            os.environ["RANK"] = str(global_rank)
+        global_rank = self.bootstrap_info.global_rank
+        world_size = self.bootstrap_info.world_size
 
         if has_ext_dist and self.use_ext_dist:
             extend_distributed.init_distributed(
