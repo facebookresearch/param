@@ -19,7 +19,7 @@ import comms_utils
 import numpy as np
 import torch
 from comms_utils import (
-    comms_world_info_holder,
+    bootstrap_info_holder,
     commsArgs,
     commsParamsHolderBase,
     paramCommsBench,
@@ -964,7 +964,7 @@ class commsTraceReplayBench(paramCommsBench):
 
     def runBench(
         self,
-        comms_world_info: comms_world_info_holder,
+        bootstrap_info: bootstrap_info_holder,
         commsParams: commsParamsHolderBase,
     ) -> None:
         """
@@ -975,18 +975,18 @@ class commsTraceReplayBench(paramCommsBench):
         4) report stats and performance (if not dry-run)
 
         Args:
-            comms_world_info: Holds information on the current environment.
+            bootstrap_info: Holds information on the current environment.
             commsParams: Holds comms params to pass into inner functions.
         Returns:
             None
         """
         if not self.is_dry_run:
-            self.initBackend(comms_world_info, commsParams)
+            self.initBackend(bootstrap_info, commsParams)
 
         logger.info(
-            f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}"
+            f"[Rank-{bootstrap_info.global_rank}] reading trace from {self.trace_file}"
         )
-        self.readTrace(remotePath=self.trace_file, rank=comms_world_info.global_rank)
+        self.readTrace(remotePath=self.trace_file, rank=bootstrap_info.global_rank)
 
         self.initTraceStat()
         # only setup and perform collectives if not dry run mode
@@ -994,21 +994,21 @@ class commsTraceReplayBench(paramCommsBench):
             self.setBench(commsParams)
             # start benchmark
             self.benchTime(commsParams)
-        elif comms_world_info.global_rank == 0:
+        elif bootstrap_info.global_rank == 0:
             logger.info(
                 "+ Dry run mode...No replaying, Only Rank 0 read and analyze the trace..."
             )
 
         # rank 0 reports statistics
-        if comms_world_info.global_rank == 0:
+        if bootstrap_info.global_rank == 0:
             self.reportBenchTime()
-            # writeCommDetails(self.comms_blocks, rank=comms_world_info.global_rank)
+            # writeCommDetails(self.comms_blocks, rank=bootstrap_info.global_rank)
 
         if not self.is_dry_run:
             writeCommDetails(
                 self.traceWithPerf,
                 folder=self.out_path,
-                rank=comms_world_info.global_rank,
+                rank=bootstrap_info.global_rank,
             )
             # TODO: collect perf. from all ranks to rank 0 and detect any imbalanced perf?
             self.backendFuncs.barrier(self.collectiveArgs)
@@ -1016,7 +1016,7 @@ class commsTraceReplayBench(paramCommsBench):
 
     def replayInit(
         self,
-        comms_world_info: comms_world_info_holder,
+        bootstrap_info: bootstrap_info_holder,
         commsParams: commsParamsHolderBase,
     ) -> None:
         """
@@ -1025,15 +1025,15 @@ class commsTraceReplayBench(paramCommsBench):
         2) First pass of the trace to ensure the format is valid and get basic stats
 
         Args:
-            comms_world_info: Holds information on the current environment.
+            bootstrap_info: Holds information on the current environment.
             commsParams: Holds comms params to pass into inner functions.
         Returns:
             None
         """
         logger.info(
-            f"[Rank-{comms_world_info.global_rank}] reading trace from {self.trace_file}"
+            f"[Rank-{bootstrap_info.global_rank}] reading trace from {self.trace_file}"
         )
-        self.readTrace(remotePath=self.trace_file, rank=comms_world_info.global_rank)
+        self.readTrace(remotePath=self.trace_file, rank=bootstrap_info.global_rank)
 
         self.initTraceStat()
         # only setup and perform collectives if not dry run mode
@@ -1042,14 +1042,14 @@ class commsTraceReplayBench(paramCommsBench):
 
     def initBackend(
         self,
-        comms_world_info: comms_world_info_holder,
+        bootstrap_info: bootstrap_info_holder,
         commsParams: commsParamsHolderBase,
     ) -> None:
         """
         Initializes backend.
 
         Args:
-            comms_world_info: Holds current environment information.
+            bootstrap_info: Holds current environment information.
             commsParams: Holds comms params to pass into backend for initialization.
         Returns:
             None
@@ -1058,18 +1058,18 @@ class commsTraceReplayBench(paramCommsBench):
         if commsParams.nw_stack == "pytorch-dist":
             from pytorch_dist_backend import PyTorchDistBackend
 
-            self.backendFuncs = PyTorchDistBackend(comms_world_info, commsParams)
+            self.backendFuncs = PyTorchDistBackend(bootstrap_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":
             from pytorch_tpu_backend import PyTorchTPUBackend
 
-            self.backendFuncs = PyTorchTPUBackend(comms_world_info, commsParams)
+            self.backendFuncs = PyTorchTPUBackend(bootstrap_info, commsParams)
         else:
             logger.error("Unsopported NW stack! ")
             comms_utils.gracefulExit()
 
         self.backendFuncs.initialize_backend(
-            comms_world_info.master_ip,
-            comms_world_info.master_port,
+            bootstrap_info.master_ip,
+            bootstrap_info.master_port,
             backend=commsParams.backend,
         )
         self.backendFuncs.sayHello()
@@ -1300,12 +1300,12 @@ def main() -> None:
     traceBench.setTraceFile(args, comms_env_params)
     traceBench.checkArgs(args)
 
-    comms_world_info = comms_world_info_holder(
+    bootstrap_info = bootstrap_info_holder(
         args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
     )
     commsParams = commsParamsHolderBase(args)
     traceBench.initBench(commsParams, args)
-    traceBench.runBench(comms_world_info, commsParams)
+    traceBench.runBench(bootstrap_info, commsParams)
 
 
 if __name__ == "__main__":

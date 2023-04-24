@@ -38,7 +38,7 @@ class commsParamsTest:
         self.num_pgs = 1
 
 
-class comms_world_info_test:
+class bootstrap_info_test:
     def __init__(self):
         self.global_rank = 0
         self.local_rank = 0

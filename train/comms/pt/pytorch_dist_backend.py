@@ -73,7 +73,7 @@ class PyTorchDistBackend(backendFunctions):
         global_rank = self.get_global_rank()
         local_rank = self.get_local_rank()
         world_size = self.get_world_size()
-        master_ip = self.comms_world_info.master_ip
+        master_ip = self.bootstrap_info.master_ip
         device = self.get_device()
 
         hello_msg = f"[Rank {global_rank:3}] host {myhost}, device: {device}, local_rank: {local_rank} world_size: {world_size}, master_ip: {master_ip}"
@@ -681,13 +681,13 @@ class PyTorchDistBackend(backendFunctions):
 
     # Getting world-size and other information.
     def get_local_rank(self):
-        return self.comms_world_info.local_rank
+        return self.bootstrap_info.local_rank
 
     def get_global_rank(self):
-        return self.comms_world_info.global_rank
+        return self.bootstrap_info.global_rank
 
     def get_world_size(self):
-        return self.comms_world_info.world_size
+        return self.bootstrap_info.world_size
 
     def get_group_rank(self, group):
         return dist.get_rank(group)
@@ -773,10 +773,10 @@ class PyTorchDistBackend(backendFunctions):
             return None
 
     # Init functions
-    def __init__(self, comms_world_info, commsParams):
+    def __init__(self, bootstrap_info, commsParams):
         super().__init__()
         self.use_ext_dist = commsParams.use_ext_dist
-        self.comms_world_info = comms_world_info
+        self.bootstrap_info = bootstrap_info
         self.commsParams = commsParams
         # extra ops supported (Note these are not supported in pytorch_tpu_backend.py)
         self.collectiveFunc[
@@ -899,8 +899,8 @@ class PyTorchDistBackend(backendFunctions):
 
     def benchmark_comms(self):
         self.initialize_backend(
-            self.comms_world_info.master_ip,
-            self.comms_world_info.master_port,
+            self.bootstrap_info.master_ip,
+            self.bootstrap_info.master_port,
             self.commsParams.backend,
         )
         index = 0  # used in TPU, where it is not initialized!

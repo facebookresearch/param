@@ -94,7 +94,7 @@ def parsesize(ipValue: str) -> int:
 
 
 def parseRankList(
-    ipStr: str, ipName: str, comms_world_info: comms_world_info_holder
+    ipStr: str, ipName: str, bootstrap_info: bootstrap_info_holder
 ) -> List[int]:
     """
     Parses a string into a rank list.
@@ -102,7 +102,7 @@ def parseRankList(
     Args:
         ipStr: String containing list of ranks or single rank.
         ipName: Name of describing ranks, src_ranks, dst_ranks, etc
-        comms_world_info: Class containing world information.
+        bootstrap_info: Class containing bootstrap information.
     Returns:
         List: Returns list containing the ranks from ipStr
     """
@@ -123,9 +123,9 @@ def parseRankList(
 
         # Check if input is valid
         if len(rankList) == 0 or any(
-            r < 0 or r >= comms_world_info.world_size for r in rankList
+            r < 0 or r >= bootstrap_info.world_size for r in rankList
         ):
-            if comms_world_info.global_rank == 0:
+            if bootstrap_info.global_rank == 0:
                 logger.error(f"Could not parse {ipName}: {ipStr}")
             gracefulExit()
     return rankList
@@ -848,7 +848,7 @@ class backendFunctions(ABC):
         pass
 
 
-class comms_world_info_holder:
+class bootstrap_info_holder:
     """Class holding communication-world related parameters."""
 
     def __init__(
@@ -925,7 +925,7 @@ class commsParamsHolder(commsParamsHolderBase):
     def __init__(
         self,
         args,
-        comms_world_info: comms_world_info_holder,
+        bootstrap_info: bootstrap_info_holder,
         element_size: int,
         benchTime: Callable,
     ) -> None:
@@ -970,9 +970,9 @@ class commsParamsHolder(commsParamsHolderBase):
         self.pt2pt = args.pt2pt
         self.window = args.window
 
-        self.src_ranks = parseRankList(args.src_ranks, "src_ranks", comms_world_info)
-        self.dst_ranks = parseRankList(args.dst_ranks, "dst_ranks", comms_world_info)
-        self.comms_world_info = comms_world_info
+        self.src_ranks = parseRankList(args.src_ranks, "src_ranks", bootstrap_info)
+        self.dst_ranks = parseRankList(args.dst_ranks, "dst_ranks", bootstrap_info)
+        self.bootstrap_info = bootstrap_info
 
         self.size_start_profiler = args.size_start_profiler
 

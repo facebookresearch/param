@@ -5,7 +5,7 @@ import comms_utils
 import torch
 from param_bench.train.comms.pt.tests.mocks.backend_mock import MockBackendFunction
 from param_bench.train.comms.pt.tests.test_utils import (
-    comms_world_info_test,
+    bootstrap_info_test,
     commsParamsTest,
 )
 
@@ -47,10 +47,10 @@ class TestParseRankList(unittest.TestCase):
     def test_comma_separated(self):
         comma_rank_list = "0,2,4,6"
         ranks_name = "test"
-        comms_world_info = comms_world_info_test()
-        comms_world_info.world_size = 8
+        bootstrap_info = bootstrap_info_test()
+        bootstrap_info.world_size = 8
         parsed_rank_list = comms_utils.parseRankList(
-            comma_rank_list, ranks_name, comms_world_info
+            comma_rank_list, ranks_name, bootstrap_info
         )
         # We should have 4 ranks returned.
         self.assertEqual(4, len(parsed_rank_list))
@@ -61,10 +61,10 @@ class TestParseRankList(unittest.TestCase):
     def test_range_ranks(self):
         range_rank_list = "0:7"  # This is inclusive end.
         ranks_name = "test"
-        comms_world_info = comms_world_info_test()
-        comms_world_info.world_size = 8
+        bootstrap_info = bootstrap_info_test()
+        bootstrap_info.world_size = 8
         parsed_rank_list = comms_utils.parseRankList(
-            range_rank_list, ranks_name, comms_world_info
+            range_rank_list, ranks_name, bootstrap_info
         )
         # We should have 8 ranks returned.
         self.assertEqual(8, len(parsed_rank_list))
@@ -75,10 +75,10 @@ class TestParseRankList(unittest.TestCase):
     def test_single_rank(self):
         single_rank = "5"
         ranks_name = "test"
-        comms_world_info = comms_world_info_test()
-        comms_world_info.world_size = 8
+        bootstrap_info = bootstrap_info_test()
+        bootstrap_info.world_size = 8
         parsed_rank_list = comms_utils.parseRankList(
-            single_rank, ranks_name, comms_world_info
+            single_rank, ranks_name, bootstrap_info
         )
         # We should have 1 rank returned.
         self.assertEqual(1, len(parsed_rank_list))

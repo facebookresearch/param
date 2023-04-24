@@ -17,7 +17,7 @@ class PyTorchTPUBackend(backendFunctions):
         global_rank = self.get_global_rank()
         local_rank = self.get_local_rank()
         world_size = self.get_world_size()
-        master_ip = self.comms_world_info.master_ip
+        master_ip = self.bootstrap_info.master_ip
         print(
             "\tRunning on host: %s g-rank: %d, l-rank: %s world_size: %d master_ip: %s device: %s (%s)"
             % (
@@ -158,8 +158,8 @@ class PyTorchTPUBackend(backendFunctions):
         pass
 
     # Init functions
-    def __init__(self, comms_world_info, commsParams):
-        self.comms_world_info = comms_world_info
+    def __init__(self, bootstrap_info, commsParams):
+        self.bootstrap_info = bootstrap_info
         self.commsParams = commsParams
 
     def initialize_backend(self, master_ip, master_port, backend="gloo"):
@@ -167,14 +167,14 @@ class PyTorchTPUBackend(backendFunctions):
 
     def benchmark_comms(self):
         self.initialize_backend(
-            self.comms_world_info.master_ip,
-            self.comms_world_info.master_port,
+            self.bootstrap_info.master_ip,
+            self.bootstrap_info.master_port,
             self.commsParams.backend,
         )
         xmp.spawn(
             fn=self.commsParams.benchTime,
             args=(self.commsParams, self),
-            nprocs=self.comms_world_info.num_tpu_cores,
+            nprocs=self.bootstrap_info.num_tpu_cores,
         )
         return
 

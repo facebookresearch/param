@@ -1069,7 +1069,7 @@ class commsCollBench(paramCommsBench):
             "all_gather_base",
         ):
             results["numElements"] = int(
-                results["numElements"] // commsParams.comms_world_info.world_size
+                results["numElements"] // commsParams.bootstrap_info.world_size
             )
 
         if commsParams.collective == "pt2pt":
@@ -1153,8 +1153,7 @@ class commsCollBench(paramCommsBench):
             # convernt to # of elements per rank
             if commsParams.collective_pair in ("all_to_all", "all_to_allv"):
                 results["numElements_pair"] = int(
-                    results["numElements_pair"]
-                    // commsParams.comms_world_info.world_size
+                    results["numElements_pair"] // commsParams.bootstrap_info.world_size
                 )
             fmt = (
                 "\tCOMMS-RES-{}-{}{}{:>18}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
@@ -1427,16 +1426,16 @@ class commsCollBench(paramCommsBench):
         # wait rank 0 reports results to avoid other ranks mess up the output
         self.backendFuncs.sync_barrier(self.collectiveArgs, "benchtime")
 
-    def runBench(self, comms_world_info, commsParams):
+    def runBench(self, bootstrap_info, commsParams):
         # Init the desired backend
         if commsParams.nw_stack == "pytorch-dist":
             from pytorch_dist_backend import PyTorchDistBackend
 
-            backendObj = PyTorchDistBackend(comms_world_info, commsParams)
+            backendObj = PyTorchDistBackend(bootstrap_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":
             from pytorch_tpu_backend import PyTorchTPUBackend
 
-            backendObj = PyTorchTPUBackend(comms_world_info, commsParams)
+            backendObj = PyTorchTPUBackend(bootstrap_info, commsParams)
         else:
             logger.error("Unsupported NW stack! ")
             comms_utils.gracefulExit()
@@ -1486,25 +1485,25 @@ def main():
         collBenchObj.checkArgs(args)
 
         element_size = torch.ones([1], dtype=args.dtype).element_size()
-        comms_world_info = comms_utils.comms_world_info_holder(
+        bootstrap_info = comms_utils.bootstrap_info_holder(
             args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
         )
 
-        if args.i is not None and (comms_world_info.world_size != len(args.i)):
+        if args.i is not None and (bootstrap_info.world_size != len(args.i)):
             logger.error("An input split must be provided for all participating ranks")
             comms_utils.gracefulExit()
 
-        if args.o is not None and (comms_world_info.world_size != len(args.o)):
+        if args.o is not None and (bootstrap_info.world_size != len(args.o)):
             logger.error("An output split must be provided for all participating ranks")
             comms_utils.gracefulExit()
 
         commsParams = comms_utils.commsParamsHolder(
-            args, comms_world_info, element_size, collBenchObj.benchTime
+            args, bootstrap_info, element_size, collBenchObj.benchTime
         )
 
         if args.pair and args.overlap_pair_pgs:
             commsParams.num_pgs = 2
-        collBenchObj.runBench(comms_world_info, commsParams)
+        collBenchObj.runBench(bootstrap_info, commsParams)
 
 
 if __name__ == "__main__":

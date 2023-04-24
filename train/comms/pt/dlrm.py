@@ -1328,13 +1328,13 @@ class commsDLRMBench(paramCommsBench):
                 self.computeTimes(timers)
             self.intermed_region_memory(timers)
 
-    def runBench(self, comms_world_info, commsDlrmParams, args):
+    def runBench(self, bootstrap_info, commsDlrmParams, args):
         """Run num-batches iterations of the model (only comms-operations)"""
         if commsDlrmParams.nw_stack == "pytorch-dist":
-            self.backendFuncs = PyTorchDistBackend(comms_world_info, commsDlrmParams)
+            self.backendFuncs = PyTorchDistBackend(bootstrap_info, commsDlrmParams)
             self.backendFuncs.initialize_backend(
-                comms_world_info.master_ip,
-                comms_world_info.master_port,
+                bootstrap_info.master_ip,
+                bootstrap_info.master_port,
                 backend=commsDlrmParams.backend,
             )
         else:
@@ -1450,11 +1450,11 @@ def main():
     dlrmBench.initBench(args, mpi_env_params)
 
     time.sleep(1)
-    comms_world_info = comms_utils.comms_world_info_holder(
+    bootstrap_info = comms_utils.bootstrap_info_holder(
         args.master_ip, args.master_port, args.num_tpu_cores, mpi_env_params
     )
     commsDlrmParams = comms_utils.commsDlrmParamsHolder(args, mpi_env_params)
-    dlrmBench.runBench(comms_world_info, commsDlrmParams, args)
+    dlrmBench.runBench(bootstrap_info, commsDlrmParams, args)
 
 
 if __name__ == "__main__":
