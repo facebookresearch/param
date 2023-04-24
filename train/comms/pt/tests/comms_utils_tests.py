@@ -106,13 +106,25 @@ class TestGetSizes(unittest.TestCase):
     Test size getting between iterations.
     """
 
-    def test_get_sizes(self):
+    def test_get_sizes_with_stepfactor(self):
         beginSize = 32
         endSize = 1024
         stepFactor = 2
         # Start at 32, end at 1024 by increasing by a factor of 2 after each iteration.
         correct_list = [32, 64, 128, 256, 512, 1024]
-        result_list = comms_utils.getSizes(beginSize, endSize, stepFactor)
+        result_list = comms_utils.getSizes(beginSize, endSize, stepFactor, stepBytes=0)
+        # Lists should have same size and items in the same order.
+        self.assertEqual(len(correct_list), len(result_list))
+        self.assertTrue(correct_list == result_list)
+
+    def test_get_sizes_with_stepbytes(self):
+        beginSize = 32
+        endSize = 256
+        stepFactor = 2
+        stepBytes = 32
+        # Start at 32, end at 256 by increasing 32 bytes after each iteration.
+        correct_list = [32, 64, 96, 128, 160, 192, 224, 256]
+        result_list = comms_utils.getSizes(beginSize, endSize, stepFactor, stepBytes)
         # Lists should have same size and items in the same order.
         self.assertEqual(len(correct_list), len(result_list))
         self.assertTrue(correct_list == result_list)
