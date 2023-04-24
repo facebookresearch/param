@@ -300,12 +300,11 @@ class commsCollBench(paramCommsBench):
             )
             comms_utils.gracefulExit()
 
-        logger.warning(
-            f"Overwriting begin-size (--b {args.b}) and end-size (--e {args.e}) to match requested input-split (--i) or output-split (--o)"
-        )
-
         begin = inout_len * element_size
         end = begin
+        logger.warning(
+            f"Overwriting begin-size (--b {args.b}) with {begin} and end-size (--e {args.e}) with {end} to match requested input-split (--i) {args.i} or output-split (--o) {args.o}"
+        )
         return begin, end
 
     def _check_device_type(self, args):
@@ -347,7 +346,7 @@ class commsCollBench(paramCommsBench):
                 ][0]
                 args.data_types = [key]
 
-    def checkArgs(self, args):
+    def checkArgs(self, args, bootstrap_info):  # noqa: C901
         super().checkArgs(args)
 
         args.collective = self._checkPt2Pt(args)
@@ -406,6 +405,30 @@ class commsCollBench(paramCommsBench):
             args.size_start_profiler = comms_utils.parsesize(args.size_start_profiler)
 
         self.tag = f"-{args.tag}" if args.tag is not None else ""
+
+        if args.i is not None and (bootstrap_info.world_size != len(args.i)):
+            logger.error("An input split must be provided for all participating ranks")
+            comms_utils.gracefulExit()
+
+        if args.o is not None and (bootstrap_info.world_size != len(args.o)):
+            logger.error("An output split must be provided for all participating ranks")
+            comms_utils.gracefulExit()
+
+        if args.src_ranks:
+            args.src_ranks = comms_utils.parseRankList(args.src_ranks)
+            if len(args.src_ranks) == 0 or any(
+                r < 0 or r >= bootstrap_info.world_size for r in args.src_ranks
+            ):
+                logger.error(f"wrong src_ranks ({args.src_ranks})")
+                comms_utils.gracefulExit()
+
+        if args.dst_ranks:
+            args.dst_ranks = comms_utils.parseRankList(args.dst_ranks)
+            if len(args.dst_ranks) == 0 or any(
+                r < 0 or r >= bootstrap_info.world_size for r in args.dst_ranks
+            ):
+                logger.error(f"wrong dst_ranks ({args.dst_ranks})")
+                comms_utils.gracefulExit()
 
     def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None, dcheck=False):
         self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
@@ -1482,20 +1505,12 @@ def main():
     for data_type in args.data_types:
         args.data_type = data_type
 
-        collBenchObj.checkArgs(args)
-
         element_size = torch.ones([1], dtype=args.dtype).element_size()
         bootstrap_info = comms_utils.bootstrap_info_holder(
             args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
         )
 
-        if args.i is not None and (bootstrap_info.world_size != len(args.i)):
-            logger.error("An input split must be provided for all participating ranks")
-            comms_utils.gracefulExit()
-
-        if args.o is not None and (bootstrap_info.world_size != len(args.o)):
-            logger.error("An output split must be provided for all participating ranks")
-            comms_utils.gracefulExit()
+        collBenchObj.checkArgs(args, bootstrap_info)
 
         commsParams = comms_utils.commsParamsHolder(
             args, bootstrap_info, element_size, collBenchObj.benchTime

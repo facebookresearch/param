@@ -93,16 +93,12 @@ def parsesize(ipValue: str) -> int:
     return int(size)
 
 
-def parseRankList(
-    ipStr: str, ipName: str, bootstrap_info: bootstrap_info_holder
-) -> List[int]:
+def parseRankList(ipStr: str) -> List[int]:
     """
     Parses a string into a rank list.
 
     Args:
         ipStr: String containing list of ranks or single rank.
-        ipName: Name of describing ranks, src_ranks, dst_ranks, etc
-        bootstrap_info: Class containing bootstrap information.
     Returns:
         List: Returns list containing the ranks from ipStr
     """
@@ -120,14 +116,6 @@ def parseRankList(
             # a range of ranks defined by [start:end]
             pos = list(map(int, [r.strip() for r in ipStr.split(":")]))
             rankList = [*range(pos[0], pos[1] + 1)]
-
-        # Check if input is valid
-        if len(rankList) == 0 or any(
-            r < 0 or r >= bootstrap_info.world_size for r in rankList
-        ):
-            if bootstrap_info.global_rank == 0:
-                logger.error(f"Could not parse {ipName}: {ipStr}")
-            gracefulExit()
     return rankList
 
 
@@ -970,8 +958,8 @@ class commsParamsHolder(commsParamsHolderBase):
         self.pt2pt = args.pt2pt
         self.window = args.window
 
-        self.src_ranks = parseRankList(args.src_ranks, "src_ranks", bootstrap_info)
-        self.dst_ranks = parseRankList(args.dst_ranks, "dst_ranks", bootstrap_info)
+        self.src_ranks = args.src_ranks
+        self.dst_ranks = args.dst_ranks
         self.bootstrap_info = bootstrap_info
 
         self.size_start_profiler = args.size_start_profiler
