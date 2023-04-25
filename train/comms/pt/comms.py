@@ -352,11 +352,20 @@ class commsCollBench(paramCommsBench):
                 ][0]
                 args.data_types = [key]
 
-    def checkArgs(self, args):  # noqa: C901
+    # Check basic arguments that are unchanged for all benchmarks in a single run
+    def checkBasicArgs(self, args):
         super().checkArgs(args)
 
         args.collective = self._checkPt2Pt(args)
+        args.device = self._check_device_type(args)
 
+        if args.size_start_profiler:
+            args.size_start_profiler = comms_utils.parsesize(args.size_start_profiler)
+
+        self.tag = f"-{args.tag}" if args.tag is not None else ""
+
+    # Check arguments that may be custmized per benchmark in a single run
+    def checkArgs(self, args):  # noqa: C901
         args.b = comms_utils.parsesize(args.b)
         args.e = comms_utils.parsesize(args.e)
 
@@ -391,8 +400,6 @@ class commsCollBench(paramCommsBench):
             logger.error("Step size bytes must be a multiple of element size")
             comms_utils.gracefulExit()
 
-        args.device = self._check_device_type(args)
-
         reduce_ops = ["all_reduce", "reduce", "reduce_scatter", "reduce_scatter_v"]
         if (
             args.c == 1
@@ -406,11 +413,6 @@ class commsCollBench(paramCommsBench):
 
         # run a few sanity checks
         self._check_bitwidth(args)
-
-        if args.size_start_profiler:
-            args.size_start_profiler = comms_utils.parsesize(args.size_start_profiler)
-
-        self.tag = f"-{args.tag}" if args.tag is not None else ""
 
         world_size = self.backendFuncs.get_world_size()
         if args.i is not None and (world_size != len(args.i)):
@@ -815,7 +817,6 @@ class commsCollBench(paramCommsBench):
         ) = comms_utils.get_rank_details(
             self.backendFuncs
         )  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes.
-        self.backendFuncs.sayHello()  # Informs us where each process is running.
         groups = self.backendFuncs.get_groups()
         num_pgs = len(groups)
 
@@ -1478,6 +1479,7 @@ class commsCollBench(paramCommsBench):
             bootstrap_info.master_port,
             backend=commsParams.backend,
         )
+        self.backendFuncs.sayHello()  # Informs us where each process is running.
 
     def runBench(self, commsParams):
         try:
@@ -1514,6 +1516,8 @@ def main():
                 args.master_ip,
             )
         )
+
+    collBenchObj.checkBasicArgs(args)
 
     # Initialize backend
     bootstrap_info = comms_utils.bootstrap_info_holder(
