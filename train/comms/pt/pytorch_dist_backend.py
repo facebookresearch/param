@@ -684,10 +684,10 @@ class PyTorchDistBackend(backendFunctions):
         return self.bootstrap_info.local_rank
 
     def get_global_rank(self):
-        return self.bootstrap_info.global_rank
+        return dist.get_rank()
 
     def get_world_size(self):
-        return self.bootstrap_info.world_size
+        return dist.get_world_size()
 
     def get_group_rank(self, group):
         if self.use_ext_dist:
