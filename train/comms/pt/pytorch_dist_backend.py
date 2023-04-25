@@ -690,7 +690,10 @@ class PyTorchDistBackend(backendFunctions):
         return self.bootstrap_info.world_size
 
     def get_group_rank(self, group):
-        return dist.get_rank(group)
+        if self.use_ext_dist:
+            return dist.get_rank(group.my_pg)
+        else:
+            return dist.get_rank(group)
 
     def get_device(self):
         """get current device: 'cpu' or 'cuda'"""
