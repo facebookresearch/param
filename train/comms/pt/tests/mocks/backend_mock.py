@@ -114,7 +114,7 @@ class MockBackendFunction:  # Mock backend function
     def initialize_backend(self, master_ip, master_port, backend="gloo"):
         pass
 
-    def benchmark_comms(self):
+    def benchmark_comms(self, benchTime, commsParams):
         pass
 
     def alloc_ones(

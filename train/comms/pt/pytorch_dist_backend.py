@@ -890,9 +890,9 @@ class PyTorchDistBackend(backendFunctions):
 
         self.round_robin_group = cycle(list(self.groups.values()))
 
-    def benchmark_comms(self):
+    def benchmark_comms(self, benchTime, commsParams):
         index = 0  # used in TPU, where it is not initialized!
-        self.commsParams.benchTime(index, self.commsParams, self)
+        benchTime(index, commsParams, self)
         return
 
     def __del__(self):

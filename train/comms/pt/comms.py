@@ -16,7 +16,13 @@ import numpy as np
 
 # pytorch
 import torch
-from comms_utils import ensureTensorFlush, paramCommsBench, paramStreamGuard
+from comms_utils import (
+    bootstrap_info_holder,
+    commsParamsHolderBase,
+    ensureTensorFlush,
+    paramCommsBench,
+    paramStreamGuard,
+)
 
 ### TODO: add these to class variables?
 supportedCollectives = [
@@ -346,7 +352,7 @@ class commsCollBench(paramCommsBench):
                 ][0]
                 args.data_types = [key]
 
-    def checkArgs(self, args, bootstrap_info):  # noqa: C901
+    def checkArgs(self, args):  # noqa: C901
         super().checkArgs(args)
 
         args.collective = self._checkPt2Pt(args)
@@ -406,18 +412,19 @@ class commsCollBench(paramCommsBench):
 
         self.tag = f"-{args.tag}" if args.tag is not None else ""
 
-        if args.i is not None and (bootstrap_info.world_size != len(args.i)):
+        world_size = self.backendFuncs.get_world_size()
+        if args.i is not None and (world_size != len(args.i)):
             logger.error("An input split must be provided for all participating ranks")
             comms_utils.gracefulExit()
 
-        if args.o is not None and (bootstrap_info.world_size != len(args.o)):
+        if args.o is not None and (world_size != len(args.o)):
             logger.error("An output split must be provided for all participating ranks")
             comms_utils.gracefulExit()
 
         if args.src_ranks:
             args.src_ranks = comms_utils.parseRankList(args.src_ranks)
             if len(args.src_ranks) == 0 or any(
-                r < 0 or r >= bootstrap_info.world_size for r in args.src_ranks
+                r < 0 or r >= world_size for r in args.src_ranks
             ):
                 logger.error(f"wrong src_ranks ({args.src_ranks})")
                 comms_utils.gracefulExit()
@@ -425,7 +432,7 @@ class commsCollBench(paramCommsBench):
         if args.dst_ranks:
             args.dst_ranks = comms_utils.parseRankList(args.dst_ranks)
             if len(args.dst_ranks) == 0 or any(
-                r < 0 or r >= bootstrap_info.world_size for r in args.dst_ranks
+                r < 0 or r >= world_size for r in args.dst_ranks
             ):
                 logger.error(f"wrong dst_ranks ({args.dst_ranks})")
                 comms_utils.gracefulExit()
@@ -1092,7 +1099,7 @@ class commsCollBench(paramCommsBench):
             "all_gather_base",
         ):
             results["numElements"] = int(
-                results["numElements"] // commsParams.bootstrap_info.world_size
+                results["numElements"] // self.backendFuncs.get_world_size()
             )
 
         if commsParams.collective == "pt2pt":
@@ -1176,7 +1183,7 @@ class commsCollBench(paramCommsBench):
             # convernt to # of elements per rank
             if commsParams.collective_pair in ("all_to_all", "all_to_allv"):
                 results["numElements_pair"] = int(
-                    results["numElements_pair"] // commsParams.bootstrap_info.world_size
+                    results["numElements_pair"] // self.backendFuncs.get_world_size()
                 )
             fmt = (
                 "\tCOMMS-RES-{}-{}{}{:>18}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
@@ -1449,7 +1456,9 @@ class commsCollBench(paramCommsBench):
         # wait rank 0 reports results to avoid other ranks mess up the output
         self.backendFuncs.sync_barrier(self.collectiveArgs, "benchtime")
 
-    def runBench(self, bootstrap_info, commsParams):
+    def initBackend(
+        self, bootstrap_info: bootstrap_info_holder, commsParams: commsParamsHolderBase
+    ):
         # Init the desired backend
         if commsParams.nw_stack == "pytorch-dist":
             from pytorch_dist_backend import PyTorchDistBackend
@@ -1470,8 +1479,9 @@ class commsCollBench(paramCommsBench):
             backend=commsParams.backend,
         )
 
+    def runBench(self, commsParams):
         try:
-            backendObj.benchmark_comms()
+            self.backendFuncs.benchmark_comms(self.benchTime, commsParams)
         except ValueError as ve:
             logger.critical(repr(ve))
             raise
@@ -1505,17 +1515,20 @@ def main():
             )
         )
 
+    # Initialize backend
+    bootstrap_info = comms_utils.bootstrap_info_holder(
+        args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
+    )
+    commsParamsBase = comms_utils.commsParamsHolderBase(args)
+    collBenchObj.initBackend(bootstrap_info, commsParamsBase)
+
     # Dedupes and syncs value for args.data_types based on args.data_type/args.dtype if not passed in args.
     collBenchObj.syncCommBenchDataTypes(args)
 
     for data_type in args.data_types:
         args.data_type = data_type
 
-        bootstrap_info = comms_utils.bootstrap_info_holder(
-            args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
-        )
-
-        collBenchObj.checkArgs(args, bootstrap_info)
+        collBenchObj.checkArgs(args)
         element_size = torch.ones([1], dtype=args.dtype).element_size()
 
         commsParams = comms_utils.commsParamsHolder(
@@ -1524,7 +1537,7 @@ def main():
 
         if args.pair and args.overlap_pair_pgs:
             commsParams.num_pgs = 2
-        collBenchObj.runBench(bootstrap_info, commsParams)
+        collBenchObj.runBench(commsParams)
 
 
 if __name__ == "__main__":

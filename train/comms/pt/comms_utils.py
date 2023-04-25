@@ -832,7 +832,7 @@ class backendFunctions(ABC):
         pass
 
     @abstractmethod
-    def benchmark_comms(self) -> None:
+    def benchmark_comms(self, benchTime, commsParams) -> None:
         pass
 
 
@@ -950,7 +950,6 @@ class commsParamsHolder(commsParamsHolderBase):
         self.num_emb_tables_per_device = args.num_emb_tables_per_device
         self.num_emb_tables_batched = args.num_emb_tables_batched
         self.bag_size = args.bag_size
-        self.benchTime = benchTime
 
         self.pair = args.pair
         self.collective_pair = args.collective_pair
