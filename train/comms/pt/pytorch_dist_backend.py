@@ -891,11 +891,6 @@ class PyTorchDistBackend(backendFunctions):
         self.round_robin_group = cycle(list(self.groups.values()))
 
     def benchmark_comms(self):
-        self.initialize_backend(
-            self.bootstrap_info.master_ip,
-            self.bootstrap_info.master_port,
-            self.commsParams.backend,
-        )
         index = 0  # used in TPU, where it is not initialized!
         self.commsParams.benchTime(index, self.commsParams, self)
         return

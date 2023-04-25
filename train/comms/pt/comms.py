@@ -1464,6 +1464,12 @@ class commsCollBench(paramCommsBench):
             comms_utils.gracefulExit()
 
         self.backendFuncs = backendObj
+        self.backendFuncs.initialize_backend(
+            bootstrap_info.master_ip,
+            bootstrap_info.master_port,
+            backend=commsParams.backend,
+        )
+
         try:
             backendObj.benchmark_comms()
         except ValueError as ve:

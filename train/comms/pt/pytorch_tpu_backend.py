@@ -166,11 +166,6 @@ class PyTorchTPUBackend(backendFunctions):
         pass
 
     def benchmark_comms(self):
-        self.initialize_backend(
-            self.bootstrap_info.master_ip,
-            self.bootstrap_info.master_port,
-            self.commsParams.backend,
-        )
         xmp.spawn(
             fn=self.commsParams.benchTime,
             args=(self.commsParams, self),
