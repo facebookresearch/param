@@ -333,7 +333,7 @@ class commsCollBench(paramCommsBench):
             )
 
     def syncCommBenchDataTypes(self, args):
-        args.data_types = list(set(args.data_types))
+        args.data_types = list(args.data_types)
         if args.data_types is None:
             # If args --data-types is missing, replace it with value passed for --data-type arg.
             if args.data_type is not None:
@@ -358,12 +358,12 @@ class commsCollBench(paramCommsBench):
             logger.error(
                 f"Specified dtype: {args.data_type} is not one of the supported commstyle: {str(self.supportedDtype)}"
             )
-            super().gracefulExit()
+            comms_utils.gracefulExit()
         if args.data_type == "bfloat16" and args.backend == "gloo":
             logger.error(
                 f"Specified dtype: {args.data_type} does not work with gloo backend"
             )
-            super().gracefulExit()
+            comms_utils.gracefulExit()
 
         args.dtype = self.dtypeMap[args.data_type]
         element_size = torch.ones([1], dtype=args.dtype).element_size()
@@ -1489,7 +1489,7 @@ def main():
 
     comms_env_params = comms_utils.read_comms_env_vars()
     if comms_env_params["global_rank"] == 0:
-        print("\t MPI environment: %s " % (str(comms_env_params)))
+        print("\t PARAM COMM environment: %s " % (str(comms_env_params)))
         print(
             "\t backend: %s nw-stack: %s mode: %s args.data_types: %s args.b: %s args.e: %s args.f: %s args.z: %s args.master_ip: %s "
             % (
