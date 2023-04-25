@@ -1505,12 +1505,12 @@ def main():
     for data_type in args.data_types:
         args.data_type = data_type
 
-        element_size = torch.ones([1], dtype=args.dtype).element_size()
         bootstrap_info = comms_utils.bootstrap_info_holder(
             args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
         )
 
         collBenchObj.checkArgs(args, bootstrap_info)
+        element_size = torch.ones([1], dtype=args.dtype).element_size()
 
         commsParams = comms_utils.commsParamsHolder(
             args, bootstrap_info, element_size, collBenchObj.benchTime
