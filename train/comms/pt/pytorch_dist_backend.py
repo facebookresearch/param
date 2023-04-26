@@ -549,10 +549,26 @@ class PyTorchDistBackend(backendFunctions):
                 waitObj.wait()
 
     def barrier(self, collectiveArgs, name="dummy", retFlag=False):
+        my_dev = self.get_device()
         if self.use_ext_dist:
-            retObj = collectiveArgs.group.barrier(async_op=collectiveArgs.asyncOp)
+            retObj = collectiveArgs.group.barrier(
+                async_op=collectiveArgs.asyncOp,
+                device_ids=(
+                    [my_dev.index]
+                    if dist.get_backend(collectiveArgs.group.my_pg) == "nccl"
+                    else None
+                ),
+            )
         else:
-            retObj = dist.barrier(collectiveArgs.group, async_op=collectiveArgs.asyncOp)
+            retObj = dist.barrier(
+                collectiveArgs.group,
+                async_op=collectiveArgs.asyncOp,
+                device_ids=(
+                    [my_dev.index]
+                    if dist.get_backend(collectiveArgs.group) == "nccl"
+                    else None
+                ),
+            )
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(retObj)
