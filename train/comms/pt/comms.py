@@ -1496,6 +1496,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="PARAM-Comm Benchmark",
         formatter_class=MultilineFormatter,
+        allow_abbrev=False,
     )
     args, leftovers = collBenchObj.readArgs(parser)
 

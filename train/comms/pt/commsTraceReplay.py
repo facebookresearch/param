@@ -1286,6 +1286,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="PARAM-Comms Trace Replay Mode",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        allow_abbrev=False,
     )
 
     args = traceBench.readArgs(parser)
