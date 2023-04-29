@@ -860,7 +860,10 @@ class PyTorchDistBackend(backendFunctions):
 
         if has_ext_dist and self.use_ext_dist:
             extend_distributed.init_distributed(
-                rank=global_rank, size=world_size, backend=backend
+                rank=global_rank,
+                size=world_size,
+                backend=backend,
+                init_method=self.commsParams.init_method,
             )
             self.tcp_store = extend_distributed.my_store
         else:
@@ -873,7 +876,11 @@ class PyTorchDistBackend(backendFunctions):
         if not dist.is_initialized():
             # init default process group if not yet initialized or extend_distributed failed or is disabled
             dist.init_process_group(
-                backend, rank=global_rank, world_size=world_size, store=self.tcp_store
+                backend,
+                rank=global_rank,
+                world_size=world_size,
+                store=self.tcp_store if self.commsParams.init_method is None else None,
+                init_method=self.commsParams.init_method,
             )
 
         # default 1 group, maybe overwritten by user created groups via initialize_groups

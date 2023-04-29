@@ -874,6 +874,7 @@ class commsParamsHolderBase:
         )  # record what ranks each process group will work on {pg_id, ranks}
         self.use_ext_dist = args.use_ext_dist
         self.size_from_trace = False
+        self.init_method = args.init_method
 
 
 class commsDlrmParamsHolder(commsParamsHolderBase):
@@ -1645,6 +1646,13 @@ class paramCommsBench(ABC):
             default=False,
             help="use extend_distributed wrapper",
         )  # use extend_distributed wrapper to init and create PGs
+        parser.add_argument(
+            "--init-method",
+            "--pg-init-method",
+            type=str,
+            default=None,
+            help="URL specifying how to initialize the process group. See https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group",
+        )  # re
         pass
 
     @abstractmethod
