@@ -988,6 +988,15 @@ class commsTraceReplayBench(paramCommsBench):
 
         global_rank = self.backendFuncs.get_global_rank()
         logger.info(f"[Rank-{global_rank}] reading trace from {self.trace_file}")
+        self.report = (
+            True
+            if global_rank == 0
+            or (
+                commsParams.enable_local_report
+                and self.backendFuncs.get_local_rank() == 0
+            )
+            else False
+        )
         self.readTrace(remotePath=self.trace_file, rank=global_rank)
 
         self.initTraceStat()
@@ -996,13 +1005,13 @@ class commsTraceReplayBench(paramCommsBench):
             self.setBench(commsParams)
             # start benchmark
             self.benchTime(commsParams)
-        elif global_rank == 0:
+        elif self.report:
             logger.info(
                 "+ Dry run mode...No replaying, Only Rank 0 read and analyze the trace..."
             )
 
-        # rank 0 reports statistics
-        if global_rank == 0:
+        # global/local rank 0 reports statistics
+        if self.report:
             self.reportBenchTime()
             # writeCommDetails(self.comms_blocks, rank=global_rank)
 

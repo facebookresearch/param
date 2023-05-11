@@ -875,6 +875,7 @@ class commsParamsHolderBase:
         self.use_ext_dist = args.use_ext_dist
         self.size_from_trace = False
         self.init_method = args.init_method
+        self.enable_local_report = args.enable_local_report
 
 
 class commsDlrmParamsHolder(commsParamsHolderBase):
@@ -1064,6 +1065,7 @@ class paramCommsBench(ABC):
         self.global_rank = -1
         # update initVal to test different value
         self.initVal = 1
+        self.report = False
 
     def isCudaAvail(self) -> bool:
         return torch.cuda.is_available()
@@ -1652,7 +1654,13 @@ class paramCommsBench(ABC):
             type=str,
             default=None,
             help="URL specifying how to initialize the process group. See https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group",
-        )  # re
+        )  # URL specifying how to initialize the process group. See https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group
+        parser.add_argument(
+            "--enable-local-report",
+            action="store_true",
+            default=False,
+            help="Toggle to enable all nodes' local rank report the output",
+        )  # let all localRank-0 report the output
         pass
 
     @abstractmethod

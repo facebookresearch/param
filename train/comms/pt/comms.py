@@ -756,7 +756,7 @@ class commsCollBench(paramCommsBench):
                 len(self.collectiveArgs.src_ranks) > 1
                 or len(self.collectiveArgs.dst_ranks) > 1
             ):
-                if self.global_rank == 0:
+                if self.report:
                     logger.error(
                         "One2one Pt2Pt requires only a single rank is specified in src_ranks and dst_ranks! "
                     )
@@ -764,7 +764,7 @@ class commsCollBench(paramCommsBench):
         elif self.collectiveArgs.pt2pt == "pairwise":
             # pairwise pt2pt requires identical number of ranks in src_ranks and dst_ranks.
             if len(self.collectiveArgs.src_ranks) != len(self.collectiveArgs.dst_ranks):
-                if self.global_rank == 0:
+                if self.report:
                     logger.error(
                         "Pairwise Pt2Pt requires identical number of members in src_ranks and dst_ranks! "
                     )
@@ -775,13 +775,13 @@ class commsCollBench(paramCommsBench):
                     self.collectiveArgs.dst_ranks
                 )
             ):
-                if self.global_rank == 0:
+                if self.report:
                     logger.error(
                         "Pairwise Pt2Pt requires distinct members in src_ranks and dst_ranks! "
                     )
                 comms_utils.gracefulExit()
 
-        if self.global_rank == 0:
+        if self.report:
             print(
                 f"\t collective={self.collectiveArgs.collective}\t{self.collectiveArgs.pt2pt}, src_ranks={self.collectiveArgs.src_ranks}, dst_ranks={self.collectiveArgs.dst_ranks}"
             )
@@ -800,7 +800,7 @@ class commsCollBench(paramCommsBench):
             if self.collectiveArgs.srcOrDst in self.collectiveArgs.dst_ranks:
                 self.collectiveArgs.dst_ranks.remove(self.collectiveArgs.srcOrDst)
 
-        if self.global_rank == 0:
+        if self.report:
             print(
                 f"\t collective={self.collectiveArgs.collective}, src_ranks={self.collectiveArgs.src_ranks}, dst_ranks={self.collectiveArgs.dst_ranks}"
             )
@@ -822,10 +822,15 @@ class commsCollBench(paramCommsBench):
 
         self.comm_size = world_size
         self.global_rank = global_rank
+        self.report = (
+            True
+            if global_rank == 0 or (commsParams.enable_local_report and local_rank == 0)
+            else False
+        )
 
         if commsParams.sizes is not None:
             allSizes = commsParams.sizes
-            if global_rank == 0:
+            if self.report:
                 logger.info(
                     f"Benchmarking with user-specified message sizes {allSizes}, --b and --e are ignored"
                 )
@@ -888,7 +893,7 @@ class commsCollBench(paramCommsBench):
                 self.collectiveArgs.MMin1 = MMin1
                 self.collectiveArgs.MMin2 = MMin2
                 self.collectiveArgs.MMin3 = MMin3
-                if global_rank == 0:
+                if self.report:
                     print(
                         f"[Rank {global_rank:>3}] mode: {commsParams.mode}, num_coll: {commsParams.num_coll}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {mm_dim}"
                     )
@@ -897,14 +902,14 @@ class commsCollBench(paramCommsBench):
                     self.collectiveArgs, commsParams, self.backendFuncs
                 )
                 computeFunc = self.backendFuncs.emb_lookup
-                if global_rank == 0:
+                if self.report:
                     print(
                         f"[Rank {global_rank:>3}] mode: {commsParams.mode}, num_coll: {commsParams.num_coll}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, "
                         f"emb_dim {commsParams.emb_dim}, num_embs {commsParams.num_embs}, batch_size {commsParams.batch_size}"
                     )
 
         self.backendFuncs.sync_barrier(self.collectiveArgs)
-        if global_rank == 0:
+        if self.report:
             print(
                 f"[Rank {global_rank:>3}] allSizes: {allSizes} local_rank: {local_rank} element_size: {commsParams.element_size}"
             )
@@ -1301,7 +1306,7 @@ class commsCollBench(paramCommsBench):
         ) = self.initCollectiveArgs(commsParams)
 
         backendFuncs.sync_barrier(self.collectiveArgs)
-        if global_rank == 0:
+        if self.report:
             self.printPreamble(commsParams)
 
         for curSize in allSizes:
@@ -1439,7 +1444,7 @@ class commsCollBench(paramCommsBench):
             tensorList = self.gatherBenchTime(
                 self.collectiveArgs, commsParams, timeUsElapsedList
             )
-            if global_rank == 0:
+            if self.report:
                 self.reportBenchTime(
                     commsParams,
                     results,
@@ -1501,7 +1506,9 @@ def main():
     args, leftovers = collBenchObj.readArgs(parser)
 
     comms_env_params = comms_utils.read_comms_env_vars()
-    if comms_env_params["global_rank"] == 0:
+    if comms_env_params["global_rank"] == 0 or (
+        args.enable_local_report and comms_env_params["local_rank"] == 0
+    ):
         print("\t PARAM COMM environment: %s " % (str(comms_env_params)))
         print(
             "\t backend: %s nw-stack: %s mode: %s args.data_types: %s args.b: %s args.e: %s args.f: %s args.z: %s args.master_ip: %s "
