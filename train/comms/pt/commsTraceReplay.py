@@ -100,6 +100,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.do_warm_up = True
         self.allowList = ""
         self.out_path = ""
+        self.outputRanks = None
         self.colls_per_batch = -1
         self.use_timestamp = False
         self.num_replays = 1
@@ -194,6 +195,12 @@ class commsTraceReplayBench(paramCommsBench):
             nargs="?",
             const="",
             help='Output path to write the replayed trace for post performance analysis. Set as empty string, i.e., "", to skip output',
+        )
+        parser.add_argument(
+            "--output-ranks",
+            type=str,
+            default="all",
+            help="List of ranks separated by comma or a range specified by start:end to generate replayed trace for post performance analysis. Default including all ranks.",
         )
         parser.add_argument(
             "--colls-per-batch",
@@ -1000,11 +1007,12 @@ class commsTraceReplayBench(paramCommsBench):
             # writeCommDetails(self.comms_blocks, rank=global_rank)
 
         if not self.is_dry_run:
-            writeCommDetails(
-                self.traceWithPerf,
-                folder=self.out_path,
-                rank=global_rank,
-            )
+            if self.backendFuncs.get_global_rank() in self.outputRanks:
+                writeCommDetails(
+                    self.traceWithPerf,
+                    folder=self.out_path,
+                    rank=global_rank,
+                )
             # TODO: collect perf. from all ranks to rank 0 and detect any imbalanced perf?
             self.backendFuncs.barrier(self.collectiveArgs)
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
@@ -1137,6 +1145,10 @@ class commsTraceReplayBench(paramCommsBench):
         self.is_blocking = args.z
         self.do_warm_up = args.do_warm_up
         self.allowList = args.allow_ops
+        if args.output_ranks == "all":
+            self.outputRanks = [*range(self.backendFuncs.get_world_size())]
+        else:
+            self.outputRanks = comms_utils.parseRankList(args.output_ranks)
         self.out_path = args.output_path
         self.colls_per_batch = args.colls_per_batch
         self.use_timestamp = args.use_timestamp
