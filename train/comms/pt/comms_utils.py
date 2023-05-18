@@ -22,6 +22,19 @@ from contextlib import ContextDecorator
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Union
 
+try:
+    from internals import (
+        fbInitProfiler,
+        fbSampleProfiler,
+        fbStartProfiler,
+        initialize_collectiveArgs_internal,
+        remove_quantization_handlers,
+    )
+
+    has_internal_libs = True
+except ImportError:
+    has_internal_libs = False
+
 import torch
 
 from pytorch_backend_utils import (
@@ -328,15 +341,13 @@ def initQuantCommCtx(
         None
     """
     logger.info(f"communication bitwidth set to {commsParams.bitwidth}")
-    try:
-        from internals import initialize_collectiveArgs_internal
 
+    if has_internal_libs:
         initialize_collectiveArgs_internal(collectiveArgs, commsParams)
-    except ImportError:
+    else:
         # cannot do quantization, reset bitwidth
         logger.warning("quantization not supported, disabled and continue...")
         commsParams.bitwidth = 32
-        pass
 
 
 def checkQuantArgs(
@@ -389,13 +400,9 @@ def clearQuantCommCtx(collectiveArgs: collectiveArgsHolder) -> None:
     Returns:
         None
     """
-    try:
+    if has_internal_libs:
         logger.debug("Removing installed quantization handlers.")
-        from internals import remove_quantization_handlers
-
         remove_quantization_handlers(collectiveArgs)
-    except ImportError:
-        pass
 
 
 def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
@@ -467,9 +474,7 @@ def startProfiler(rank: int, device: str, numWarmupIters: int, numIters: int) ->
     Returns:
         bool: Returns if internal profile was able to start or not.
     """
-    try:
-        from internals import fbInitProfiler, fbStartProfiler
-
+    if has_internal_libs:
         fbInitProfiler(
             rank=rank,
             device=device,
@@ -478,9 +483,8 @@ def startProfiler(rank: int, device: str, numWarmupIters: int, numIters: int) ->
         )
         fbStartProfiler()
         return True
-    except ImportError:
-        logger.debug("Internal profiler is not available, skip...")
     else:
+        logger.debug("Internal profiler is not available, skip...")
         return False
 
 
@@ -493,11 +497,9 @@ def sampleProfiler(stop: bool = False) -> None:
     Returns:
         None
     """
-    try:
-        from internals import fbSampleProfiler
-
+    if has_internal_libs:
         fbSampleProfiler(stop)
-    except ImportError:
+    else:
         logger.debug("Internal profiler is not available, skip...")
 
 
