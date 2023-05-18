@@ -23,29 +23,11 @@ from comms_utils import (
     paramCommsBench,
     paramStreamGuard,
 )
-
-### TODO: add these to class variables?
-supportedCollectives = [
-    "reduce",
-    "all_reduce",
-    "all_to_all",
-    "all_to_allv",
-    "all_gather",
-    "all_gather_v",
-    "broadcast",
-    "reduce_scatter",
-    "reduce_scatter_v",
-    "reduce_scatter_base",
-    "all_gather_base",
-    "incast",
-    "multicast",
-    "gather",
-    "scatter",
-]
-pt2ptPatterns = [
-    "one2one",
-    "pairwise",
-]
+from pytorch_backend_utils import (
+    pt2ptPatterns,
+    supportedC10dBackends,
+    supportedCollectives,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -932,7 +914,10 @@ class commsCollBench(paramCommsBench):
     def gatherBenchTime(self, collectiveArgs, commsParams, timeUsElapsedList):
         # Push the list to device, then do an all-gather.
         timeElapsedTensor = torch.tensor(
-            timeUsElapsedList, device=self.backendFuncs.get_device()
+            timeUsElapsedList,
+            device=self.backendFuncs.get_device()
+            if commsParams.backend == "nccl"
+            else torch.device("cpu"),
         )
         collectiveArgs.opTensor = None
         if commsParams.backend != "xla":
@@ -1466,7 +1451,10 @@ class commsCollBench(paramCommsBench):
         self, bootstrap_info: bootstrap_info_holder, commsParams: commsParamsHolderBase
     ):
         # Init the desired backend
-        if commsParams.nw_stack == "pytorch-dist":
+        if (
+            commsParams.nw_stack == "pytorch-dist"
+            and commsParams.backend in supportedC10dBackends
+        ):
             from pytorch_dist_backend import PyTorchDistBackend
 
             backendObj = PyTorchDistBackend(bootstrap_info, commsParams)
@@ -1475,8 +1463,21 @@ class commsCollBench(paramCommsBench):
 
             backendObj = PyTorchTPUBackend(bootstrap_info, commsParams)
         else:
-            logger.error("Unsupported NW stack! ")
-            comms_utils.gracefulExit()
+            # check for customized backend
+            try:
+                logging.warning(
+                    f"Attempt loading customized backend {commsParams.backend} if registered. Note that this is not offically supported, use with caution and at your own risk."
+                )
+                from pytorch_backend_utils import customized_backend
+
+                backendObj = customized_backend[commsParams.backend](
+                    bootstrap_info, commsParams
+                )
+            except KeyError as e:
+                logger.error(
+                    f"Unsupported NW stack for backend {commsParams.backend}: {e}"
+                )
+                comms_utils.gracefulExit()
 
         self.backendFuncs = backendObj
         self.backendFuncs.initialize_backend(

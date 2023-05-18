@@ -24,7 +24,13 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 
-from pytorch_backend_utils import backendFunctions, collectiveArgsHolder
+from pytorch_backend_utils import (
+    backendFunctions,
+    collectiveArgsHolder,
+    customized_backend,
+    supportedC10dBackends,
+    supportedDevices,
+)
 from torch._C._distributed_c10d import ProcessGroup
 
 random.seed()
@@ -1302,15 +1308,15 @@ class paramCommsBench(ABC):
             "--device",
             type=str,
             default=("cuda" if self.isCudaAvail() else "cpu"),
-            choices=["cpu", "cuda", "rocm", "tpu"],
+            choices=supportedDevices,
             help="data placement",
         )  # device to place data for collective benchmarking
         parser.add_argument(
             "--backend",
             type=str,
             default=("nccl" if self.isCudaAvail() else "gloo"),
+            choices=supportedC10dBackends + list(customized_backend.keys()),
             help="The backend to be used in PyTorch distributed process group",
-            choices=["nccl", "gloo", "mpi", "ucc", "xla", "fairring"],
         )  #  backend used for the network stack
         parser.add_argument(
             "--z",

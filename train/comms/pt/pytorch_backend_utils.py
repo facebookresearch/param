@@ -5,7 +5,7 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import torch
 
@@ -14,6 +14,30 @@ from param_profile import paramTimer
 from torch.distributed import ProcessGroup
 
 logger = logging.getLogger(__name__)
+
+supportedDevices = ["cpu", "cuda", "rocm", "tpu"]
+supportedC10dBackends = ["nccl", "gloo", "mpi", "ucc", "xla", "fairring"]
+supportedCollectives = [
+    "reduce",
+    "all_reduce",
+    "all_to_all",
+    "all_to_allv",
+    "all_gather",
+    "all_gather_v",
+    "broadcast",
+    "reduce_scatter",
+    "reduce_scatter_v",
+    "reduce_scatter_base",
+    "all_gather_base",
+    "incast",
+    "multicast",
+    "gather",
+    "scatter",
+]
+pt2ptPatterns = [
+    "one2one",
+    "pairwise",
+]
 
 
 class collectiveArgsHolder:
@@ -315,7 +339,14 @@ class backendFunctions(ABC):
 customized_backend: Dict[str, backendFunctions] = {}
 
 
-def register_customized_backend(name: str, func: backendFunctions) -> None:
+def register_customized_backend(
+    name: str,
+    func: backendFunctions,
+    device: Optional[str] = None,
+) -> None:
     global customized_backend
     customized_backend[name] = func
+    if device is not None:
+        global supportedDevices
+        supportedDevices.append(device)
     logger.info(f"Registered custom backend {name} with function {func.__name__}")
