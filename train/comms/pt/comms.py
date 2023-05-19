@@ -1466,7 +1466,7 @@ class commsCollBench(paramCommsBench):
             # check for customized backend
             try:
                 logging.warning(
-                    f"Attempt loading customized backend {commsParams.backend} if registered. Note that this is not offically supported, use with caution and at your own risk."
+                    f"Attempt loading customized backend {commsParams.backend} if registered. Note that this is not officially supported. Use it with caution and at your own risk."
                 )
                 from pytorch_backend_utils import customized_backend
 
