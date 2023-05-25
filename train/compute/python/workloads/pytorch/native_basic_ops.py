@@ -3,7 +3,7 @@ from typing import Dict
 import torch
 
 from ...lib.operator import OperatorInterface, register_operators
-from ...lib.pytorch.operator_impl import BuildableOp, CallableOp, TorchScriptOp, UnaryOp
+from ...lib.pytorch.operator_impl import BuildableOp, CallableOp, UnaryOp
 
 
 # Unary
@@ -37,15 +37,3 @@ buildable_ops: Dict[str, OperatorInterface] = {
     "torch.nn.Linear": BuildableOp(torch.nn.Linear),
 }
 register_operators(buildable_ops)
-
-
-# Operator schema: https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/native_functions.yaml
-torchscript_ops: Dict[str, OperatorInterface] = {
-    "aten::add": TorchScriptOp("aten::add"),
-    "aten::add_": TorchScriptOp("aten::add_"),
-    "aten::matmul": TorchScriptOp("aten::matmul"),
-    "aten::mul": TorchScriptOp("aten::mul"),
-    "aten::sum": TorchScriptOp("aten::sum"),
-    "aten::linear": TorchScriptOp("aten::linear"),
-}
-register_operators(torchscript_ops)

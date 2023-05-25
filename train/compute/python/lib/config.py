@@ -6,6 +6,8 @@ from .data import data_generator_map, DataGenerator
 from .init_helper import get_logger
 from .iterator import config_iterator_map, ConfigIterator, DefaultConfigIterator
 from .operator import op_map, OperatorInterface
+from .pytorch.operator_impl import TorchScriptOp
+
 
 logger = get_logger()
 
@@ -64,8 +66,12 @@ class OperatorConfig:
 def make_op_config(op_name: str, op_info: Dict[str, Any], device: str):
     global op_map
     if (op_name not in op_map) or (not op_map[op_name]):
-        logger.warning(f"{op_name} has no valid callable defined, skipped.")
-        return None
+        if op_name.startswith("aten::"):
+            logger.debug(f"register op: {op_name}")
+            op_map[op_name] = TorchScriptOp(op_name)
+        else:
+            logger.warning(f"{op_name} has no valid callable defined, skipped.")
+            return None
 
     op = op_map[op_name]
     op.device = device
