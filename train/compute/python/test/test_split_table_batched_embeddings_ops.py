@@ -22,7 +22,7 @@ class TestSplitTableBatchedEmbeddingOps(unittest.TestCase):
             0,  # PoolingMode.SUM
             False,
             "fp16",
-            "sgd",
+            "exact_adagrad",
         )
         self.assertEqual(op_config.op.op.embedding_specs[0][0], 1000)
         self.assertEqual(op_config.op.op.embedding_specs[0][1], 64)
@@ -34,7 +34,7 @@ class TestSplitTableBatchedEmbeddingOps(unittest.TestCase):
             0,  # PoolingMode.SUM
             False,
             "fp16",
-            "sgd",
+            "exact_adagrad",
         )
         self.assertEqual(op_config.op.op.embedding_specs[0][0], 2000)
         self.assertEqual(op_config.op.op.embedding_specs[0][1], 128)
@@ -46,7 +46,7 @@ class TestSplitTableBatchedEmbeddingOps(unittest.TestCase):
             0,  # PoolingMode.SUM
             False,
             "fp16",
-            "sgd",
+            "exact_adagrad",
         )
         self.assertEqual(op_config.op.op.embedding_specs[0][0], 1000)
         self.assertEqual(op_config.op.op.embedding_specs[1][0], 2000)
