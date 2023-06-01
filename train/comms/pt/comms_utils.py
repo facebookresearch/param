@@ -35,6 +35,7 @@ try:
 except ImportError:
     has_internal_libs = False
 
+import numpy as np
 import torch
 
 from pytorch_backend_utils import (
@@ -1169,6 +1170,18 @@ class paramCommsBench(ABC):
                 scaleFactor,
             )
         return (ipTensor, opTensor)
+
+    def prepGemm(
+        self, mm_dim: int, dtype: str, curDevice: str
+    ) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+        in1 = np.random.rand(mm_dim, mm_dim)
+        in2 = np.random.rand(mm_dim, mm_dim)
+
+        MMin1 = torch.FloatTensor(in1).to(curDevice)
+        MMin2 = torch.FloatTensor(in2).to(curDevice)
+        MMout = self.backendFuncs.alloc_empty([mm_dim, mm_dim], dtype, curDevice)
+
+        return MMout, MMin1, MMin2
 
     def prepComm(
         self,

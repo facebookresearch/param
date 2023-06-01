@@ -861,23 +861,15 @@ class commsCollBench(paramCommsBench):
             if commsParams.kernel == "gemm":
                 computeFunc = self.backendFuncs.gemm
 
-                mm_dim = commsParams.mm_dim
-                in1 = np.random.rand(mm_dim, mm_dim)
-                MMin1 = torch.FloatTensor(in1).to(curDevice)
-                in2 = np.random.rand(mm_dim, mm_dim)
-                MMin2 = torch.FloatTensor(in2).to(curDevice)
-                in3 = np.random.rand(mm_dim, mm_dim)
-                MMin3 = torch.FloatTensor(in3).to(curDevice)
-                MMout = self.backendFuncs.alloc_empty(
-                    [mm_dim, mm_dim], commsParams.dtype, curDevice
-                )
-                self.collectiveArgs.MMout = MMout
-                self.collectiveArgs.MMin1 = MMin1
-                self.collectiveArgs.MMin2 = MMin2
-                self.collectiveArgs.MMin3 = MMin3
+                (
+                    self.collectiveArgs.MMout,
+                    self.collectiveArgs.MMin1,
+                    self.collectiveArgs.MMin2,
+                ) = self.prepGemm(commsParams.mm_dim, commsParams.dtype, curDevice)
+
                 if self.report:
                     print(
-                        f"[Rank {global_rank:>3}] mode: {commsParams.mode}, num_coll: {commsParams.num_coll}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {mm_dim}"
+                        f"[Rank {global_rank:>3}] mode: {commsParams.mode}, num_coll: {commsParams.num_coll}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {commsParams.mm_dim}"
                     )
             elif commsParams.kernel == "emb_lookup":
                 comms_utils.init_emb_lookup(
