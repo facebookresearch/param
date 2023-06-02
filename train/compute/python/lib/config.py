@@ -1,30 +1,35 @@
 import copy
 import json
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Optional, Type
 
 from .data import data_generator_map, DataGenerator
 from .init_helper import get_logger
 from .iterator import config_iterator_map, ConfigIterator, DefaultConfigIterator
 from .operator import op_map, OperatorInterface
-from .pytorch.operator_impl import TorchScriptOp
 
 
 logger = get_logger()
 
 
 class OperatorConfig:
-    def __init__(self, name: str, info: Dict[str, Any], op: OperatorInterface):
-        self._name = name
-        self._info = info
-        self._op = op
+    def __init__(
+        self, name: str, info: Dict[str, Any], op: Optional[OperatorInterface] = None
+    ):
+        self._name: str = name
+        self._info: Dict[str, Any] = info
+        self._op: Optional[OperatorInterface] = op
 
     @property
     def name(self) -> str:
         return self._name
 
     @property
-    def op(self) -> OperatorInterface:
+    def op(self) -> Optional[OperatorInterface]:
         return self._op
+
+    @op.setter
+    def op(self, value: OperatorInterface):
+        self._op = value
 
     @property
     def info(self) -> Dict[str, Any]:
@@ -65,23 +70,18 @@ class OperatorConfig:
 
 def make_op_config(op_name: str, op_info: Dict[str, Any], device: str):
     global op_map
-    if (op_name not in op_map) or (not op_map[op_name]):
-        if op_name.startswith("aten::"):
-            logger.debug(f"register op: {op_name}")
-            op_map[op_name] = TorchScriptOp(op_name)
-        else:
-            logger.warning(f"{op_name} has no valid callable defined, skipped.")
-            return None
-
-    op = op_map[op_name]
-    op.device = device
+    if op_name in op_map:
+        op = op_map[op_name]
+        op.device = device
+    else:
+        op = None
     op_config = OperatorConfig(op_name, op_info, op)
 
     def get(key, table, default):
         nonlocal op_info
         if key in op_info:
             result = op_info[key]
-            if result:
+            if result and result in table:
                 return table[result]
         return default
 
@@ -100,9 +100,10 @@ def make_op_config(op_name: str, op_info: Dict[str, Any], device: str):
 
     # input_data_generator is required
     if not op_config.input_data_generator:
-        raise ValueError(
-            f"Invalid input_data_generator: {op_config.input_data_generator}"
+        logger.warning(
+            f"{op_name} has invalid input_data_generator: {op_config.input_data_generator}"
         )
+        return None
 
     return op_config
 

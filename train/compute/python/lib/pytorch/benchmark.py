@@ -7,6 +7,16 @@ from typing import List, Type
 from ..config import BenchmarkConfig, OperatorConfig
 from .build_executor import BuildExecutor, OpBuildExecutor, StopBenchmarkException
 from .config_util import init_pytorch
+from .operator_impl import TorchScriptOp
+
+UNSUPPORTED_OPS = [
+    "aten::record_stream",
+    "aten::to",
+    "aten::select",
+    "aten::item",
+    "aten::cat",
+    "aten::split_with_sizes",
+]
 
 
 class Benchmark:
@@ -49,7 +59,17 @@ class Benchmark:
     def run(self):
         try:
             for op_config in self.bench_config.op_configs:
-                self.run_op(op_config)
+                if op_config.op is None:
+                    if (
+                        op_config.name not in UNSUPPORTED_OPS
+                        and op_config.name.startswith("aten::")
+                    ):
+                        logger.info(f"register torchscript op: {op_config.name}")
+                        op_config.op = TorchScriptOp(op_config.name)
+                        op_config.op.device = self.run_options["device"]
+
+                if op_config.op is not None:
+                    self.run_op(op_config)
         except StopBenchmarkException as stop_event:
             logger.info(stop_event)
 
