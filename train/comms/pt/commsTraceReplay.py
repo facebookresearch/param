@@ -23,6 +23,7 @@ from comms_utils import (
     commsArgs,
     commsParamsHolderBase,
     paramCommsBench,
+    paramStreamGuard,
     paramToCommName,
 )
 from param_profile import paramProfile, paramTimer
@@ -655,6 +656,36 @@ class commsTraceReplayBench(paramCommsBench):
 
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
+    def runCompute(self, func, curBlockStack: str) -> float:
+        """
+        Replays a specified compute operation and records metrics for benchmarking.
+
+        Args:
+            func: function pointer of the compute kernel
+            curBlockStack: str containg the marker_stack(s) that this collective is a part of
+        Returns:
+            (latency, global_latency), returns the timings of how long the replay or posting (if nonblocking) of the collective took.
+        """
+        computeTimer = paramTimer()
+
+        # replay the compute and measuring latency
+        with paramProfile(
+            timer=computeTimer, description="# PARAM replay: " + curBlockStack
+        ):
+            # switch to compute stream and post compute kernel
+            with paramStreamGuard(
+                stream=self.collectiveArgs.compute_stream,
+                curDevice=self.collectiveArgs.device,
+                backendFuncs=self.backendFuncs,
+                is_blocking=self.is_blocking,  # for blocking case, stream synchornization will be performed
+            ):
+                func(self.collectiveArgs)
+
+        # For compute, latency and global_latency are the same
+        global_latency = latency = computeTimer.getTimeUS()
+
+        return (latency, global_latency)
+
     def runComms(
         self, collName: str, curComm: commsArgs, curBlockStack: str
     ) -> (float, float):
@@ -747,17 +778,40 @@ class commsTraceReplayBench(paramCommsBench):
         coll_in_batch_num = 0
         startTime = time.monotonic_ns()
         for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
+            curBlocks = curComm.markerStack if curComm.markerStack is not None else []
+            curBlockStack = (
+                " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
+            )
+
+            if curComm.compute == "gemm":
+                (
+                    self.collectiveArgs.MMout,
+                    self.collectiveArgs.MMin1,
+                    self.collectiveArgs.MMin2,
+                ) = self.prepGemm(
+                    curComm.mm_dim, curComm.dtype, self.collectiveArgs.device
+                )
+                if self.collectiveArgs.compute_stream is None:
+                    self.collectiveArgs.compute_stream = (
+                        self.backendFuncs.get_new_stream()
+                    )
+
+                (latency, global_latency) = self.runCompute(
+                    func=self.backendFuncs.gemm, curBlockStack=curBlockStack
+                )
+
+                if self.backendFuncs.get_global_rank() == 0:
+                    logger.info(
+                        f"[{cnt} / {self.max_msg_cnt}] Replayed {curComm.compute} in block [{curBlockStack}]... {global_latency:.2f} us"
+                    )
+                continue
+
             collName = paramToCommName(curComm.comms)
 
             (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
             # Skip comm if the local process doesn't belong to the PG or encounter an unexpected collective
             if collName not in self.allowList or groupRank == -1:
                 continue
-
-            curBlocks = curComm.markerStack if curComm.markerStack is not None else []
-            curBlockStack = (
-                " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
-            )
 
             if groupRank == 0:
                 logger.info(

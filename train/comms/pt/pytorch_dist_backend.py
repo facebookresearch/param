@@ -791,6 +791,24 @@ class PyTorchDistBackend(backendFunctions):
         else:
             return None
 
+    def sync_stream(
+        self,
+        stream: Optional[torch.cuda.Stream] = None,
+        device: Optional[torch.device] = None,
+    ):
+        """Synchronize a stream with its associated device"""
+        if device.type == "cuda":
+            # if the stream is None, sync on the current default stream
+            cur_stream = (
+                stream
+                if stream is not None
+                else torch.cuda.current_stream(device=device)
+            )
+            cur_stream.synchronize()
+        else:
+            # no stream available, do nothing
+            pass
+
     # Init functions
     def __init__(self, bootstrap_info, commsParams):
         super().__init__()

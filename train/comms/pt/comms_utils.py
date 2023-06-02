@@ -510,6 +510,8 @@ class commsArgs:
 
     Public Attributes:
         comms: Name of collective.
+        compute: Name of compute kernel.
+        mm_dim: dimension of matrix for replaying GEMM kernels
         seqnum: Current number of collectives.
         req: Request ID of collective to map to wait operation.
         inMsgSize: Size of input tensor.
@@ -531,6 +533,8 @@ class commsArgs:
         Initialize arguments used for comm replay.
         """
         self.comms = kwargs["comms"] if "comms" in kwargs else None
+        self.compute = kwargs["compute"] if "compute" in kwargs else None
+        self.mm_dim = kwargs["mm_dim"] if "mm_dim" in kwargs else None
         self.seqnum = kwargs["seqnum"] if "seqnum" in kwargs else None
         self.req = kwargs["req"] if "req" in kwargs else None
         self.inMsgSize = kwargs["inMsgSize"] if "inMsgSize" in kwargs else None
@@ -606,17 +610,21 @@ class paramStreamGuard(ContextDecorator):
         stream: Optional[torch.cuda.Stream],
         curDevice: torch.device,
         backendFuncs: backendFunctions,
+        is_blocking: bool = True,
     ) -> None:
         self.cur_stream = None
         self.stream = stream
         self.curDevice = curDevice
         self.backendFuncs = backendFuncs
+        self.is_blocking = is_blocking
 
     def __enter__(self) -> paramStreamGuard:
         self.cur_stream = self.backendFuncs.switch_stream(self.stream, self.curDevice)
         return self
 
     def __exit__(self, *exc) -> None:
+        if self.is_blocking:
+            self.backendFuncs.sync_stream(self.cur_stream, self.curDevice)
         self.backendFuncs.switch_stream(self.cur_stream, self.curDevice)
 
 
