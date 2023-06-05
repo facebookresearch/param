@@ -437,9 +437,10 @@ def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
         new_name = name
 
     if supported_comms is not None and new_name not in supported_comms:
-        gracefulExit(
+        logger.error(
             f"{name} is not a supported communication in PARAM! Supported comms: {supported_comms}"
         )
+        gracefulExit()
 
     return new_name
 
@@ -534,7 +535,6 @@ class commsArgs:
         """
         self.comms = kwargs["comms"] if "comms" in kwargs else None
         self.compute = kwargs["compute"] if "compute" in kwargs else None
-        self.mm_dim = kwargs["mm_dim"] if "mm_dim" in kwargs else None
         self.seqnum = kwargs["seqnum"] if "seqnum" in kwargs else None
         self.req = kwargs["req"] if "req" in kwargs else None
         self.inMsgSize = kwargs["inMsgSize"] if "inMsgSize" in kwargs else None
@@ -550,6 +550,8 @@ class commsArgs:
         self.root = kwargs["root"] if "root" in kwargs else None
         self.eg_id = kwargs["eg_id"] if "eg_id" in kwargs else None
 
+        self.mm_dim = kwargs["mm_dim"] if "mm_dim" in kwargs else None
+
     def toDict(self) -> Dict:
         """
         Convert commsArgs to dictionary for storing in json.
@@ -561,6 +563,12 @@ class commsArgs:
         """
         commData = {}
         commData["comms"] = self.comms
+        if self.compute is not None:
+            commData["compute"] = self.compute
+            if self.compute == "gemm":
+                if self.mm_dim is not None:
+                    commData["mm_dim"] = self.mm_dim
+
         commData["seqnum"] = self.seqnum
         if self.req is not None:
             commData["req"] = self.req
@@ -1187,7 +1195,7 @@ class paramCommsBench(ABC):
 
         MMin1 = torch.FloatTensor(in1).to(curDevice)
         MMin2 = torch.FloatTensor(in2).to(curDevice)
-        MMout = self.backendFuncs.alloc_empty([mm_dim, mm_dim], dtype, curDevice)
+        MMout = self.backendFuncs.alloc_empty((mm_dim, mm_dim), dtype, curDevice)
 
         return MMout, MMin1, MMin2
 
