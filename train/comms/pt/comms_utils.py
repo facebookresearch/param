@@ -510,23 +510,26 @@ class commsArgs:
     This class contains all of the args that we can use to perform a single collective.
 
     Public Attributes:
-        comms: Name of collective.
-        compute: Name of compute kernel.
-        mm_dim: dimension of matrix for replaying GEMM kernels
-        seqnum: Current number of collectives.
-        req: Request ID of collective to map to wait operation.
-        inMsgSize: Size of input tensor.
-        outMsgSize: Size of output tensor.
-        dtype: Data type of tensor values.
-        inSplit: List of input split sizes for rank across current process group.
-        outSplit: List of output split sizes for ranks across current process group.
-        startTimeNs: Start time of current collective.
-        pgId: Unique indentifier for the process group this collective will use.
-        groupRanks: Global ranks of the process group, this is used with PG init.
-        worldSize: World size of current process group.
-        markerStack: Current markers that this collective is a part of.
-        root: Used to determine if collective is src or dst.
-        eg_id: Node id in captured execution graph.
+        Global/Comm Attributes:
+            comms: Name of collective.
+            compute: Name of compute kernel.
+            seqnum: Current number of collectives.
+            req: Request ID of collective to map to wait operation.
+            inMsgSize: Size of input tensor.
+            outMsgSize: Size of output tensor.
+            dtype: Data type of tensor values.
+            inSplit: List of input split sizes for rank across current process group.
+            outSplit: List of output split sizes for ranks across current process group.
+            startTimeNs: Start time of current collective.
+            pgId: Unique indentifier for the process group this collective will use.
+            groupRanks: Global ranks of the process group, this is used with PG init.
+            worldSize: World size of current process group.
+            markerStack: Current markers that this collective is a part of.
+            root: Used to determine if collective is src or dst.
+            eg_id: Node id in captured execution graph.
+
+        GEMM Attributes:
+            mm_dim: dimension of matrix for replaying GEMM kernels
     """
 
     def __init__(self, **kwargs) -> None:
