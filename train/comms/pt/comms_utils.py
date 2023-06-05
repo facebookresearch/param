@@ -679,6 +679,7 @@ class commsParamsHolderBase:
         self.size_from_trace = False
         self.init_method = args.init_method
         self.enable_local_report = args.enable_local_report
+        self.enable_profiler = args.enable_profiler
 
 
 class commsDlrmParamsHolder(commsParamsHolderBase):
@@ -1354,6 +1355,7 @@ class paramCommsBench(ABC):
         )  #  backend used for the network stack
         parser.add_argument(
             "--z",
+            "--blocking",
             type=int,
             default=0,
             help="use blocking/non-blocking mode for collectives",
@@ -1406,6 +1408,12 @@ class paramCommsBench(ABC):
             default=False,
             help="Toggle to enable all nodes' local rank report the output",
         )  # let all localRank-0 report the output
+        parser.add_argument(
+            "--enable-profiler",
+            action="store_true",
+            default=False,
+            help="toggle to enable pytorch profiler",
+        )  # enable pytorch profiler
         pass
 
     @abstractmethod

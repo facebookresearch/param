@@ -1008,8 +1008,18 @@ class commsTraceReplayBench(paramCommsBench):
         Returns:
             None
         """
+        if commsParams.enable_profiler:
+            self.collectiveArgs.enable_profiler = comms_utils.startProfiler(
+                rank=self.backendFuncs.get_global_rank(),
+                device=self.collectiveArgs.device,
+                numWarmupIters=1 if self.do_warm_up else 0,
+                numIters=self.num_replays + 1 if self.do_warm_up else self.num_replays,
+            )
+
         # warm-up
         if self.do_warm_up:
+            if self.collectiveArgs.enable_profiler:
+                comms_utils.sampleProfiler()
             self.warmUpBench(commsParams)
         self.resetComms()
 
@@ -1028,6 +1038,9 @@ class commsTraceReplayBench(paramCommsBench):
             if self.backendFuncs.get_global_rank() == 0:
                 logger.info(f"Replay #{i}")
 
+            if self.collectiveArgs.enable_profiler:
+                comms_utils.sampleProfiler()
+
             # replay comms trace
             self.replayTrace(commsParams)
             self.resetComms()
@@ -1038,6 +1051,11 @@ class commsTraceReplayBench(paramCommsBench):
         # record how long it took for trace-replay to complete
         traceEndTime = time.monotonic_ns()
         self.totalTraceLatency = (traceEndTime - traceStartTime) / 1e3  # make it us
+
+        # stop profiler if used
+        if self.collectiveArgs.enable_profiler:
+            comms_utils.sampleProfiler(stop=True)
+            self.collectiveArgs.enable_profiler = False
 
         # cleanup any memory left in use
         self.backendFuncs.clear_memory(self.collectiveArgs)
@@ -1202,6 +1220,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.collectiveArgs.ipTensor = None
         self.collectiveArgs.opTensor = None
         self.collectiveArgs.quant_threshold = commsParams.quant_threshold
+        self.collectiveArgs.enable_profiler = commsParams.enable_profiler
 
         # set of collectives to be replayed
         if self.allowList in ("all", "default", "*"):
