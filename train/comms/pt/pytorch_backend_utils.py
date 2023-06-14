@@ -71,11 +71,13 @@ class collectiveArgsHolder:
 
         self.emb = None
         self.embRequests = None
+        self.direction = None
         self.emb_dim = 0
         self.num_emb_tables_batched = -1
         self.num_emb_ops = 0
         self.BTBlockSize = {}
         self.LookupOut = {}
+        self.grad_output = None
 
         self.ipTensor_split = []
         self.opTensor_split = []

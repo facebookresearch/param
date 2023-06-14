@@ -532,6 +532,7 @@ class commsArgs:
             mm_dim: dimension of matrix for replaying GEMM kernels
 
         Embedded Lookup Attributes:
+            direction: direction of embedding lookup kernel (forward or backward)
             embDim: dimension size for Embedding table compute kernel
             numEmbs: Embedding table hash size for Embedding table compute kernel
             batchSize: number of samples reading the table concurrently
@@ -563,6 +564,7 @@ class commsArgs:
 
         self.mm_dim = kwargs["mm_dim"] if "mm_dim" in kwargs else None
 
+        self.direction = kwargs["direction"] if "direction" in kwargs else 0
         self.embDim = kwargs["embDim"] if "embDim" in kwargs else None
         self.numEmbs = kwargs["numEmbs"] if "numEmbs" in kwargs else None
         self.numEmbTables = kwargs["numEmbTables"] if "numEmbTable" in kwargs else None
@@ -1526,6 +1528,7 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
     except ImportError:
         logger.error("benchmarking with emb_lookup kernels requires fbgemm_gpu library")
         return
+    collectiveArgs.direction = commsParams.direction
     collectiveArgs.emb_dim = commsParams.emb_dim
     num_embeddings = commsParams.num_embs
     collectiveArgs.batch_size = commsParams.batch_size
@@ -1568,3 +1571,17 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
         L=bag_size,
         E=num_embeddings,
     )
+
+    # If we are doing backward pass, then we need to initialize Lookup tensor using forward pass and grad output
+    if collectiveArgs.direction == "backward":
+        for i in range(len(collectiveArgs.embRequests)):
+            (indices, offsets, weights) = collectiveArgs.embRequests[i]
+            collectiveArgs.LookupOut = collectiveArgs.emb[i].forward(
+                indices,
+                offsets,
+                weights,
+            )
+
+        collectiveArgs.grad_output = torch.rand_like(collectiveArgs.LookupOut).to(
+            collectiveArgs.device
+        )
