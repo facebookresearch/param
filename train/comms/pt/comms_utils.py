@@ -530,6 +530,14 @@ class commsArgs:
 
         GEMM Attributes:
             mm_dim: dimension of matrix for replaying GEMM kernels
+
+        Embedded Lookup Attributes:
+            embDim: dimension size for Embedding table compute kernel
+            numEmbs: Embedding table hash size for Embedding table compute kernel
+            batchSize: number of samples reading the table concurrently
+            numEmbTables: number of embedding tables (per device)
+            numEmbTablesBatched: number of embedding tables batched together (-1 means no batching)
+            bagSize: bag size
     """
 
     def __init__(self, **kwargs) -> None:
@@ -555,6 +563,14 @@ class commsArgs:
 
         self.mm_dim = kwargs["mm_dim"] if "mm_dim" in kwargs else None
 
+        self.embDim = kwargs["embDim"] if "embDim" in kwargs else None
+        self.numEmbs = kwargs["numEmbs"] if "numEmbs" in kwargs else None
+        self.numEmbTables = kwargs["numEmbTables"] if "numEmbTable" in kwargs else None
+        self.numEmbTablesBatched = (
+            kwargs["numEmbTablesBatched"] if "numEmbTablesBatched" in kwargs else None
+        )
+        self.bagSize = kwargs["bagSize"] if "bagSize" in kwargs else None
+
     def toDict(self) -> Dict:
         """
         Convert commsArgs to dictionary for storing in json.
@@ -568,9 +584,20 @@ class commsArgs:
         commData["comms"] = self.comms
         if self.compute is not None:
             commData["compute"] = self.compute
-            if self.compute == "gemm":
+            if commData["compute"] == "gemm":
                 if self.mm_dim is not None:
                     commData["mm_dim"] = self.mm_dim
+            elif commData["compute"] == "emb_lookup":
+                if self.embDim is not None:
+                    commData["embDim"] = self.embDim
+                if self.numEmbs is not None:
+                    commData["numEmbs"] = self.numEmbs
+                if self.numEmbTables is not None:
+                    commData["numEmbTables"] = self.numEmbTables
+                if self.numEmbTablesBatched is not None:
+                    commData["numEmbTablesBatched"] = self.numEmbTablesBatched
+                if self.bagSize is not None:
+                    commData["bagSize"] = self.bagSize
 
         commData["seqnum"] = self.seqnum
         if self.req is not None:

@@ -732,9 +732,8 @@ class commsTraceReplayBench(paramCommsBench):
                 )
 
             # if blocking, post outstanding ops and wait for them to complete. if nonblocking, just post op
-            self.backendFuncs.complete_accel_ops(
-                self.collectiveArgs, devSync=self.is_blocking
-            )
+            if self.is_blocking:
+                self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
             # if nonblocking, then store the pair {reqID, future} so that we can wait on it later
             # check if req id is recorded in trace for backwards compatibility
@@ -803,6 +802,14 @@ class commsTraceReplayBench(paramCommsBench):
                         self.collectiveArgs.device,
                     )
                     computeFunc = self.backendFuncs.gemm
+
+                elif curComm.compute == "emb_lookup":
+                    curComm.device = commsParams.device
+                    comms_utils.init_emb_lookup(
+                        self.collectiveArgs, curComm, self.backendFuncs
+                    )
+                    computeFunc = self.backendFuncs.emb_lookup
+
                 logger.info(
                     f"[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {curComm.compute}"
                 )
