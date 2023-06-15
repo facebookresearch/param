@@ -63,6 +63,8 @@ class collectiveArgsHolder:
 
         self.computeCount = -1
 
+        self.reuseTensors = False
+
         self.MMdim_dtype = {}
         self.MMdim = -1
         self.MMdtype = ""

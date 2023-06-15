@@ -132,6 +132,8 @@ class commsTraceReplayBench(paramCommsBench):
 
         self.gemmTensor = None
 
+        self.embLookupReuse = {}
+
     def readArgs(self, parser: argparse.ArgumentParser) -> None:
         """
         Reads command line args to set runtime parameters for replay.
@@ -807,6 +809,9 @@ class commsTraceReplayBench(paramCommsBench):
                 # Set the computeCount, which is the number of time to run the compute kernel
                 self.collectiveArgs.computeCount = curComm.count
 
+                # Set reuseTensors, which is whether we reuse the tensors between kernels
+                self.collectiveArgs.reuseTensors = self.reuse_tensors
+
                 # Prep to run GEMM kernel
                 if curComm.compute == "gemm":
                     if self.gemmTensor is None and self.reuse_tensors:
@@ -831,10 +836,43 @@ class commsTraceReplayBench(paramCommsBench):
 
                 # Prep to run TBE/embedding lookup kernel
                 elif curComm.compute == "emb_lookup":
-                    curComm.device = commsParams.device
-                    comms_utils.init_emb_lookup(
-                        self.collectiveArgs, curComm, self.backendFuncs
-                    )
+                    # Check if we are to reuse tensors and emb lookup call has been done before -- shortcut init if so
+                    if (
+                        curComm.toEmbLookupTuple() in self.embLookupReuse.keys()
+                        and self.reuse_tensors
+                    ):
+                        if curComm.direction == "forward":
+                            (
+                                self.collectiveArgs.embRequests,
+                                self.collectiveArgs.emb,
+                            ) = self.embLookupReuse[curComm.toEmbLookupTuple()]
+                        else:
+                            (
+                                self.collectiveArgs.embRequests,
+                                self.collectiveArgs.LookupOut,
+                                self.collectiveArgs.grad_output,
+                            ) = self.embLookupReuse[curComm.toEmbLookupTuple()]
+
+                    # Otherwise, do init, then add to dictionary if reuse tensors is enabled
+                    else:
+                        curComm.device = commsParams.device
+                        comms_utils.init_emb_lookup(
+                            self.collectiveArgs, curComm, self.backendFuncs
+                        )
+                        if self.reuse_tensors:
+                            if curComm.direction == "forward":
+                                self.embLookupReuse[curComm.toEmbLookupTuple()] = (
+                                    self.collectiveArgs.embRequests,
+                                    self.collectiveArgs.emb,
+                                )
+                            else:
+                                self.embLookupReuse[curComm.toEmbLookupTuple()] = (
+                                    self.collectiveArgs.embRequests,
+                                    self.collectiveArgs.LookupOut,
+                                    self.collectiveArgs.grad_output,
+                                )
+
+                    # Set embedded lookup as function to run
                     computeFunc = self.backendFuncs.emb_lookup
 
                 # Running the kernel

@@ -641,6 +641,19 @@ class commsArgs:
         """
         return self.__dict__.__str__()
 
+    def toEmbLookupTuple(self):
+        """
+        Return tuple containing all values relevant to embedding lookup replay.
+        """
+        return (
+            self.direction,
+            self.emb_dim,
+            self.num_embs,
+            self.batch_size,
+            self.num_emb_tables_per_device,
+            self.bagSize,
+        )
+
 
 class paramStreamGuard(ContextDecorator):
     """guard execution on a stream"""

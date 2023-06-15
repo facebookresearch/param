@@ -618,7 +618,10 @@ class PyTorchDistBackend(backendFunctions):
             else:
                 for i in range(len(collectiveArgs.embRequests)):
                     (indices, offsets, weights) = collectiveArgs.embRequests[i]
-                    collectiveArgs.LookupOut.backward(collectiveArgs.grad_output)
+                    collectiveArgs.LookupOut.backward(
+                        collectiveArgs.grad_output,
+                        retain_graph=collectiveArgs.reuseTensors,
+                    )
 
     # Memory related
     def get_mem_size(self, collectiveArgs, pair=False):
