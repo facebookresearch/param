@@ -61,6 +61,11 @@ class collectiveArgsHolder:
         self.src_rank = -1
         self.dst_rank = -1
 
+        self.computeCount = -1
+
+        self.MMdim_dtype = {}
+        self.MMdim = -1
+        self.MMdtype = ""
         self.MMout = {}
         self.MMin1 = {}
         self.MMin2 = {}

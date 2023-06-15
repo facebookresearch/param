@@ -99,6 +99,8 @@ class commsTraceReplayBench(paramCommsBench):
         self.num_msg = 0
         self.is_blocking = True
         self.do_warm_up = True
+        self.reuse_tensors = False
+
         self.allowList = ""
         self.out_path = ""
         self.outputRanks = None
@@ -127,6 +129,8 @@ class commsTraceReplayBench(paramCommsBench):
         self.totalTraceLatency = 0.0
 
         self.eg_to_tensors = {}
+
+        self.gemmTensor = None
 
     def readArgs(self, parser: argparse.ArgumentParser) -> None:
         """
@@ -181,6 +185,12 @@ class commsTraceReplayBench(paramCommsBench):
             action="store_true",
             default=self.do_warm_up,
             help="Toggle to disable performing extra replaying for warm-up",
+        )
+        parser.add_argument(
+            "--reuse-tensors",
+            action="store_true",
+            default=self.reuse_tensors,
+            help="Toggle to cache and reuse the same input/output for each compute kernel",
         )
         parser.add_argument(
             "--allow-ops",
@@ -686,7 +696,9 @@ class commsTraceReplayBench(paramCommsBench):
                 backendFuncs=self.backendFuncs,
                 is_blocking=self.is_blocking,  # for blocking case, stream synchornization will be performed
             ):
-                func(self.collectiveArgs)
+                # Post the kernel *computeCount* times
+                for _ in range(self.collectiveArgs.computeCount):
+                    func(self.collectiveArgs)
 
         # For compute, latency and global_latency are the same
         global_latency = latency = computeTimer.getTimeUS()
@@ -791,7 +803,19 @@ class commsTraceReplayBench(paramCommsBench):
 
             if curComm.compute is not None:
                 computeFunc = None
+
+                # Set the computeCount, which is the number of time to run the compute kernel
+                self.collectiveArgs.computeCount = curComm.count
+
+                # Prep to run GEMM kernel
                 if curComm.compute == "gemm":
+                    if self.gemmTensor is None and self.reuse_tensors:
+                        self.gemmTensor = self.backendFuncs.alloc_random(
+                            [1073741824],
+                            self.collectiveArgs.device,
+                            self.dtypeMap[curComm.dtype],
+                        )
+
                     (
                         self.collectiveArgs.MMout,
                         self.collectiveArgs.MMin1,
@@ -800,9 +824,12 @@ class commsTraceReplayBench(paramCommsBench):
                         curComm.mm_dim,
                         self.dtypeMap[curComm.dtype],
                         self.collectiveArgs.device,
+                        self.gemmTensor if self.reuse_tensors else None,
                     )
+
                     computeFunc = self.backendFuncs.gemm
 
+                # Prep to run TBE/embedding lookup kernel
                 elif curComm.compute == "emb_lookup":
                     curComm.device = commsParams.device
                     comms_utils.init_emb_lookup(
@@ -810,14 +837,18 @@ class commsTraceReplayBench(paramCommsBench):
                     )
                     computeFunc = self.backendFuncs.emb_lookup
 
+                # Running the kernel
                 logger.info(
                     f"[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {curComm.compute}"
                 )
+
+                # Spawn the compute stream if it was not already created
                 if self.collectiveArgs.compute_stream is None:
                     self.collectiveArgs.compute_stream = (
                         self.backendFuncs.get_new_stream()
                     )
 
+                # Run the kernel and report the total time
                 (latency, global_latency) = self.runCompute(
                     func=computeFunc, curBlockStack=curBlockStack
                 )
@@ -1252,6 +1283,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.max_msg_cnt = args.max_msg_cnt
         self.is_blocking = args.z
         self.do_warm_up = args.do_warm_up
+        self.reuse_tensors = args.reuse_tensors
         self.allowList = args.allow_ops
         if args.output_ranks == "all":
             self.outputRanks = [*range(self.backendFuncs.get_world_size())]

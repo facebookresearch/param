@@ -1221,14 +1221,20 @@ class paramCommsBench(ABC):
         return (ipTensor, opTensor)
 
     def prepGemm(
-        self, mm_dim: int, dtype: str, curDevice: str
+        self, mm_dim: int, dtype: str, curDevice: str, gemmTensor: torch.tensor = None
     ) -> (torch.Tensor, torch.Tensor, torch.Tensor):
-        in1 = np.random.rand(mm_dim, mm_dim)
-        in2 = np.random.rand(mm_dim, mm_dim)
+        if gemmTensor is None:
+            in1 = np.random.rand(mm_dim, mm_dim)
+            in2 = np.random.rand(mm_dim, mm_dim)
 
-        MMin1 = torch.FloatTensor(in1).to(curDevice)
-        MMin2 = torch.FloatTensor(in2).to(curDevice)
-        MMout = self.backendFuncs.alloc_empty((mm_dim, mm_dim), dtype, curDevice)
+            MMin1 = torch.FloatTensor(in1).to(curDevice)
+            MMin2 = torch.FloatTensor(in2).to(curDevice)
+            MMout = self.backendFuncs.alloc_empty((mm_dim, mm_dim), dtype, curDevice)
+        else:
+            mm_size = mm_dim * mm_dim
+            MMin1 = gemmTensor[0:mm_size].view((mm_dim, mm_dim))
+            MMin2 = gemmTensor[mm_size : mm_size * 2].view((mm_dim, mm_dim))
+            MMout = gemmTensor[mm_size * 2 : mm_size * 3].view((mm_dim, mm_dim))
 
         return MMout, MMin1, MMin2
 
