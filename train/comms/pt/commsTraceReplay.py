@@ -786,6 +786,115 @@ class commsTraceReplayBench(paramCommsBench):
                 if timeDiff / 1e9 >= LOOP_TIMER_S:  # make it seconds
                     time.sleep(LOOP_TIMER_S)
 
+    def prepComputeReplay(self, commsParams: commsParamsHolderBase, curComm):
+        computeFunc = None
+
+        # Set the computeCount, which is the number of time to run the compute kernel
+        self.collectiveArgs.computeCount = curComm.count
+
+        # Set reuseTensors, which is whether we reuse the tensors between kernels
+        self.collectiveArgs.reuseTensors = self.reuse_tensors
+
+        # Prep to run GEMM kernel
+        if curComm.compute == "gemm":
+            if self.gemmTensor is None and self.reuse_tensors:
+                self.gemmTensor = self.backendFuncs.alloc_random(
+                    [1073741824],
+                    self.collectiveArgs.device,
+                    self.dtypeMap[curComm.dtype],
+                )
+
+            (
+                self.collectiveArgs.MMout,
+                self.collectiveArgs.MMin1,
+                self.collectiveArgs.MMin2,
+            ) = self.prepGemm(
+                curComm.mm_dim,
+                self.dtypeMap[curComm.dtype],
+                self.collectiveArgs.device,
+                self.gemmTensor if self.reuse_tensors else None,
+            )
+
+            computeFunc = self.backendFuncs.gemm
+
+        # Prep to run TBE/embedding lookup kernel
+        elif curComm.compute == "emb_lookup":
+            # Check if we are to reuse tensors and emb lookup call has been done before -- shortcut init if so
+            if (
+                curComm.toEmbLookupTuple() in self.embLookupReuse.keys()
+                and self.reuse_tensors
+            ):
+                if curComm.direction == "forward":
+                    (
+                        self.collectiveArgs.embRequests,
+                        self.collectiveArgs.emb,
+                    ) = self.embLookupReuse[curComm.toEmbLookupTuple()]
+                else:
+                    (
+                        self.collectiveArgs.embRequests,
+                        self.collectiveArgs.LookupOut,
+                        self.collectiveArgs.grad_output,
+                    ) = self.embLookupReuse[curComm.toEmbLookupTuple()]
+
+            # Otherwise, do init, then add to dictionary if reuse tensors is enabled
+            else:
+                curComm.device = commsParams.device
+                comms_utils.init_emb_lookup(
+                    self.collectiveArgs, curComm, self.backendFuncs
+                )
+                if self.reuse_tensors:
+                    if curComm.direction == "forward":
+                        self.embLookupReuse[curComm.toEmbLookupTuple()] = (
+                            self.collectiveArgs.embRequests,
+                            self.collectiveArgs.emb,
+                        )
+                    else:
+                        self.embLookupReuse[curComm.toEmbLookupTuple()] = (
+                            self.collectiveArgs.embRequests,
+                            self.collectiveArgs.LookupOut,
+                            self.collectiveArgs.grad_output,
+                        )
+
+            # Set embedded lookup as function to run
+            computeFunc = self.backendFuncs.emb_lookup
+
+        # Spawn the compute stream if it was not already created
+        if self.collectiveArgs.compute_stream is None:
+            self.collectiveArgs.compute_stream = self.backendFuncs.get_new_stream()
+
+        return computeFunc
+
+    def recordCommReplay(
+        self,
+        commsParams: commsParamsHolderBase,
+        curComm,
+        collName,
+        latency,
+        curBlockStack,
+        global_latency,
+        curBlocks,
+    ):
+        # record comm metrics
+        self.collLat[collName].append(latency)
+        self.totalCommsLatency += latency
+
+        recordComm = curComm.toDict()
+
+        recordComm["marker_stack"] = curBlockStack
+        recordComm["quant_us"] = self.collectiveArgs.quant_time.getTimeUS()
+        recordComm["dequant_us"] = self.collectiveArgs.dequant_time.getTimeUS()
+        recordComm["latency_us"] = latency
+        recordComm["global_latency_us"] = global_latency
+
+        # record comm block metrics
+        # categorized by the marker
+        for curBlock in curBlocks:
+            # elem_size = self.collectiveArgs.ipTensor.element_size()
+            self.comms_blocks[curBlock].append(recordComm)
+
+        # Keep a copy of trace with performance (latency) and seqnum
+        self.traceWithPerf.append(recordComm)
+
     def replayTrace(self, commsParams: commsParamsHolderBase) -> None:
         """
         Replay comms trace.
@@ -803,88 +912,15 @@ class commsTraceReplayBench(paramCommsBench):
                 " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
             )
 
+            # Replay compute
             if curComm.compute is not None:
-                computeFunc = None
-
-                # Set the computeCount, which is the number of time to run the compute kernel
-                self.collectiveArgs.computeCount = curComm.count
-
-                # Set reuseTensors, which is whether we reuse the tensors between kernels
-                self.collectiveArgs.reuseTensors = self.reuse_tensors
-
-                # Prep to run GEMM kernel
-                if curComm.compute == "gemm":
-                    if self.gemmTensor is None and self.reuse_tensors:
-                        self.gemmTensor = self.backendFuncs.alloc_random(
-                            [1073741824],
-                            self.collectiveArgs.device,
-                            self.dtypeMap[curComm.dtype],
-                        )
-
-                    (
-                        self.collectiveArgs.MMout,
-                        self.collectiveArgs.MMin1,
-                        self.collectiveArgs.MMin2,
-                    ) = self.prepGemm(
-                        curComm.mm_dim,
-                        self.dtypeMap[curComm.dtype],
-                        self.collectiveArgs.device,
-                        self.gemmTensor if self.reuse_tensors else None,
-                    )
-
-                    computeFunc = self.backendFuncs.gemm
-
-                # Prep to run TBE/embedding lookup kernel
-                elif curComm.compute == "emb_lookup":
-                    # Check if we are to reuse tensors and emb lookup call has been done before -- shortcut init if so
-                    if (
-                        curComm.toEmbLookupTuple() in self.embLookupReuse.keys()
-                        and self.reuse_tensors
-                    ):
-                        if curComm.direction == "forward":
-                            (
-                                self.collectiveArgs.embRequests,
-                                self.collectiveArgs.emb,
-                            ) = self.embLookupReuse[curComm.toEmbLookupTuple()]
-                        else:
-                            (
-                                self.collectiveArgs.embRequests,
-                                self.collectiveArgs.LookupOut,
-                                self.collectiveArgs.grad_output,
-                            ) = self.embLookupReuse[curComm.toEmbLookupTuple()]
-
-                    # Otherwise, do init, then add to dictionary if reuse tensors is enabled
-                    else:
-                        curComm.device = commsParams.device
-                        comms_utils.init_emb_lookup(
-                            self.collectiveArgs, curComm, self.backendFuncs
-                        )
-                        if self.reuse_tensors:
-                            if curComm.direction == "forward":
-                                self.embLookupReuse[curComm.toEmbLookupTuple()] = (
-                                    self.collectiveArgs.embRequests,
-                                    self.collectiveArgs.emb,
-                                )
-                            else:
-                                self.embLookupReuse[curComm.toEmbLookupTuple()] = (
-                                    self.collectiveArgs.embRequests,
-                                    self.collectiveArgs.LookupOut,
-                                    self.collectiveArgs.grad_output,
-                                )
-
-                    # Set embedded lookup as function to run
-                    computeFunc = self.backendFuncs.emb_lookup
+                # Prepare to run the compute function
+                computeFunc = self.prepComputeReplay(commsParams, curComm)
 
                 # Running the kernel
                 logger.info(
                     f"[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {curComm.compute}"
                 )
-
-                # Spawn the compute stream if it was not already created
-                if self.collectiveArgs.compute_stream is None:
-                    self.collectiveArgs.compute_stream = (
-                        self.backendFuncs.get_new_stream()
-                    )
 
                 # Run the kernel and report the total time
                 (latency, global_latency) = self.runCompute(
@@ -896,7 +932,10 @@ class commsTraceReplayBench(paramCommsBench):
                         f"[{cnt} / {self.max_msg_cnt}] Replayed {curComm.compute} in block [{curBlockStack}]... {global_latency:.2f} us"
                     )
                 continue
+
+            # Replay comm
             else:
+                # Get the name of the collective from the comm object
                 collName = paramToCommName(curComm.comms)
 
                 (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
@@ -952,25 +991,15 @@ class commsTraceReplayBench(paramCommsBench):
                         self.batchLat.append(batch_latency)
 
                 # record comm metrics
-                self.collLat[collName].append(latency)
-                self.totalCommsLatency += latency
-
-                recordComm = curComm.toDict()
-
-                recordComm["marker_stack"] = curBlockStack
-                recordComm["quant_us"] = self.collectiveArgs.quant_time.getTimeUS()
-                recordComm["dequant_us"] = self.collectiveArgs.dequant_time.getTimeUS()
-                recordComm["latency_us"] = latency
-                recordComm["global_latency_us"] = global_latency
-
-                # record comm block metrics
-                # categorized by the marker
-                for curBlock in curBlocks:
-                    # elem_size = self.collectiveArgs.ipTensor.element_size()
-                    self.comms_blocks[curBlock].append(recordComm)
-
-                # Keep a copy of trace with performance (latency) and seqnum
-                self.traceWithPerf.append(recordComm)
+                self.recordCommReplay(
+                    commsParams,
+                    curComm,
+                    collName,
+                    latency,
+                    curBlockStack,
+                    global_latency,
+                    curBlocks,
+                )
 
                 if self.backendFuncs.get_global_rank() == 0:
                     logger.info(
