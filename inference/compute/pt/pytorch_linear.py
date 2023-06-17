@@ -289,37 +289,4 @@ if __name__ == "__main__":
 
     import argparse
 
-    parser = argparse.ArgumentParser(description="Measure the performance of MLP")
-    parser.add_argument("--device", required=True, choices=["cpu", "gpu", "nnpi"])
-    parser.add_argument(
-        "--dtype",
-        default="float",
-        help="data type",
-        choices=["float", "float16"],
-    )
-    parser.add_argument(
-        "--layer-num", type=int, default=20, help="Number of Linear layers"
-    )
-    parser.add_argument("--batch-size", type=int, default=512, help="Batch size")
-    parser.add_argument("--input-size", type=int, default=1024, help="Input layer size")
-    parser.add_argument(
-        "--hidden-size", type=int, default=128, help="Number of hidden_sizes per layer"
-    )
-    parser.add_argument(
-        "--output-size", type=int, default=1024, help="Output layer size"
-    )
-    parser.add_argument("--steps", type=int, default=100)
-    parser.add_argument("--warmups", type=int, default=10)
-    parser.add_argument("--use-trt", default=False, action="store_true")
-    parser.add_argument("--use-migraphx", default=False, action="store_true")
-
-    args = parser.parse_args()
-    layer_num = args.layer_num
-    batch_size = args.batch_size
-    input_size = args.input_size
-    hidden_size = args.hidden_size
-    output_size = args.output_size
-    # num_batches = args.num_batches
-
-    d = [(layer_num, input_size, hidden_size, output_size, batch_size)]
-    run(args, d)
+    
