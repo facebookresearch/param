@@ -6,7 +6,7 @@ from datetime import datetime
 
 import torch
 from torch.autograd.profiler import record_function
-from torch.profiler import _ExperimentalConfig, ExecutionGraphObserver
+from torch.profiler import _ExperimentalConfig, ExecutionTraceObserver
 
 from ..lib import __version__, pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
@@ -182,9 +182,9 @@ def main():
         "Warning : this can be slow",
     )
     parser.add_argument(
-        "--eg",
+        "--et",
         action="store_true",
-        help="Collect execution graph.",
+        help="Collect execution trace.",
     )
 
     parser.add_argument(
@@ -296,12 +296,12 @@ def main():
         if run_options["device"].startswith("cuda"):
             use_cuda = True
 
-        eg = None
-        if args.eg:
-            eg_file = f"{out_file_prefix}_eg.json"
-            eg = ExecutionGraphObserver()
-            eg.register_callback(eg_file)
-            eg.start()
+        et = None
+        if args.et:
+            et_file = f"{out_file_prefix}_et.json"
+            et = ExecutionTraceObserver()
+            et.register_callback(et_file)
+            et.start()
 
         cupti_profiler_config = (
             _ExperimentalConfig(
@@ -325,10 +325,10 @@ def main():
             with record_function(f"[param|{run_options['device']}]"):
                 benchmark.run()
 
-        if eg:
-            eg.stop()
-            eg.unregister_callback()
-            logger.info(f"exeution graph: {eg_file}")
+        if et:
+            et.stop()
+            et.unregister_callback()
+            logger.info(f"Exeution trace: {et_file}")
 
         print(
             json.dumps({"finish_time": datetime.now().isoformat(timespec="seconds")}),
@@ -336,11 +336,11 @@ def main():
         )
         if args.profile and prof:
             trace_file = f"{out_file_prefix}_trace.json"
-            logger.info(f"trace: {trace_file}")
+            logger.info(f"Kineto trace: {trace_file}")
             prof.export_chrome_trace(trace_file)
             print(json.dumps({"trace_file": trace_file}), file=out_file)
 
-    logger.info(f"benchmark result: {out_file_name}")
+    logger.info(f"Benchmark result: {out_file_name}")
 
 
 if __name__ == "__main__":
