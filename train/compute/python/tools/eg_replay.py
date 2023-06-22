@@ -45,7 +45,7 @@ from param_bench.train.compute.python.tools.execution_graph import (
 
 from param_bench.train.compute.python.tools.utility import trace_handler
 from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
-from torch.profiler import ExecutionGraphObserver
+from torch.profiler import ExecutionTraceObserver
 
 
 class ExgrReplayManager:
@@ -1220,7 +1220,7 @@ class ExgrReplayManager:
         if "://" in self.trace_file:
             self.commsBench.use_remote_trace = True
 
-        parser = argparse.ArgumentParser(description="Execution Graph Comms Replay")
+        parser = argparse.ArgumentParser(description="Execution Trace Comms Replay")
         comms_args = self.commsBench.readArgs(parser)
 
         self.commsBench.checkArgs(comms_args)
@@ -1320,7 +1320,7 @@ class ExgrReplayManager:
 
         if self.eg_profile:
             eg_file = "/tmp/replay_eg.json"
-            eg = ExecutionGraphObserver()
+            eg = ExecutionTraceObserver()
             eg.register_callback(eg_file)
 
         # Print real time qps every # iterations.
@@ -1470,7 +1470,7 @@ class ExgrReplayManager:
             )
 
     def readComputeArgs(self):
-        parser = argparse.ArgumentParser(description="Execution Graph Compute Replay")
+        parser = argparse.ArgumentParser(description="Execution Trace Compute Replay")
         parser.add_argument(
             "--warmup-iter", type=int, default=5, help="Number of warm up iterations."
         )
@@ -1481,7 +1481,7 @@ class ExgrReplayManager:
             "--input",
             type=str,
             required=False,
-            help="Input execution graph json file for single process use.",
+            help="Input execution trace json file for single process use.",
         )
         parser.add_argument(
             "--profile-replay",
