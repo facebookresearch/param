@@ -21,7 +21,7 @@ from param_bench.train.compute.python.lib.pytorch.config_util import (
 )
 from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
 from torch.autograd.profiler import record_function
-from torch.profiler import _ExperimentalConfig, ExecutionGraphObserver
+from torch.profiler import _ExperimentalConfig, ExecutionTraceObserver
 
 
 class BenchmarkHelper:
@@ -172,7 +172,7 @@ class BenchmarkHelper:
             eg = None
             if self.eg:
                 self.eg_file = f"{self.out_file_prefix}_eg.json"
-                eg = ExecutionGraphObserver()
+                eg = ExecutionTraceObserver()
                 eg.register_callback(self.eg_file)
                 eg.start()
 
