@@ -923,20 +923,22 @@ class paramCommsBench(ABC):
         # reset values
         if self.collectiveArgs.collective in ("all_reduce", "reduce"):
             # all processes use initVal to have predictable results
-            tensor[:] = self.initVal
+            newVal = self.initVal
         elif self.collectiveArgs.collective in ("broadcast", "multicast"):
             # root process uses initVal and others use random values
-            tensor[:] = (
+            newVal = (
                 self.initVal
                 if (self.backendFuncs.get_global_rank() == self.collectiveArgs.srcOrDst)
                 else newVal
             )
-        elif isinstance(tensor, list):
+
+        # reset the tensor(s)
+        if isinstance(tensor, list):
             # could be a list of tensor, for all_gather, gather, reduce_scatter
             for t in tensor:
-                t[:] = newVal
+                t.fill_(newVal)
         else:
-            tensor[:] = newVal
+            tensor.fill_(newVal)
 
     # Collection of prepComm private methods. These methods prepare tensors for the respective collective.
 
