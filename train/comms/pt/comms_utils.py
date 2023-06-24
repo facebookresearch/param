@@ -513,7 +513,7 @@ class commsArgs:
         Global/Comm Attributes:
             comms: Name of collective.
             compute: Name of compute kernel.
-            seqnum: Current number of collectives.
+            id: Current trace object ID.
             req: Request ID of collective to map to wait operation.
             inMsgSize: Size of input tensor.
             outMsgSize: Size of output tensor.
@@ -526,7 +526,6 @@ class commsArgs:
             worldSize: World size of current process group.
             markerStack: Current markers that this collective is a part of.
             root: Used to determine if collective is src or dst.
-            eg_id: Node id in captured execution graph.
 
         GEMM Attributes:
             mm_dim: dimension of matrix for replaying GEMM kernels
@@ -547,7 +546,7 @@ class commsArgs:
         """
         self.comms = kwargs["comms"] if "comms" in kwargs else None
         self.compute = kwargs["compute"] if "compute" in kwargs else None
-        self.seqnum = kwargs["seqnum"] if "seqnum" in kwargs else None
+        self.id = kwargs["id"] if "id" in kwargs else None
         self.req = kwargs["req"] if "req" in kwargs else None
         self.inMsgSize = kwargs["inMsgSize"] if "inMsgSize" in kwargs else None
         self.outMsgSize = kwargs["outMsgSize"] if "outMsgSize" in kwargs else None
@@ -560,7 +559,6 @@ class commsArgs:
         self.worldSize = kwargs["worldSize"] if "worldSize" in kwargs else None
         self.markerStack = kwargs["markerStack"] if "markerStack" in kwargs else None
         self.root = kwargs["root"] if "root" in kwargs else None
-        self.eg_id = kwargs["eg_id"] if "eg_id" in kwargs else None
 
         self.mm_dim = kwargs["mm_dim"] if "mm_dim" in kwargs else None
 
@@ -601,7 +599,6 @@ class commsArgs:
                 if self.bagSize is not None:
                     commData["bagSize"] = self.bagSize
 
-        commData["seqnum"] = self.seqnum
         if self.req is not None:
             commData["req"] = self.req
         if self.inMsgSize is not None:

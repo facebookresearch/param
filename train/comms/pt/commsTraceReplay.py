@@ -530,7 +530,7 @@ class commsTraceReplayBench(paramCommsBench):
         Args:
             curComm: The current communication that we are preparing the correct tensor for.
             commsParams: Holds the comms param arguments that will determine tensor attributes.
-            regenerateTensors: when a eg_id is being replayed multiple times, setting this to false will use temsors from previous runs
+            regenerateTensors: when an id is being replayed multiple times, setting this to false will use temsors from previous runs
         Returns:
             (ipTensor, opTensor) if the current communication requires tensors, None otherwise.
         """
@@ -599,19 +599,19 @@ class commsTraceReplayBench(paramCommsBench):
         # This avoid regenerating sizes such as in _prep_all_gather_base
         commsParams.size_from_trace = True
         commsParams.dtype = self.dtypeMap[curComm.dtype]
-        if not curComm.eg_id:
+        if not curComm.id:
             return super().prepComm(curComm, commsParams)
 
         if regenerateTensors:
             return super().prepComm(curComm, commsParams)
         else:
-            if curComm.eg_id in self.eg_to_tensors:
+            if curComm.id in self.eg_to_tensors:
                 # Allocate input/output tensors if first time replay, otherwise the previous ones.
                 super().prepComm(curComm, commsParams, False)
-                (ipTensor, opTensor) = self.eg_to_tensors[curComm.eg_id]
+                (ipTensor, opTensor) = self.eg_to_tensors[curComm.id]
             else:
                 (ipTensor, opTensor) = super().prepComm(curComm, commsParams, True)
-                self.eg_to_tensors[curComm.eg_id] = (ipTensor, opTensor)
+                self.eg_to_tensors[curComm.id] = (ipTensor, opTensor)
         return (ipTensor, opTensor)
 
     def warmUpBench(self, commsParams: commsParamsHolderBase) -> None:
@@ -892,7 +892,7 @@ class commsTraceReplayBench(paramCommsBench):
             # elem_size = self.collectiveArgs.ipTensor.element_size()
             self.comms_blocks[curBlock].append(recordComm)
 
-        # Keep a copy of trace with performance (latency) and seqnum
+        # Keep a copy of trace with performance (latency) and id
         self.traceWithPerf.append(recordComm)
 
     def replayTrace(self, commsParams: commsParamsHolderBase) -> None:
@@ -1007,19 +1007,19 @@ class commsTraceReplayBench(paramCommsBench):
                     )
 
     def replaySingle(
-        self, commsParams: commsParamsHolderBase, eg_id: int, regenerateTensors: True
+        self, commsParams: commsParamsHolderBase, id: int, regenerateTensors: True
     ) -> torch.tensor:
         """
         Replay comms trace.
 
         Args:
             commsParams: Run-time parameters for replay.
-            eg_id: comms op id in execution graph.
+            id: comms op id.
         Returns:
             Output tensor.
         """
         for _, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
-            if curComm.eg_id == eg_id:
+            if curComm.id == id:
                 collName = paramToCommName(curComm.comms)
                 if collName not in self.allowList:
                     return
@@ -1073,7 +1073,6 @@ class commsTraceReplayBench(paramCommsBench):
             "startTimeNs": 0
             "markerStack": ["## all2all ##"]
             "comms": "all_to_allv",
-            "seqnum": 0
             "req": 0
             "inMsgSize": 10357149,
             "outMsgSize": 23093760,
@@ -1087,7 +1086,6 @@ class commsTraceReplayBench(paramCommsBench):
             "startTimeNs": 0
             "markerStack": ["## all2all ##"]
             "comms": "all_reduce",
-            "seqnum": 0
             "req": 0
             "inMsgSize": 1048576,
             "outMsgSize": 1048576,
@@ -1098,7 +1096,6 @@ class commsTraceReplayBench(paramCommsBench):
         {
             "startTimeNs": 0
             "markerStack": ["## all2all ##"]
-            "seqnum": 0
             "req": 0
             "comms": "wait",
             "worldSize": 16
@@ -1462,7 +1459,7 @@ def extractCommsInfo(in_trace: List[Dict]) -> List[commsArgs]:
     for cnt, curComm in enumerate(in_trace):
         newComm = commsArgs()
         newComm.comms = paramToCommName(curComm["comms"].lower())
-        newComm.seqnum = cnt
+        newComm.id = cnt
         if "req" in curComm:
             newComm.req = curComm["req"]
         if "startTime_ns" in curComm:

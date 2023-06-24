@@ -53,7 +53,7 @@ def _parseBasicTrace(in_trace: List):
     for cnt, curComm in enumerate(in_trace):
 
         newComm = commsArgs()
-        newComm.seqnum = cnt
+        newComm.id = cnt
         newComm.markerStack = curComm.get("markers")
         if "comms" in curComm:
             _parseBasicTraceComms(curComm, newComm)
@@ -142,7 +142,7 @@ def _parseKinetoUnitrace(in_trace: List, target_rank: int) -> List:
 
             newComm = commsArgs()
             newComm.comms = comms_utils.paramToCommName(entry["args"]["comms"].lower())
-            newComm.seqnum = commsCnt
+            newComm.id = commsCnt
             newComm.inMsgSize = entry["args"]["in_msg_size"]
             newComm.outMsgSize = entry["args"]["out_msg_size"]
             newComm.dtype = entry["args"]["dtype"]
@@ -236,7 +236,12 @@ def _parsePyTorchET(in_trace: List) -> List:
             )  # wait and barrier ops do not have an input tensor, shift index one over
 
             newComm = commsArgs()
-            newComm.et_id = entry["id"]
+            if entry["id"] is not None:
+                newComm.id = entry["id"]
+            if entry["eg_id"] is not None:
+                newComm.id = entry["eg_id"]
+            if entry["et_id"] is not None:
+                newComm.id = entry["et_id"]
             newComm.comms = comms_utils.paramToCommName(
                 entry["inputs"][4 - shift].lower()
             )  # 5th value of inputs is colName
@@ -244,7 +249,6 @@ def _parsePyTorchET(in_trace: List) -> List:
             if newComm.comms == "init":
                 continue  # We extracted pgs in earlier loop.
 
-            newComm.seqnum = commsCnt
             newComm.req = entry["inputs"][
                 1 - shift
             ]  # 2nd value of inputs is the req id of the collective
