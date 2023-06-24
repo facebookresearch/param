@@ -528,7 +528,10 @@ class commsArgs:
             root: Used to determine if collective is src or dst.
 
         GEMM Attributes:
-            mm_dim: dimension of matrix for replaying GEMM kernels
+            mm0_dim0: dimension 0 of the first matrix for replaying GEMM kernels
+            mm0_dim1: dimension 1 of the first matrix for replaying GEMM kernels
+            mm1_dim0: dimension 0 of the second matrix for replaying GEMM kernels
+            mm1_dim1: dimension 1 of the second matrix for replaying GEMM kernels
 
         Embedded Lookup Attributes:
             direction: direction of embedding lookup kernel (forward or backward)
@@ -560,7 +563,10 @@ class commsArgs:
         self.markerStack = kwargs["markerStack"] if "markerStack" in kwargs else None
         self.root = kwargs["root"] if "root" in kwargs else None
 
-        self.mm_dim = kwargs["mm_dim"] if "mm_dim" in kwargs else None
+        self.mm0_dim0 = kwargs["mm0_dim0"] if "mm0_dim0" in kwargs else None
+        self.mm0_dim1 = kwargs["mm0_dim0"] if "mm0_dim1" in kwargs else None
+        self.mm1_dim0 = kwargs["mm1_dim1"] if "mm1_dim0" in kwargs else None
+        self.mm1_dim1 = kwargs["mm1_dim1"] if "mm1_dim1" in kwargs else None
 
         self.direction = kwargs["direction"] if "direction" in kwargs else 0
         self.embDim = kwargs["embDim"] if "embDim" in kwargs else None
@@ -585,8 +591,14 @@ class commsArgs:
         if self.compute is not None:
             commData["compute"] = self.compute
             if commData["compute"] == "gemm":
-                if self.mm_dim is not None:
-                    commData["mm_dim"] = self.mm_dim
+                if self.mm0_dim0 is not None:
+                    commData["mm0_dim0"] = self.mm0_dim0
+                if self.mm0_dim1 is not None:
+                    commData["mm0_dim1"] = self.mm0_dim1
+                if self.mm1_dim0 is not None:
+                    commData["mm1_dim0"] = self.mm1_dim0
+                if self.mm1_dim1 is not None:
+                    commData["mm1_dim1"] = self.mm1_dim1
             elif commData["compute"] == "emb_lookup":
                 if self.embDim is not None:
                     commData["embDim"] = self.embDim
@@ -788,7 +800,10 @@ class commsParamsHolder(commsParamsHolderBase):
         self.kernel = args.kernel
         self.num_compute = args.num_compute
         self.num_coll = args.num_coll
-        self.mm_dim = args.mm_dim
+        self.mm0_dim0 = args.mm0_dim0
+        self.mm0_dim1 = args.mm0_dim1
+        self.mm1_dim0 = args.mm1_dim0
+        self.mm1_dim1 = args.mm1_dim1
         self.emb_dim = args.emb_dim
         self.batch_size = args.batch_size
         self.num_embs = args.num_embs
@@ -1232,23 +1247,45 @@ class paramCommsBench(ABC):
             )
         return (ipTensor, opTensor)
 
-    def prepGemm(
-        self, mm_dim: int, dtype: str, curDevice: str, gemmTensor: torch.tensor = None
+    def prepGemmNotSquare(
+        self,
+        mm0_dim0: int,
+        mm0_dim1: int,
+        mm1_dim0: int,
+        mm1_dim1: int,
+        dtype: str,
+        curDevice: str,
+        gemmTensor: torch.tensor = None,
     ) -> (torch.Tensor, torch.Tensor, torch.Tensor):
         if gemmTensor is None:
-            in1 = np.random.rand(mm_dim, mm_dim)
-            in2 = np.random.rand(mm_dim, mm_dim)
+            in1 = np.random.rand(mm0_dim0, mm0_dim1)
+            in2 = np.random.rand(mm1_dim0, mm1_dim1)
 
             MMin1 = torch.FloatTensor(in1).to(curDevice)
             MMin2 = torch.FloatTensor(in2).to(curDevice)
-            MMout = self.backendFuncs.alloc_empty((mm_dim, mm_dim), dtype, curDevice)
+            MMout = self.backendFuncs.alloc_empty(
+                (mm0_dim0, mm1_dim1), dtype, curDevice
+            )
         else:
-            mm_size = mm_dim * mm_dim
-            MMin1 = gemmTensor[0:mm_size].view((mm_dim, mm_dim))
-            MMin2 = gemmTensor[mm_size : mm_size * 2].view((mm_dim, mm_dim))
-            MMout = gemmTensor[mm_size * 2 : mm_size * 3].view((mm_dim, mm_dim))
+            mm_size0 = mm0_dim0 * mm0_dim1
+            mm_size1 = mm1_dim0 * mm1_dim1
+            out_size = mm0_dim0 * mm1_dim1
+            MMin1 = gemmTensor[0:mm_size0].view((mm0_dim0, mm0_dim1))
+            MMin2 = gemmTensor[mm_size0 : mm_size0 + mm_size1].view(
+                (mm1_dim0, mm1_dim1)
+            )
+            MMout = gemmTensor[
+                mm_size0 + mm_size1 : mm_size0 + mm_size1 + out_size
+            ].view((mm0_dim0, mm1_dim1))
 
         return MMout, MMin1, MMin2
+
+    def prepGemm(
+        self, mm_dim: int, dtype: str, curDevice: str, gemmTensor: torch.tensor = None
+    ) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+        return self.prepGemmNotSquare(
+            mm_dim, mm_dim, mm_dim, mm_dim, dtype, curDevice, gemmTensor
+        )
 
     def prepComm(
         self,

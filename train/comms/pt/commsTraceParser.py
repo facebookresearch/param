@@ -104,7 +104,16 @@ def _parseBasicTraceCompute(curComm, newComm: commsArgs) -> None:
     else:
         newComm.count = 1
     if newComm.compute == "gemm":
-        newComm.mm_dim = curComm.get("mm_dim")
+        if "mm_dim" in curComm:
+            newComm.mm0_dim0 = curComm.get("mm_dim")
+            newComm.mm0_dim1 = curComm.get("mm_dim")
+            newComm.mm1_dim0 = curComm.get("mm_dim")
+            newComm.mm1_dim1 = curComm.get("mm_dim")
+        else:
+            newComm.mm0_dim0 = curComm.get("mm0_dim0")
+            newComm.mm0_dim1 = curComm.get("mm0_dim1")
+            newComm.mm1_dim0 = curComm.get("mm1_dim0")
+            newComm.mm1_dim1 = curComm.get("mm1_dim1")
         newComm.dtype = curComm.get("dtype")
     elif newComm.compute == "emb_lookup":
         if "direction" in curComm:

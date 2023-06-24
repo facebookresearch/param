@@ -808,8 +808,11 @@ class commsTraceReplayBench(paramCommsBench):
                 self.collectiveArgs.MMout,
                 self.collectiveArgs.MMin1,
                 self.collectiveArgs.MMin2,
-            ) = self.prepGemm(
-                curComm.mm_dim,
+            ) = self.prepGemmNotSquare(
+                curComm.mm0_dim0,
+                curComm.mm0_dim1,
+                curComm.mm1_dim0,
+                curComm.mm1_dim1,
                 self.dtypeMap[curComm.dtype],
                 self.collectiveArgs.device,
                 self.gemmTensor if self.reuse_tensors else None,
