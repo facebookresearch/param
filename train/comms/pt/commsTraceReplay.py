@@ -667,7 +667,7 @@ class commsTraceReplayBench(paramCommsBench):
                 (
                     self.collectiveArgs.ipTensor,
                     self.collectiveArgs.opTensor,
-                ) = self.prepComms(commEntry, commsParams)
+                ) = self.prepComms(commEntry, commsParams, not self.reuse_tensors)
 
             if commName in self.backendFuncs.collectiveFunc.keys():
                 self.backendFuncs.collectiveFunc[commName](self.collectiveArgs)
@@ -952,7 +952,7 @@ class commsTraceReplayBench(paramCommsBench):
                 (
                     self.collectiveArgs.ipTensor,
                     self.collectiveArgs.opTensor,
-                ) = self.prepComms(curComm, commsParams)
+                ) = self.prepComms(curComm, commsParams, not self.reuse_tensors)
 
                 if self.colls_per_batch > 0 and coll_in_batch_num == 0:
                     batch_begin = time.monotonic()
