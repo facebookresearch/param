@@ -668,7 +668,7 @@ class PyTorchDistBackend(backendFunctions):
     ):
         if dtype in (torch.uint8, torch.int16, torch.int32, torch.long):
             ipTensor = torch.randint(
-                low=0, high=10, size=sizeArr, device=curRankDevice, dtype=dtype
+                low=0, high=10, size=tuple(sizeArr), device=curRankDevice, dtype=dtype
             )
         elif dtype == torch.bool:
             ipTensor = (

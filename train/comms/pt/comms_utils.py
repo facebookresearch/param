@@ -1101,11 +1101,11 @@ class paramCommsBench(ABC):
                 )
             else:
                 ipTensor = self.backendFuncs.alloc_random(
-                    numElementsIn, curDevice, dtype, scaleFactor
+                    [numElementsIn], curDevice, dtype, scaleFactor
                 )
             # this is a single all gather with flat output tensor
             opTensor = self.backendFuncs.alloc_random(
-                numElementsOut,
+                [numElementsOut],
                 curDevice,
                 dtype,
                 scaleFactor,
@@ -1213,7 +1213,7 @@ class paramCommsBench(ABC):
                 )
             else:
                 ipTensor = self.backendFuncs.alloc_random(
-                    numElementsIn,
+                    [numElementsIn],
                     curDevice,
                     commsParams.dtype,
                     scaleFactor,
