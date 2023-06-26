@@ -800,10 +800,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.kernel = args.kernel
         self.num_compute = args.num_compute
         self.num_coll = args.num_coll
-        self.mm0_dim0 = args.mm0_dim0
-        self.mm0_dim1 = args.mm0_dim1
-        self.mm1_dim0 = args.mm1_dim0
-        self.mm1_dim1 = args.mm1_dim1
+        self.mm_dim = args.mm_dim
         self.emb_dim = args.emb_dim
         self.batch_size = args.batch_size
         self.num_embs = args.num_embs
