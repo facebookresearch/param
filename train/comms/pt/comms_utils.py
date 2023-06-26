@@ -1316,8 +1316,8 @@ class paramCommsBench(ABC):
         world_size = self.collectiveArgs.world_size
         dtype = commsParams.dtype
         curDevice = commsParams.device
-        # scaleFactor = 1 if commsParams.collective == "all_to_all" else numElements * numElements
-        scaleFactor = numElementsOut * numElementsOut
+        # seed to generate random value; let's use a small value to avoid potential "overflow when unpacking long"
+        scaleFactor = world_size
         opTensor = []
 
         if allocate:
