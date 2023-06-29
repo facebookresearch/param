@@ -587,7 +587,8 @@ class commsArgs:
             commData: Dictionary containing the comms metadata.
         """
         commData = {}
-        commData["comms"] = self.comms
+        if self.comms is not None:
+            commData["comms"] = self.comms
         if self.compute is not None:
             commData["compute"] = self.compute
             if commData["compute"] == "gemm":

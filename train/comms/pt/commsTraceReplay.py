@@ -115,6 +115,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         self.batchLat = []
         self.collLat: Dict[str, List] = {}
+        self.compLat: Dict[str, List] = {}
 
         self.comms_blocks: Dict[str, List] = {}
         self.traceWithPerf = []
@@ -125,6 +126,8 @@ class commsTraceReplayBench(paramCommsBench):
         # for blocking collectives this is the sum of all the collective latencies
         # for nonblocking collectives this is the sum of how long each collective took to be sent to the device
         self.totalCommsLatency = 0.0
+        # sum of all compute kernel latencies
+        self.totalCompsLatency = 0.0
         # how long it took to finish all collectives in the trace
         self.totalTraceLatency = 0.0
 
@@ -414,9 +417,13 @@ class commsTraceReplayBench(paramCommsBench):
         self.max_msg_cnt = self.num_msg if self.max_msg_cnt == 0 else self.max_msg_cnt
         # first pass to know the statistics and get required info.
         for curComm in self.comms_trace[: self.max_msg_cnt]:
-            # skip compute-only kernels
-            if curComm.comms is None:
+            # record the current comp
+            if curComm.compute is not None:
+                compName = curComm.compute
+                if compName not in self.compLat.keys():
+                    self.compLat[compName] = []
                 continue
+
             # record the current comm
             collName = paramToCommName(curComm.comms)
             curBlocks = curComm.markerStack if curComm.markerStack is not None else []
@@ -877,10 +884,6 @@ class commsTraceReplayBench(paramCommsBench):
         global_latency,
         curBlocks,
     ):
-        # record comm metrics
-        self.collLat[collName].append(latency)
-        self.totalCommsLatency += latency
-
         recordComm = curComm.toDict()
 
         recordComm["marker_stack"] = curBlockStack
@@ -889,12 +892,20 @@ class commsTraceReplayBench(paramCommsBench):
         recordComm["latency_us"] = latency
         recordComm["global_latency_us"] = global_latency
 
-        # record comm block metrics
-        # categorized by the marker
-        for curBlock in curBlocks:
-            # elem_size = self.collectiveArgs.ipTensor.element_size()
-            self.comms_blocks[curBlock].append(recordComm)
+        # record compute metrics
+        if curComm.compute is not None:
+            self.compLat[collName].append(latency)
+            self.totalCompsLatency += latency
+        else:
+            # record comm metrics
+            self.collLat[collName].append(latency)
+            self.totalCommsLatency += latency
 
+            # record comm block metrics
+            # categorized by the marker
+            for curBlock in curBlocks:
+                # elem_size = self.collectiveArgs.ipTensor.element_size()
+                self.comms_blocks[curBlock].append(recordComm)
         # Keep a copy of trace with performance (latency) and id
         self.traceWithPerf.append(recordComm)
 
@@ -929,12 +940,7 @@ class commsTraceReplayBench(paramCommsBench):
                 (latency, global_latency) = self.runCompute(
                     func=computeFunc, curBlockStack=curBlockStack
                 )
-
-                if self.backendFuncs.get_global_rank() == 0:
-                    logger.info(
-                        f"[{cnt} / {self.max_msg_cnt}] Replayed {curComm.compute} in block [{curBlockStack}]... {global_latency:.2f} us"
-                    )
-                continue
+                recordName = curComm.compute
 
             # Replay comm
             else:
@@ -993,21 +999,23 @@ class commsTraceReplayBench(paramCommsBench):
                         coll_in_batch_num = 0
                         self.batchLat.append(batch_latency)
 
-                # record comm metrics
-                self.recordCommReplay(
-                    commsParams,
-                    curComm,
-                    collName,
-                    latency,
-                    curBlockStack,
-                    global_latency,
-                    curBlocks,
-                )
+                recordName = collName
 
-                if self.backendFuncs.get_global_rank() == 0:
-                    logger.info(
-                        f"[{cnt} / {self.max_msg_cnt}] Replayed {collName} in block [{curBlockStack}]... {global_latency:.2f} us"
-                    )
+            # record performance metrics
+            self.recordCommReplay(
+                commsParams,
+                curComm,
+                recordName,
+                latency,
+                curBlockStack,
+                global_latency,
+                curBlocks,
+            )
+
+            if self.backendFuncs.get_global_rank() == 0:
+                logger.info(
+                    f"[{cnt} / {self.max_msg_cnt}] Replayed {recordName} in block [{curBlockStack}]... {global_latency:.2f} us"
+                )
 
     def replaySingle(
         self, commsParams: commsParamsHolderBase, id: int, regenerateTensors: True
