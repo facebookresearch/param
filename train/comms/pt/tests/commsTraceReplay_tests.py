@@ -96,7 +96,7 @@ class TestPrepComms(unittest.TestCase):
         self.assertEqual(1, len(optensor))
 
 
-class TestWarmUpBench(unittest.TestCase):
+class TestReplayTrace(unittest.TestCase):
     """
     Make sure function runs without failure for now.
     Future work can be to use unittest.mock to validate printed output.
@@ -114,8 +114,23 @@ class TestWarmUpBench(unittest.TestCase):
         testBench.backendFuncs = MockBackendFunction()
         testBench.comms_trace = test_trace
         commsParams = commsParamsTest()
-        testBench.warmUpBench(commsParams)
-        self.assertTrue(True)  # just check to see if warmUpBench ran without failure
+        testBench.replayTrace(commsParams, True)
+        self.assertTrue(True)  # just check to see if warmup ran without failure
+
+    def test_replay(self):
+        test_trace = [
+            createCommsArgs(
+                comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]
+            ),
+            createCommsArgs(comms="all_gather", inMsgSize=2, outmsgSize=2),
+            createCommsArgs(comms="wait", markerStack=["test_stack"]),
+        ]
+        testBench = commsTraceReplayBench()
+        testBench.backendFuncs = MockBackendFunction()
+        testBench.comms_trace = test_trace
+        commsParams = commsParamsTest()
+        testBench.replayTrace(commsParams)
+        self.assertTrue(True)  # just check to see if replay ran without failure
 
 
 class TestRunComms(unittest.TestCase):
@@ -217,13 +232,13 @@ class TestInitBench(unittest.TestCase):
         args.use_timestamp = True
         args.num_msg = 1000
         args.auto_shrink = False
-        args.no_warm_up = False
+        args.do_warm_up = False
         testBench.initBench(commsParams, args)
         # check if parameters are being set
         self.assertEqual(True, args.use_timestamp, testBench.use_timestamp)
         self.assertEqual(1000, args.num_msg, testBench.max_msg_cnt)
         self.assertEqual(False, args.auto_shrink, testBench.shrink)
-        self.assertEqual(False, args.no_warm_up, not testBench.do_warm_up)
+        self.assertEqual(False, args.do_warm_up, not testBench.do_warm_up)
 
 
 class TestRebalanceSplit(unittest.TestCase):

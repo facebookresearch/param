@@ -120,6 +120,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.comms_blocks: Dict[str, List] = {}
         self.traceWithPerf = []
         self.blockStack = []
+        self.replayIter = 0
 
         self.rebalance_policy = ""
 
@@ -621,66 +622,30 @@ class commsTraceReplayBench(paramCommsBench):
                 self.eg_to_tensors[curComm.id] = (ipTensor, opTensor)
         return (ipTensor, opTensor)
 
-    def warmUpBench(self, commsParams: commsParamsHolderBase) -> None:
+    def commRebalance(self, curComm: commsArgs) -> None:
         """
-        Replays collectives without recording statistics to warm up devices.
+        Optionally rebalance data size for a collective.
 
         Args:
-            commsParams: Holds comms params to be passed into prepComms() for appropriate tensor allocation.
+            curComm: The current communication that we are preparing the correct tensor for.
         Returns:
             None
         """
-        for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
-            # Skip compute-only kernels
-            if curComm.comms is None:
-                continue
-
-            # Make a copy of the comm to not modify it before real run.
-            commEntry = copy.deepcopy(curComm)
-            commName = paramToCommName(commEntry.comms)
-
-            (groupRank, groupDesc) = self.getCommGroupInfo(commEntry, commsParams)
-            # Skip comm if the local process doesn't belong to the PG or encounter an unexpected collective
-            if commName not in self.allowList or groupRank == -1:
-                continue
-
-            if groupRank == 0:
-                logger.info(
-                    f"[Warm-up][{cnt} / {self.max_msg_cnt}] Replaying {commName:>10} with {groupDesc}..."
-                )
-
-            # read fields and prepare the tensors
-            (
-                self.collectiveArgs.ipTensor,
-                self.collectiveArgs.opTensor,
-            ) = self.prepComms(commEntry, commsParams)
-
-            # Rebalance all_to_allv if a policy is specified.
-            if (
-                commName in self.backendFuncs.collectiveFunc.keys()
-                and commName == "all_to_allv"
-                and len(self.rebalance_policy) > 0
-            ):
-                # We need to set world_size correctly for rebalancing.
-                self.collectiveArgs.world_size = (
-                    self.backendFuncs.get_world_size()
-                    if commEntry.pgId is None or self.shrink
-                    else commEntry.worldSize
-                )
-                # Pass in curComm to modify it in the trace, instead of the copy.
-                self.rebalanceSplit(curComm)
-
-                # Rebalancing invalidated tensors, prep them again.
-                (
-                    self.collectiveArgs.ipTensor,
-                    self.collectiveArgs.opTensor,
-                ) = self.prepComms(commEntry, commsParams, not self.reuse_tensors)
-
-            if commName in self.backendFuncs.collectiveFunc.keys():
-                self.backendFuncs.collectiveFunc[commName](self.collectiveArgs)
-            # skip not supported ops
-
-            self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+        commName = paramToCommName(curComm.comms)
+        # Rebalance all_to_allv if a policy is specified.
+        if (
+            commName in self.backendFuncs.collectiveFunc.keys()
+            and commName == "all_to_allv"
+            and len(self.rebalance_policy) > 0
+        ):
+            # We need to set world_size correctly for rebalancing.
+            self.collectiveArgs.world_size = (
+                self.backendFuncs.get_world_size()
+                if curComm.pgId is None or self.shrink
+                else curComm.worldSize
+            )
+            # Pass in curComm to modify it in the trace
+            self.rebalanceSplit(curComm)
 
     def runCompute(self, func, curBlockStack: str) -> float:
         """
@@ -909,15 +874,25 @@ class commsTraceReplayBench(paramCommsBench):
         # Keep a copy of trace with performance (latency) and id
         self.traceWithPerf.append(recordComm)
 
-    def replayTrace(self, commsParams: commsParamsHolderBase) -> None:
+    def replayTrace(
+        self,
+        commsParams: commsParamsHolderBase,
+        warmup: bool = False,
+    ) -> None:
         """
         Replay comms trace.
 
         Args:
             commsParams: Run-time parameters for replay.
+            warmup: Indicating whether this round is for warmup.
         Returns:
             None
         """
+        if warmup:
+            logLable = "[Warm-up]"
+        else:
+            logLable = f"[Replay {self.replayIter}]"
+
         coll_in_batch_num = 0
         startTime = time.monotonic_ns()
         for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
@@ -933,7 +908,7 @@ class commsTraceReplayBench(paramCommsBench):
 
                 # Running the kernel
                 logger.info(
-                    f"[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {curComm.compute}"
+                    f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {curComm.compute}"
                 )
 
                 # Run the kernel and report the total time
@@ -944,9 +919,11 @@ class commsTraceReplayBench(paramCommsBench):
 
             # Replay comm
             else:
+                if warmup:
+                    self.commRebalance(curComm)
+
                 # Get the name of the collective from the comm object
                 collName = paramToCommName(curComm.comms)
-
                 (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
                 # Skip comm if the local process doesn't belong to the PG or encounter an unexpected collective
                 if collName not in self.allowList or groupRank == -1:
@@ -954,7 +931,7 @@ class commsTraceReplayBench(paramCommsBench):
 
                 if groupRank == 0:
                     logger.info(
-                        f"[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {str(curComm.comms)} with {groupDesc}"
+                        f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {str(curComm.comms)} with {groupDesc}"
                     )
 
                 # read fields and prepare the tensors
@@ -963,11 +940,11 @@ class commsTraceReplayBench(paramCommsBench):
                     self.collectiveArgs.opTensor,
                 ) = self.prepComms(curComm, commsParams, not self.reuse_tensors)
 
-                if self.colls_per_batch > 0 and coll_in_batch_num == 0:
+                if not warmup and self.colls_per_batch > 0 and coll_in_batch_num == 0:
                     batch_begin = time.monotonic()
 
                 # wait for collective timestamp if enabled.
-                if self.use_timestamp:
+                if not warmup and self.use_timestamp:
                     self.waitForTimestamp(curComm, startTime)
 
                 # send comm request to pytorch backend
@@ -990,7 +967,7 @@ class commsTraceReplayBench(paramCommsBench):
                     )
 
                 # calculating batch latency (batch defined by --colls-per-batch)
-                if collName == "wait" and self.colls_per_batch > 0:
+                if not warmup and collName == "wait" and self.colls_per_batch > 0:
                     coll_in_batch_num += 1
                     if coll_in_batch_num == self.colls_per_batch:
                         batch_latency = (
@@ -1001,20 +978,21 @@ class commsTraceReplayBench(paramCommsBench):
 
                 recordName = collName
 
-            # record performance metrics
-            self.recordCommReplay(
-                commsParams,
-                curComm,
-                recordName,
-                latency,
-                curBlockStack,
-                global_latency,
-                curBlocks,
-            )
+            if not warmup:
+                # record performance metrics
+                self.recordCommReplay(
+                    commsParams,
+                    curComm,
+                    recordName,
+                    latency,
+                    curBlockStack,
+                    global_latency,
+                    curBlocks,
+                )
 
             if self.backendFuncs.get_global_rank() == 0:
                 logger.info(
-                    f"[{cnt} / {self.max_msg_cnt}] Replayed {recordName} in block [{curBlockStack}]... {global_latency:.2f} us"
+                    f"{logLable}[{cnt} / {self.max_msg_cnt}] Replayed {recordName} in block [{curBlockStack}]... {global_latency:.2f} us"
                 )
 
     def replaySingle(
@@ -1133,7 +1111,7 @@ class commsTraceReplayBench(paramCommsBench):
         if self.do_warm_up:
             if self.collectiveArgs.enable_profiler:
                 comms_utils.sampleProfiler()
-            self.warmUpBench(commsParams)
+            self.replayTrace(commsParams=commsParams, warmup=True)
         self.resetComms()
 
         # sync everything before starting real runs
@@ -1155,7 +1133,8 @@ class commsTraceReplayBench(paramCommsBench):
                 comms_utils.sampleProfiler()
 
             # replay comms trace
-            self.replayTrace(commsParams)
+            self.replayIter = i
+            self.replayTrace(commsParams=commsParams, warmup=False)
             self.resetComms()
 
             # make sure all ops are completed, in the case of nonblocking, this will enqueue all remaining operations that did not have a wait op
