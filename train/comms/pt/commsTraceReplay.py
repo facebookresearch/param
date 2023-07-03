@@ -107,6 +107,8 @@ class commsTraceReplayBench(paramCommsBench):
         self.colls_per_batch = -1
         self.use_timestamp = False
         self.num_replays = 1
+        self.profiler_num_replays_start = 0
+        self.profiler_num_replays = 10
 
         self.collInMsgSizes: Dict[str, List] = {}
         self.collInUniMsgSizes: Dict[str, Set] = {}
@@ -242,6 +244,18 @@ class commsTraceReplayBench(paramCommsBench):
             type=int,
             default=self.num_replays,
             help="Number of times to replay the given trace, used to get more accurate replay for small traces.",
+        )
+        parser.add_argument(
+            "--profiler-num-replays-start",
+            type=int,
+            default=self.profiler_num_replays_start,
+            help=f"Replay iteration to start collecting profiler after warmup (if --do-warm-up is True). Default start from {self.profiler_num_replays_start} replay if --enables-profiler is  True",
+        )
+        parser.add_argument(
+            "--profiler-num-replays",
+            type=int,
+            default=self.profiler_num_replays,
+            help=f"Number of replay iterations to collect profiler. Default profile {self.profiler_num_replays} replays if --enables-profiler is True.",
         )
         args, _ = parser.parse_known_args()
         return args
@@ -661,7 +675,8 @@ class commsTraceReplayBench(paramCommsBench):
 
         # replay the compute and measuring latency
         with paramProfile(
-            timer=computeTimer, description="# PARAM replay: " + curBlockStack
+            timer=computeTimer,
+            description=f"# PARAM replay {self.replayIter}: " + curBlockStack,
         ):
             # switch to compute stream and post compute kernel
             with paramStreamGuard(
@@ -701,7 +716,8 @@ class commsTraceReplayBench(paramCommsBench):
 
         # replay the collective
         with paramProfile(
-            timer=collTimer, description="# PARAM replay: " + curBlockStack
+            timer=collTimer,
+            description=f"# PARAM replay {self.replayIter}:" + curBlockStack,
         ):
             if collName in self.backendFuncs.collectiveFunc.keys():
                 # record collectiveID for wait ops
@@ -1100,17 +1116,28 @@ class commsTraceReplayBench(paramCommsBench):
             None
         """
         if commsParams.enable_profiler:
+            # num of iterations to skip
+            numWarmupIters = (
+                1 if self.do_warm_up else 0
+            ) + self.profiler_num_replays_start
+            # num of iterations to profile, at most num_replays iterations
+            numProfileIters = (
+                self.profiler_num_replays
+                if self.profiler_num_replays < self.num_replays
+                else self.num_replays
+            )
             self.collectiveArgs.enable_profiler = comms_utils.startProfiler(
                 rank=self.backendFuncs.get_global_rank(),
                 device=self.collectiveArgs.device,
-                numWarmupIters=1 if self.do_warm_up else 0,
-                numIters=self.num_replays + 1 if self.do_warm_up else self.num_replays,
+                numWarmupIters=numWarmupIters,
+                numIters=numProfileIters,
             )
 
         # warm-up
         if self.do_warm_up:
             if self.collectiveArgs.enable_profiler:
                 comms_utils.sampleProfiler()
+            self.replayIter = -1
             self.replayTrace(commsParams=commsParams, warmup=True)
         self.resetComms()
 
@@ -1348,6 +1375,8 @@ class commsTraceReplayBench(paramCommsBench):
         self.use_timestamp = args.use_timestamp
         self.rebalance_policy = args.rebalance_policy.lower()
         self.num_replays = args.num_replays
+        self.profiler_num_replays_start = args.profiler_num_replays_start
+        self.profiler_num_replays = args.profiler_num_replays
         self.disable_parallel_read = args.disable_parallel_read
         self.use_one_trace = args.use_one_trace
 
