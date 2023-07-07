@@ -712,7 +712,11 @@ class commsTraceReplayBench(paramCommsBench):
         collTimer = paramTimer()
 
         if self.is_blocking:
-            self.backendFuncs.sync_barrier(self.collectiveArgs)
+            with paramProfile(
+                description=f"# PARAM replay {self.replayIter} pre-comm barrier # "
+                + curBlockStack
+            ):
+                self.backendFuncs.sync_barrier(self.collectiveArgs)
 
         # replay the collective
         with paramProfile(
@@ -747,7 +751,8 @@ class commsTraceReplayBench(paramCommsBench):
 
         if self.is_blocking:
             with paramProfile(
-                description="# PARAM replay barrier # " + curBlockStack
+                description=f"# PARAM replay {self.replayIter} post-comm barrier # "
+                + curBlockStack
             ) as bt:
                 self.backendFuncs.sync_barrier(self.collectiveArgs)
 
@@ -1085,7 +1090,8 @@ class commsTraceReplayBench(paramCommsBench):
         self.resetComms()
 
         # sync everything before starting real runs
-        self.backendFuncs.sync_barrier(self.collectiveArgs)
+        with paramProfile(description="# PARAM replay warmup post-replay global sync"):
+            self.backendFuncs.sync_barrier(self.collectiveArgs)
 
         if self.backendFuncs.get_global_rank() == 0:
             logger.info(
@@ -1108,7 +1114,10 @@ class commsTraceReplayBench(paramCommsBench):
             self.resetComms()
 
             # make sure all ops are completed, in the case of nonblocking, this will enqueue all remaining operations that did not have a wait op
-            self.backendFuncs.sync_barrier(self.collectiveArgs)
+            with paramProfile(
+                description=f"# PARAM replay {self.replayIter} post-replay global sync"
+            ):
+                self.backendFuncs.sync_barrier(self.collectiveArgs)
 
         # record how long it took for trace-replay to complete
         traceEndTime = time.monotonic_ns()
