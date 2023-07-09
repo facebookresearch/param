@@ -1113,7 +1113,7 @@ class commsTraceReplayBench(paramCommsBench):
             self.replayTrace(commsParams=commsParams, warmup=False)
             self.resetComms()
 
-            # make sure all ops are completed, in the case of nonblocking, this will enqueue all remaining operations that did not have a wait op
+            # make sure all ops are completed
             with paramProfile(
                 description=f"# PARAM replay {self.replayIter} post-replay global sync"
             ):
