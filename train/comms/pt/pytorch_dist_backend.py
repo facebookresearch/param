@@ -577,6 +577,9 @@ class PyTorchDistBackend(backendFunctions):
             return retObj
 
     def sync_barrier(self, collectiveArgs, desc="dummy"):
+        # ensure all streams have finished outstanding events before calling barrier
+        self.complete_accel_ops(collectiveArgs)
+
         self.barrier(collectiveArgs, name=desc)
         self.complete_accel_ops(collectiveArgs)
 

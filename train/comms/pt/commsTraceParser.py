@@ -245,11 +245,11 @@ def _parsePyTorchET(in_trace: List) -> List:
             )  # wait and barrier ops do not have an input tensor, shift index one over
 
             newComm = commsArgs()
-            if entry["id"] is not None:
+            if entry.get("id") is not None:
                 newComm.id = entry["id"]
-            if entry["eg_id"] is not None:
+            if entry.get("eg_id") is not None:
                 newComm.id = entry["eg_id"]
-            if entry["et_id"] is not None:
+            if entry.get("et_id") is not None:
                 newComm.id = entry["et_id"]
             newComm.comms = comms_utils.paramToCommName(
                 entry["inputs"][4 - shift].lower()
