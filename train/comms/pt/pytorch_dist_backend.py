@@ -511,10 +511,7 @@ class PyTorchDistBackend(backendFunctions):
         if dev_str == "cuda":
             torch.cuda.synchronize(collectiveArgs.device)
 
-    def complete_accel_ops(self, collectiveArgs, initOp=False, devSync=True):
-        if initOp is True:
-            temp = torch.ones([1], device=collectiveArgs.device)
-            dist.all_reduce(temp)
+    def complete_accel_ops(self, collectiveArgs, devSync=True):
         for waitReq in collectiveArgs.waitObj:
             if waitReq is not None:
                 waitReq.wait()

@@ -119,8 +119,8 @@ class All2Allv_Req(Function):
         collectiveArgs.ipTensor_split = mb_split_lengths
         collectiveArgs.asyncOp = True
 
-        backendFuncs.complete_accel_ops(
-            collectiveArgs, initOp=True
+        backendFuncs.sync_barrier(
+            collectiveArgs
         )  # Adding it to ensure we isolate time for fwd-pass all2all right.
         collectiveArgs.timers["fwd_a2a_start"] = time.monotonic()
         req = backendFuncs.all_to_allv(collectiveArgs, retFlag=True)
@@ -142,8 +142,8 @@ class All2Allv_Req(Function):
         collectiveArgs = myreq.bench.collectiveArgs
         backendFuncs = myreq.bench.backendFuncs
 
-        backendFuncs.complete_accel_ops(
-            collectiveArgs, initOp=True
+        backendFuncs.sync_barrier(
+            collectiveArgs
         )  # Making sure operation is definitively finished.
         collectiveArgs.timers["bwd_a2a_end"] = time.monotonic()
 
@@ -210,8 +210,8 @@ class All2Allv_Wait(Function):
         collectiveArgs.ipTensor_split = a2ai.emb_split_lengths
         collectiveArgs.asyncOp = True
 
-        backendFuncs.complete_accel_ops(
-            collectiveArgs, initOp=True
+        backendFuncs.sync_barrier(
+            collectiveArgs
         )  # Adding it to ensure we isolate time for bwd-pass all2all right.
         collectiveArgs.timers["bwd_a2a_start"] = time.monotonic()
         req = backendFuncs.all_to_allv(collectiveArgs, retFlag=True)
@@ -276,7 +276,7 @@ class SparseFeatures:
         self.lengths = lengths.to(curDevice)
         self.indices = indices.to(curDevice)
 
-        backendFuncs.complete_accel_ops(collectiveArgs, initOp=True)
+        backendFuncs.sync_barrier(collectiveArgs)
         collectiveArgs.timers["mem_push_idx_end"] = time.monotonic()
 
     def get_indices_memory_size(self):
@@ -780,7 +780,7 @@ class commsDLRMBench(paramCommsBench):
         self.collectiveArgs.opTensor_split = out_splits
         self.collectiveArgs.ipTensor_split = in_splits
         self.collectiveArgs.asyncOp = False
-        self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
+        self.backendFuncs.sync_barrier(self.collectiveArgs)
 
         timers["offset_xchg_start"] = time.monotonic()
         self.backendFuncs.all_to_allv(self.collectiveArgs)
@@ -827,7 +827,7 @@ class commsDLRMBench(paramCommsBench):
         self.collectiveArgs.ipTensor_split = input_features_splits
         self.collectiveArgs.asyncOp = False
 
-        self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
+        self.backendFuncs.sync_barrier(self.collectiveArgs)
         timers["idx_xchg_start"] = time.monotonic()
         self.backendFuncs.all_to_allv(self.collectiveArgs)
         self.backendFuncs.complete_accel_ops(self.collectiveArgs)
@@ -1234,7 +1234,7 @@ class commsDLRMBench(paramCommsBench):
             )
 
             # Begin with reading the embedding table.
-            self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
+            self.backendFuncs.sync_barrier(self.collectiveArgs)
             timers["bef_emb_lookup"] = time.monotonic()
             ly = self.paramNN.apply_emb(
                 g_offsets,
@@ -1257,13 +1257,12 @@ class commsDLRMBench(paramCommsBench):
 
             self.collectiveArgs.timers["grad_push_start"] = time.monotonic()
             C = tempB
-            self.backendFuncs.complete_accel_ops(
-                self.collectiveArgs, initOp=True
+            self.backendFuncs.sync_barrier(
+                self.collectiveArgs
             )  # else data won't actually be moved, evidently!
 
             if commsDlrmParams.perf_debug:
-                self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
-                self.backendFuncs.barrier(self.collectiveArgs)
+                self.backendFuncs.sync_barrier(self.collectiveArgs)
 
             # back-prop: top layer, non-blocking between the top-layers.
             timers["bwd_top_ar_start"] = time.monotonic()
@@ -1282,12 +1281,11 @@ class commsDLRMBench(paramCommsBench):
                         "dtype": str(curDeviceData["topLayers"][curLayerIdx].dtype),
                     }
                 )
-            self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
+            self.backendFuncs.sync_barrier(self.collectiveArgs)
             timers["bwd_top_ar_end"] = time.monotonic()
 
             if commsDlrmParams.perf_debug:
-                self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
-                self.backendFuncs.barrier(self.collectiveArgs)
+                self.backendFuncs.sync_barrier(self.collectiveArgs)
 
             # back-prop: embedding update, blocking, since we are waiting for it to complete.
             if self.mixedDimFlag:
@@ -1301,8 +1299,7 @@ class commsDLRMBench(paramCommsBench):
                 tempB.backward(C)
 
             if commsDlrmParams.perf_debug:
-                self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
-                self.backendFuncs.barrier(self.collectiveArgs)
+                self.backendFuncs.sync_barrier(self.collectiveArgs)
 
             # back-prop: bottom layer, non-blocking between the layers.
             timers["bwd_bot_ar_start"] = time.monotonic()
@@ -1319,7 +1316,7 @@ class commsDLRMBench(paramCommsBench):
                         "dtype": str(curDeviceData["botLayers"][curLayerIdx].dtype),
                     }
                 )
-            self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
+            self.backendFuncs.sync_barrier(self.collectiveArgs)
             timers["bwd_bot_ar_end"] = time.monotonic()
             self.measured_regions["bwd_top_ar"]["memory"].append(sum(memSizes["top"]))
             self.measured_regions["bwd_bot_ar"]["memory"].append(sum(memSizes["bot"]))
@@ -1376,8 +1373,8 @@ class commsDLRMBench(paramCommsBench):
         timers = self.initTimers()
         self.collectiveArgs.timers = timers
 
-        self.backendFuncs.complete_accel_ops(
-            self.collectiveArgs, initOp=True
+        self.backendFuncs.sync_barrier(
+            self.collectiveArgs
         )  # To ensure everyone starts at the same point
 
         if global_rank >= 0:
