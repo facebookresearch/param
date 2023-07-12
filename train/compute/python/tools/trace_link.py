@@ -1,12 +1,18 @@
+import json
+import logging
 import networkx as nx
 from networkx.algorithms import isomorphism
-import json
 from param_bench.train.compute.python.tools.execution_graph import ExecutionGraph
 import sys
 
 
 # Increase recursion limit
 sys.setrecursionlimit(10**6)
+
+logger = logging.getLogger()
+
+execution_trace_process_annotation = '[pytorch|profiler|execution_trace|process]'
+execution_trace_thread_annotation = '[pytorch|profiler|execution_trace|thread]'
 
 
 def read_dictionary_from_json(file_path):
@@ -90,7 +96,7 @@ def exact_match(kineto_et_events, et_nodes):
             kineto_event_per_thread[event['tid']]['dur'] = max(kineto_event_per_thread[event['tid']]['dur'], event['ts'] + event['dur'])
         process_end_time = max(process_end_time, event['ts'] + event['dur'])
 
-    process_event = {'name': '[pytorch|profiler|execution_graph|process]', 'ts': kineto_et_events[0]['ts'], 
+    process_event = {'name': execution_trace_process_annotation, 'ts': kineto_et_events[0]['ts'], 
                      'dur': process_end_time - kineto_et_events[0]['ts']}
 
     kineto_et_events.insert(0, process_event)
@@ -98,7 +104,7 @@ def exact_match(kineto_et_events, et_nodes):
     sorted_threads = dict(sorted(kineto_event_per_thread.items(), key=lambda x: x[1]['index']))
 
     for index, (tid, thread_info) in enumerate(sorted_threads.items()):
-        thread_event = {'name': '[pytorch|profiler|execution_graph|thread]', 'ts': thread_info['ts'], 'dur': thread_info['dur']}
+        thread_event = {'name': execution_trace_thread_annotation, 'ts': thread_info['ts'], 'dur': thread_info['dur']}
         # Be careful of the insertion position, note that we already inserted process event
         kineto_et_events.insert(index + 1 + thread_info['index'], thread_event)
 
@@ -113,12 +119,12 @@ def exact_match(kineto_et_events, et_nodes):
             if et_node.name == kineto_et_event['name'] or ('iteration#' in et_node.name and 'iteration#' in kineto_et_event['name']):
                 et_enhanced[et_node.id] = kineto_et_event['dur']
             else:
-                print('Op mismatch between kineto and execution trace:')
-                print(f'Op index: {i}, kineto op name: {kineto_et_event["name"]}, kineto op timestamp: {kineto_et_event["ts"]}, ' 
+                logger.info('Op mismatch between kineto and execution trace:')
+                logger.info(f'Op index: {i}, kineto op name: {kineto_et_event["name"]}, kineto op timestamp: {kineto_et_event["ts"]}, ' 
                     f'execution trace op name: {et_node.name}, execution trace op id: {et_node.id}')
                 exit(0)
     else:
-        print('Ops count mismatch between kineto and execution trace')
+        logger.info('Ops count mismatch between kineto and execution trace')
 
     return et_enhanced
 
@@ -139,7 +145,7 @@ def approximate_match(kineto_et_events, et_nodes):
     end_time = -1
     for event in kineto_et_events:
         end_time = max(end_time, event['ts'] + event['dur'])
-    process_node = Kineto_node('[pytorch|profiler|execution_graph|process]', start_time, end_time, 0)
+    process_node = Kineto_node(execution_trace_process_annotation, start_time, end_time, 0)
     kineto_nodes_mapping[0] = process_node
 
     cnt = 1
@@ -149,7 +155,7 @@ def approximate_match(kineto_et_events, et_nodes):
         for event in kineto_event_per_thread[thread]:
             end_time = max(end_time, event['ts'] + event['dur'])
 
-        thread_node = Kineto_node('[pytorch|profiler|execution_graph|thread]', start_time, end_time, cnt)
+        thread_node = Kineto_node(execution_trace_thread_annotation, start_time, end_time, cnt)
         kineto_nodes_mapping[cnt] = thread_node
         cnt += 1
 
@@ -177,14 +183,11 @@ def approximate_match(kineto_et_events, et_nodes):
 
     # Build a tree from the kineto trace
     kineto_graph = transform_to_graph_depth(process_node, depth)
-    print("Kineto tree nodes number: ", len(kineto_graph.nodes))
+    logger.info(f"Kineto tree nodes number: {len(kineto_graph.nodes)}")
 
     # Build a tree from the execution trace
     et_graph = transform_to_graph_depth(et_nodes[0], depth)
-    print("ET tree nodes number: ", len(et_graph.nodes))
-
-    # print("Kineto nodes info: ", list(kineto_graph.nodes(data=True)))
-    # print("ET nodes info: ", list(et_graph.nodes(data=True)))
+    logger.info(f"ET tree nodes number: {len(et_graph.nodes)}")
 
     # Create the GraphMatcher
     GM = isomorphism.GraphMatcher(kineto_graph, et_graph)
@@ -194,15 +197,15 @@ def approximate_match(kineto_et_events, et_nodes):
 
     if GM.is_isomorphic():
         mapping = GM.mapping
-        print("Graphs are isomorphic")
+        logger.info("Graphs are isomorphic")
         for kineto_id, et_id in mapping.items():
             et_enhanced[et_id] = kineto_nodes_mapping[kineto_id].end - kineto_nodes_mapping[kineto_id].start
     else:
-        print("Graphs are not isomorphic")
+        logger.info("Graphs are not isomorphic")
 
         # # Compute the edit distance using the graph_edit_distance function with node comparison
         # paths, cost = nx.graph_edit_distance(kineto_graph, et_graph, node_compare)
-        # print("Tree edit distance:", cost)
+        # logger.info(f"Tree edit distance: {cost}")
 
         # The problem of finding the exact Graph Edit Distance (GED) is NP-hard so it is often slow
         # and below is a sub-optimal approach
@@ -213,9 +216,7 @@ def approximate_match(kineto_et_events, et_nodes):
         paths_generator = nx.optimize_edit_paths(kineto_graph, et_graph, node_compare)
         node_edits, edge_edits, cost = next(paths_generator)
 
-        print("Sub-optimal tree edit distance:", cost)
-
-        # print("node_edits: ", node_edits)
+        logger.info(f"Sub-optimal tree edit distance: {cost}")
 
         for kineto_id, et_id in node_edits:
             if kineto_id is not None and et_id is not None:
@@ -228,12 +229,15 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Link kineto trace with execution trace")
-    parser.add_argument("--et_file", type=str, required=True, help="Path to the execution trace file")
-    parser.add_argument("--kineto_file", type=str, required=True, help="Path to the kineto trace file")
+    parser.add_argument("--et-file", type=str, required=True, help="Path to the execution trace file")
+    parser.add_argument("--kineto-file", type=str, required=True, help="Path to the kineto trace file")
     parser.add_argument("--annotation", default='DataLoader', type=str, help="User annotation of the iteration step of execution trace")
-    parser.add_argument("--exact_match", default=False, action='store_true', help="Whether to match the traces exactly")
+    parser.add_argument("--exact-match", default=False, action='store_true', help="Whether to match the traces exactly")
+    parser.add_argument("--log-level", default="INFO", help="Log output verbosity.")
 
     args = parser.parse_args()
+
+    logger.setLevel(args.log_level)
 
     # Analysis of execution trace
     with open(args.et_file, 'r') as f:
@@ -244,7 +248,7 @@ if __name__ == "__main__":
     # Root node of execution trace is 1-based
     et_nodes = collect_nodes(nodes[1])
 
-    print('Number of captured ops in execution trace: ', len(et_nodes))
+    logger.info(f'Number of captured ops in execution trace: {len(et_nodes)}')
 
     # Analysis of kineto trace
     kineto_trace_events = read_dictionary_from_json(args.kineto_file)['traceEvents']
@@ -285,25 +289,22 @@ if __name__ == "__main__":
     # (usually ET has 3 additional annotation ops for processes/threads)
     kineto_et_events = find_closest_segment(kineto_et_segs, len(et_nodes) - 3)
 
-    # # Just a test to randomly choose a segment
-    # kineto_et_events = kineto_et_segs[3]
-
-    print('Number of captured ops in kineto trace (should be #ops_in_ET - 3): ', len(kineto_et_events))
+    logger.info(f'Number of captured ops in kineto trace (should be #ops_in_ET - 3): {len(kineto_et_events)}')
 
     if args.exact_match:
-        et_hanced = exact_match(kineto_et_events, et_nodes)
+        et_enhanced = exact_match(kineto_et_events, et_nodes)
     else:
-        et_hanced = approximate_match(kineto_et_events, et_nodes)
+        et_enhanced = approximate_match(kineto_et_events, et_nodes)
 
     # If linking works, add duration time to each ET node and dump as ET_plus
-    if et_hanced:
+    if et_enhanced:
         with open(args.et_file, 'r') as f:
             et = json.load(f)
             for node in et['nodes']:
-                if node['id'] in et_hanced:
-                    node['dur'] = et_hanced[node['id']]
+                if node['id'] in et_enhanced:
+                    node['dur'] = et_enhanced[node['id']]
         
         et_plus_file = args.et_file.replace('.json', '_plus.json')
-        print(f'Enhanced execution trace dumped to {et_plus_file}.')
+        logger.info(f'Enhanced execution trace dumped to {et_plus_file}.')
         with open(et_plus_file, 'w') as f:
             json.dump(et, f, indent=4)
