@@ -80,6 +80,61 @@ def find_closest_segment(segs, target_length):
     return closest_seg
 
 
+# Extract operator info from raw traces
+def trace_analysis(et_file, kineto_file, annotation='DataLoader'):
+    with open(et_file, 'r') as f:
+        et = ExecutionGraph(json.load(f))
+
+    nodes = et.get_nodes(clean=True)
+
+    # Root node of execution trace is 1-based
+    et_nodes = collect_nodes(nodes[1])
+
+    logger.info(f'Number of original ops in execution trace: {len(et_nodes)}')
+
+    kineto_trace_events = read_dictionary_from_json(kineto_file)['traceEvents']
+
+    sorted_kineto_trace_events = sorted(kineto_trace_events, key=lambda kv: kv['ts'])
+
+    kineto_et_events = [event for event in sorted_kineto_trace_events if 'cat' in event and (event['cat'] == 'cpu_op' or event['cat'] == 'user_annotation')]
+
+    kineto_et_segs = []
+    kineto_et_seg = []
+
+    # The choice below normally does not matter for approximate match since we rely on the isomorphism of
+    # the graphs, but for exact match we will use the execution order and then we should be careful
+
+    # Assume that an iteration ends with the specified annotation
+    end_time = -1
+    for event in kineto_et_events:
+        if end_time > 0 and event['ts'] >= end_time:
+            kineto_et_segs.append(kineto_et_seg)
+            kineto_et_seg = []
+            end_time = -1
+
+        if annotation in event['name']:
+            kineto_et_seg.append(event)
+            end_time = event['ts'] + event['dur']
+        else:
+            kineto_et_seg.append(event)
+
+    # # Assume that an iteration starts with the specified annotation
+    # for event in kineto_et_events:
+    #     if annotation in event['name']:
+    #         kineto_et_segs.append(kineto_et_seg)
+    #         kineto_et_seg = [event]
+    #     else:
+    #         kineto_et_seg.append(event)
+
+    # Find the segment in kineto trace (assuming it contains multiple) with the closest ops to ET 
+    # (usually ET has 3 additional annotation ops for processes/threads)
+    kineto_et_events = find_closest_segment(kineto_et_segs, len(et_nodes) - 3)
+
+    logger.info(f'Number of original ops in kineto trace: {len(kineto_et_events)}')
+
+    return et_nodes, kineto_et_events
+
+
 def exact_match(kineto_et_events, et_nodes):
     # Since kineto trace is missing the annotations for processes/threads, we add them back to match with ET
     kineto_event_per_thread = {}
@@ -90,10 +145,10 @@ def exact_match(kineto_et_events, et_nodes):
         if event['tid'] not in kineto_event_per_thread:
             kineto_event_per_thread[event['tid']] = {}
             kineto_event_per_thread[event['tid']]['ts'] = event['ts']
-            kineto_event_per_thread[event['tid']]['dur'] = event['ts'] + event['dur']
+            kineto_event_per_thread[event['tid']]['end_ts'] = event['ts'] + event['dur']
             kineto_event_per_thread[event['tid']]['index'] = i
         else:
-            kineto_event_per_thread[event['tid']]['dur'] = max(kineto_event_per_thread[event['tid']]['dur'], event['ts'] + event['dur'])
+            kineto_event_per_thread[event['tid']]['end_ts'] = max(kineto_event_per_thread[event['tid']]['end_ts'], event['ts'] + event['dur'])
         process_end_time = max(process_end_time, event['ts'] + event['dur'])
 
     process_event = {'name': execution_trace_process_annotation, 'ts': kineto_et_events[0]['ts'], 
@@ -104,7 +159,7 @@ def exact_match(kineto_et_events, et_nodes):
     sorted_threads = dict(sorted(kineto_event_per_thread.items(), key=lambda x: x[1]['index']))
 
     for index, (tid, thread_info) in enumerate(sorted_threads.items()):
-        thread_event = {'name': execution_trace_thread_annotation, 'ts': thread_info['ts'], 'dur': thread_info['dur']}
+        thread_event = {'name': execution_trace_thread_annotation, 'ts': thread_info['ts'], 'dur': thread_info['end_ts'] - thread_info['ts']}
         # Be careful of the insertion position, note that we already inserted process event
         kineto_et_events.insert(index + 1 + thread_info['index'], thread_event)
 
@@ -116,7 +171,8 @@ def exact_match(kineto_et_events, et_nodes):
         for i in range(len(et_nodes)):
             et_node = et_nodes[i]
             kineto_et_event = kineto_et_events[i]
-            if et_node.name == kineto_et_event['name'] or ('iteration#' in et_node.name and 'iteration#' in kineto_et_event['name']):
+            if et_node.name == kineto_et_event['name'] or ('iteration#' in et_node.name and 'iteration#' in kineto_et_event['name']) or \
+                et_node.name.replace('execution_graph', 'execution_trace') == kineto_et_event['name']:
                 et_enhanced[et_node.id] = kineto_et_event['dur']
             else:
                 logger.info('Op mismatch between kineto and execution trace:')
@@ -229,67 +285,17 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="Link kineto trace with execution trace")
-    parser.add_argument("--et-file", type=str, required=True, help="Path to the execution trace file")
-    parser.add_argument("--kineto-file", type=str, required=True, help="Path to the kineto trace file")
-    parser.add_argument("--annotation", default='DataLoader', type=str, help="User annotation of the iteration step of execution trace")
+    parser.add_argument("--et-file", type=str, required=True, help="Path to the execution trace")
+    parser.add_argument("--kineto-file", type=str, required=True, help="Path to the kineto trace")
+    parser.add_argument("--annotation", default='DataLoader', type=str, help="Operator name to help slice multiple iterations in trace")
     parser.add_argument("--exact-match", default=False, action='store_true', help="Whether to match the traces exactly")
     parser.add_argument("--log-level", default="INFO", help="Log output verbosity.")
 
     args = parser.parse_args()
 
     logger.setLevel(args.log_level)
-
-    # Analysis of execution trace
-    with open(args.et_file, 'r') as f:
-        et = ExecutionGraph(json.load(f))
-
-    nodes = et.get_nodes(clean=True)
-
-    # Root node of execution trace is 1-based
-    et_nodes = collect_nodes(nodes[1])
-
-    logger.info(f'Number of captured ops in execution trace: {len(et_nodes)}')
-
-    # Analysis of kineto trace
-    kineto_trace_events = read_dictionary_from_json(args.kineto_file)['traceEvents']
-
-    sorted_kineto_trace_events = sorted(kineto_trace_events, key=lambda kv: kv['ts'])
-
-    kineto_et_events = [event for event in sorted_kineto_trace_events if 'cat' in event and (event['cat'] == 'cpu_op' or event['cat'] == 'user_annotation')]
-
-    kineto_et_segs = []
-    kineto_et_seg = []
-
-    # The choice below normally does not matter for approximate match since we rely on the isomorphism of
-    # the graphs, but for exact match we will use the execution order and then we should be careful
-
-    # Assume that an iteration ends with the specified annotation
-    end_time = -1
-    for event in kineto_et_events:
-        if end_time > 0 and event['ts'] >= end_time:
-            kineto_et_segs.append(kineto_et_seg)
-            kineto_et_seg = []
-            end_time = -1
-
-        if args.annotation in event['name']:
-            kineto_et_seg.append(event)
-            end_time = event['ts'] + event['dur']
-        else:
-            kineto_et_seg.append(event)
-
-    # # Assume that an iteration starts with the specified annotation
-    # for event in kineto_et_events:
-    #     if args.annotation in event['name']:
-    #         kineto_et_segs.append(kineto_et_seg)
-    #         kineto_et_seg = [event]
-    #     else:
-    #         kineto_et_seg.append(event)
-
-    # Find the segment in kineto trace (assuming it contains multiple) with the closest ops to ET 
-    # (usually ET has 3 additional annotation ops for processes/threads)
-    kineto_et_events = find_closest_segment(kineto_et_segs, len(et_nodes) - 3)
-
-    logger.info(f'Number of captured ops in kineto trace (should be #ops_in_ET - 3): {len(kineto_et_events)}')
+    
+    et_nodes, kineto_et_events = trace_analysis(args.et_file, args.kineto_file, args.annotation)
 
     if args.exact_match:
         et_enhanced = exact_match(kineto_et_events, et_nodes)
