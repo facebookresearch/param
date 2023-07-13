@@ -422,7 +422,6 @@ class commsCollBench(paramCommsBench):
                 comms_utils.gracefulExit()
 
     def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None, dcheck=False):
-        self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
         elapsedTimeNS = 0.0
@@ -546,7 +545,7 @@ class commsCollBench(paramCommsBench):
         return results
 
     def runPt2Pt(self):
-        self.backendFuncs.complete_accel_ops(self.collectiveArgs, initOp=True)
+        self.backendFuncs.sync_barrier(self.collectiveArgs)
         # warm-up
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
         self.getPingLatency(self.collectiveArgs.numWarmupIters)

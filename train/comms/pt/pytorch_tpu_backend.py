@@ -61,7 +61,7 @@ class PyTorchTPUBackend(backendFunctions):
         if retFlag:
             return retObj
 
-    def complete_accel_ops(self, collectiveArgs, initOp=False):
+    def complete_accel_ops(self, collectiveArgs):
         xm.mark_step()
 
     def get_reduce_op(self, opName):
