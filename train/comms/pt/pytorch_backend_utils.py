@@ -243,9 +243,7 @@ class backendFunctions(ABC):
         pass
 
     @abstractmethod
-    def complete_accel_ops(
-        self, collectiveArgs: collectiveArgsHolder, initOp: bool = False
-    ):
+    def complete_accel_ops(self, collectiveArgs: collectiveArgsHolder):
         pass
 
     @abstractmethod
