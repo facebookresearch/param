@@ -110,10 +110,10 @@ class commsTraceReplayBench(paramCommsBench):
         self.profiler_num_replays_start = 0
         self.profiler_num_replays = 10
 
-        self.collInMsgSizes: Dict[str, List] = {}
-        self.collInUniMsgSizes: Dict[str, Set] = {}
-        self.collOutMsgSizes: Dict[str, List] = {}
-        self.collOutUniMsgSizes: Dict[str, Set] = {}
+        self.collInMsgBytes: Dict[str, List] = {}
+        self.collInUniMsgBytes: Dict[str, Set] = {}
+        self.collOutMsgBytes: Dict[str, List] = {}
+        self.collOutUniMsgBytes: Dict[str, Set] = {}
 
         self.batchLat = []
         self.collLat: Dict[str, List] = {}
@@ -315,7 +315,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         logger.info("\n{} Message size Statistcs {}".format("=" * 20, "=" * 20))
 
-        for (name, collMsgs) in self.collInMsgSizes.items():
+        for (name, collMsgs) in self.collInMsgBytes.items():
             # input tensor
             msgSizes = np.array(collMsgs)
             print("-" * 50)
@@ -334,10 +334,12 @@ class commsTraceReplayBench(paramCommsBench):
                     np.percentile(msgSizes, 95),
                 )
             )
-            logger.debug(f"  - Used sizes: {sorted(self.collInUniMsgSizes[name])}")
+            logger.debug(
+                f"  - Used sizes (bytes): {sorted(self.collInUniMsgBytes[name])}"
+            )
 
             # output tensor
-            msgSizes = np.array(self.collOutMsgSizes[name])
+            msgSizes = np.array(self.collOutMsgBytes[name])
             print(
                 f"Size of Output tensors (bytes)\n {'Total (MB)':>10} {'Max.':>15} {'Min.':>10} {'Average':>13} {'p50':>13} {'p95':>13}"
             )
@@ -351,7 +353,9 @@ class commsTraceReplayBench(paramCommsBench):
                     np.percentile(msgSizes, 95),
                 )
             )
-            logger.debug(f"  - Used sizes: {sorted(self.collOutUniMsgSizes[name])}")
+            logger.debug(
+                f"  - Used sizes (bytes): {sorted(self.collOutUniMsgBytes[name])}"
+            )
 
         if not self.is_dry_run:
             print("\n{} Performance of replayed comms {}".format("=" * 20, "=" * 20))
@@ -392,12 +396,14 @@ class commsTraceReplayBench(paramCommsBench):
                 )
                 msgSizeAndLatency = (
                     tuple(
-                        zip(lats, self.collInMsgSizes[coll], self.collOutMsgSizes[coll])
+                        zip(lats, self.collInMsgBytes[coll], self.collOutMsgBytes[coll])
                     )
-                    if coll in self.collInMsgSizes
+                    if coll in self.collInMsgBytes
                     else lats
                 )
-                logger.debug(f"Latency and size of First ten: {msgSizeAndLatency[:10]}")
+                logger.debug(
+                    f"Latency and size (bytes) of First ten: {msgSizeAndLatency[:10]}"
+                )
 
             if self.colls_per_batch > 0:
                 print("\n{} Batch Latency Performance {}".format("=" * 20, "=" * 20))
@@ -426,8 +432,6 @@ class commsTraceReplayBench(paramCommsBench):
         Returns:
             None
         """
-        maxInMsgsize = 0
-        maxOutMsgsize = 0
         self.num_msg = len(self.comms_trace)
         self.max_msg_cnt = self.num_msg if self.max_msg_cnt == 0 else self.max_msg_cnt
         # first pass to know the statistics and get required info.
@@ -446,17 +450,18 @@ class commsTraceReplayBench(paramCommsBench):
                 self.collLat[collName] = []
                 # some ops don't have sizes
                 if curComm.inMsgSize is not None:
-                    self.collInMsgSizes[collName] = []
-                    self.collInUniMsgSizes[collName] = set()
-                    self.collOutMsgSizes[collName] = []
-                    self.collOutUniMsgSizes[collName] = set()
+                    self.collInMsgBytes[collName] = []
+                    self.collInUniMsgBytes[collName] = set()
+                    self.collOutMsgBytes[collName] = []
+                    self.collOutUniMsgBytes[collName] = set()
             if curComm.inMsgSize is not None:
-                self.collInMsgSizes[collName].append(curComm.inMsgSize)
-                self.collInUniMsgSizes[collName].add(curComm.inMsgSize)
-                self.collOutMsgSizes[collName].append(curComm.outMsgSize)
-                self.collOutUniMsgSizes[collName].add(curComm.outMsgSize)
-                maxInMsgsize = max(curComm.inMsgSize, maxInMsgsize)
-                maxOutMsgsize = max(curComm.outMsgSize, maxOutMsgsize)
+                dtypeSize = torch.tensor(
+                    [], dtype=self.dtypeMap[curComm.dtype]
+                ).element_size()
+                self.collInMsgBytes[collName].append(curComm.inMsgSize * dtypeSize)
+                self.collInUniMsgBytes[collName].add(curComm.inMsgSize * dtypeSize)
+                self.collOutMsgBytes[collName].append(curComm.outMsgSize * dtypeSize)
+                self.collOutUniMsgBytes[collName].add(curComm.outMsgSize * dtypeSize)
             # get info sorted by code block
             for curBlock in curBlocks:
                 if curBlock not in self.comms_blocks:
@@ -951,8 +956,9 @@ class commsTraceReplayBench(paramCommsBench):
                     continue
 
                 if groupRank == 0:
+                    commDesc = f"{str(curComm.comms)}: NumElemsIn={curComm.inMsgSize}, NumElemsOut={curComm.outMsgSize}, Dtype={curComm.dtype}"
                     logger.info(
-                        f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {str(curComm.comms)} with {groupDesc}"
+                        f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc}"
                     )
 
                 # read fields and prepare the tensors
@@ -1097,7 +1103,7 @@ class commsTraceReplayBench(paramCommsBench):
             logger.info(
                 f"\n+ {self.max_msg_cnt} messages in the trace...replaying (if present) {list(self.allowList)}"
             )
-            for coll, sizes in self.collInMsgSizes.items():
+            for coll, sizes in self.collInMsgBytes.items():
                 logger.info(f"\t{coll}: {len(sizes)}")
 
         traceStartTime = time.monotonic_ns()
