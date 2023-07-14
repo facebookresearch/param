@@ -85,7 +85,7 @@ def trace_analysis(et_file, kineto_file, annotation='DataLoader'):
     with open(et_file, 'r') as f:
         et = ExecutionGraph(json.load(f))
 
-    nodes = et.get_nodes(clean=True)
+    nodes = et.get_nodes()
 
     # Root node of execution trace is 1-based
     et_nodes = collect_nodes(nodes[1])
@@ -126,9 +126,10 @@ def trace_analysis(et_file, kineto_file, annotation='DataLoader'):
     #     else:
     #         kineto_et_seg.append(event)
 
-    # Find the segment in kineto trace (assuming it contains multiple) with the closest ops to ET 
-    # (usually ET has 3 additional annotation ops for processes/threads)
-    kineto_et_events = find_closest_segment(kineto_et_segs, len(et_nodes) - 3)
+    # In case of kineto only contains one iteration or the provided annotation is wrong, use the whole trace directly,
+    # otherwise find the iteration in kineto trace with the closest #ops to ET (usually ET has 3 additional annotation ops for processes/threads)
+    if kineto_et_segs:
+        kineto_et_events = find_closest_segment(kineto_et_segs, len(et_nodes) - 3)
 
     logger.info(f'Number of original ops in kineto trace: {len(kineto_et_events)}')
 
@@ -164,7 +165,7 @@ def exact_match(kineto_et_events, et_nodes):
         kineto_et_events.insert(index + 1 + thread_info['index'], thread_event)
 
     # Duration of ET nodes
-    et_enhanced = {}
+    et_enhanced_duration = {}
 
     # Link kineto trace and execution trace
     if len(kineto_et_events) == len(et_nodes):
@@ -173,7 +174,7 @@ def exact_match(kineto_et_events, et_nodes):
             kineto_et_event = kineto_et_events[i]
             if et_node.name == kineto_et_event['name'] or ('iteration#' in et_node.name and 'iteration#' in kineto_et_event['name']) or \
                 et_node.name.replace('execution_graph', 'execution_trace') == kineto_et_event['name']:
-                et_enhanced[et_node.id] = kineto_et_event['dur']
+                et_enhanced_duration[et_node.id] = kineto_et_event['dur']
             else:
                 logger.info('Op mismatch between kineto and execution trace:')
                 logger.info(f'Op index: {i}, kineto op name: {kineto_et_event["name"]}, kineto op timestamp: {kineto_et_event["ts"]}, ' 
@@ -182,7 +183,7 @@ def exact_match(kineto_et_events, et_nodes):
     else:
         logger.info('Ops count mismatch between kineto and execution trace')
 
-    return et_enhanced
+    return et_enhanced_duration
 
 
 def approximate_match(kineto_et_events, et_nodes):
@@ -249,13 +250,13 @@ def approximate_match(kineto_et_events, et_nodes):
     GM = isomorphism.GraphMatcher(kineto_graph, et_graph)
 
     # Duration of ET nodes
-    et_enhanced = {}
+    et_enhanced_duration = {}
 
     if GM.is_isomorphic():
         mapping = GM.mapping
         logger.info("Graphs are isomorphic")
         for kineto_id, et_id in mapping.items():
-            et_enhanced[et_id] = kineto_nodes_mapping[kineto_id].end - kineto_nodes_mapping[kineto_id].start
+            et_enhanced_duration[et_id] = kineto_nodes_mapping[kineto_id].end - kineto_nodes_mapping[kineto_id].start
     else:
         logger.info("Graphs are not isomorphic")
 
@@ -270,15 +271,15 @@ def approximate_match(kineto_et_events, et_nodes):
         cost = next(edit_distance_generator)
 
         paths_generator = nx.optimize_edit_paths(kineto_graph, et_graph, node_compare)
-        node_edits, edge_edits, cost = next(paths_generator)
+        node_edits, _, cost = next(paths_generator)
 
         logger.info(f"Sub-optimal tree edit distance: {cost}")
 
         for kineto_id, et_id in node_edits:
             if kineto_id is not None and et_id is not None:
-                et_enhanced[et_id] = kineto_nodes_mapping[kineto_id].end - kineto_nodes_mapping[kineto_id].start
+                et_enhanced_duration[et_id] = kineto_nodes_mapping[kineto_id].end - kineto_nodes_mapping[kineto_id].start
 
-    return et_enhanced
+    return et_enhanced_duration
 
 
 if __name__ == "__main__":
@@ -298,17 +299,17 @@ if __name__ == "__main__":
     et_nodes, kineto_et_events = trace_analysis(args.et_file, args.kineto_file, args.annotation)
 
     if args.exact_match:
-        et_enhanced = exact_match(kineto_et_events, et_nodes)
+        et_enhanced_duration = exact_match(kineto_et_events, et_nodes)
     else:
-        et_enhanced = approximate_match(kineto_et_events, et_nodes)
+        et_enhanced_duration = approximate_match(kineto_et_events, et_nodes)
 
     # If linking works, add duration time to each ET node and dump as ET_plus
-    if et_enhanced:
+    if et_enhanced_duration:
         with open(args.et_file, 'r') as f:
             et = json.load(f)
             for node in et['nodes']:
-                if node['id'] in et_enhanced:
-                    node['dur'] = et_enhanced[node['id']]
+                if node['id'] in et_enhanced_duration:
+                    node['dur'] = et_enhanced_duration[node['id']]
         
         et_plus_file = args.et_file.replace('.json', '_plus.json')
         logger.info(f'Enhanced execution trace dumped to {et_plus_file}.')
