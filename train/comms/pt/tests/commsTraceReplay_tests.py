@@ -181,11 +181,11 @@ class TestinitTraceStat(unittest.TestCase):
         testBench.is_dry_run = True
         testBench.initTraceStat()
         # Only 2 messages had msg sizes
-        self.assertEqual(2, len(testBench.collInMsgSizes))
-        self.assertEqual(2, len(testBench.collOutMsgSizes))
+        self.assertEqual(2, len(testBench.collInMsgBytes))
+        self.assertEqual(2, len(testBench.collOutMsgBytes))
         # The sum of the sizes of all all_gather msgs is 2 for in and out
-        self.assertEqual(2, sum(testBench.collInMsgSizes["all_gather"]))
-        self.assertEqual(2, sum(testBench.collOutMsgSizes["all_gather"]))
+        self.assertEqual(2, sum(testBench.collInMsgBytes["all_gather"]))
+        self.assertEqual(2, sum(testBench.collOutMsgBytes["all_gather"]))
         # Dry run records comm blocks. We have two colls in test_stack
         self.assertEqual(2, len(testBench.comms_blocks["test_stack"]))
         # check values of comm_blocks
@@ -211,11 +211,11 @@ class TestinitTraceStat(unittest.TestCase):
         testBench.comms_trace = test_trace
         testBench.initTraceStat()
         # Only 2 messages had msg sizes
-        self.assertEqual(2, len(testBench.collInMsgSizes))
-        self.assertEqual(2, len(testBench.collOutMsgSizes))
+        self.assertEqual(2, len(testBench.collInMsgBytes))
+        self.assertEqual(2, len(testBench.collOutMsgBytes))
         # The sum of the sizes of all all_gather msgs is 2 for in and out
-        self.assertEqual(2, sum(testBench.collInMsgSizes["all_gather"]))
-        self.assertEqual(2, sum(testBench.collOutMsgSizes["all_gather"]))
+        self.assertEqual(2, sum(testBench.collInMsgBytes["all_gather"]))
+        self.assertEqual(2, sum(testBench.collOutMsgBytes["all_gather"]))
         # Not dry run does not record comm blocks.
         self.assertEqual(0, len(testBench.comms_blocks["test_stack"]))
 

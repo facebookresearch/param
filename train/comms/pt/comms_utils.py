@@ -1416,6 +1416,7 @@ class paramCommsBench(ABC):
         )  # number of TPU cores
         parser.add_argument(
             "--log",
+            "--log-level",
             type=str,
             default="ERROR",
             help="Logging level",
