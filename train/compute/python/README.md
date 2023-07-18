@@ -21,8 +21,8 @@ We use `setuptools` to install/uninstall the `parambench-train-compute` package:
 # Install required dependencies
 > pip install -r requirements.txt
 
-# Install package
-> python setup.py install
+# Install PARAM Compute package
+> pip install .
 
 # Uninstall package
 > python -m pip uninstall parambench-train-compute
