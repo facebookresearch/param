@@ -1,3 +1,4 @@
-nvtx==0.2.3
-torch>=1.12
 gitpython
+networkx
+numpy
+torch>=1.12
