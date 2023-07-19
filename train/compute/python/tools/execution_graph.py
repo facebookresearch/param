@@ -11,7 +11,7 @@ import json
 import logging
 import sys
 from enum import Enum
-from typing import Any, Iterable, List, Set, TextIO
+from typing import Any, Iterable, List, Optional, Set, TextIO
 
 import pydot
 
@@ -126,12 +126,14 @@ class Node:
         outputs: List[Any],
         output_types: List[str],
         output_shapes: List[Any],
+        rf_id: Optional[int] = None,
     ):
         self.name: str = name
         self.parent_id: int = parent_id
         self.parent: Node = None
         self.children: List[Node] = []
         self.id: int = id
+        self.rf_id: Optional[int] = rf_id
         self.pid: int = pid
         self.tid: int = tid
         self.fw_tid: int = fw_tid
@@ -295,6 +297,7 @@ class ExecutionGraph:
                 x["outputs"],
                 x["output_types"],
                 x["output_shapes"],
+                x.get("rf_id", None),
             )
             input_tensors = self.nodes[id].get_input_tensors()
             output_tensors = self.nodes[id].get_output_tensors()
