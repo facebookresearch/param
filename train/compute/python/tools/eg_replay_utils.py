@@ -446,15 +446,16 @@ def build_torchscript_func(n):
 def generate_prefix(label, skip_nodes, eg_input, cuda, compute_only, tf32, rows):
     template_prefix = """import gc
 import argparse
+from datetime import datetime
 import json
 import logging
 import os
 import time
-from datetime import datetime
-import comms_utils
-
 import torch
-from param_bench.train.comms.pt import commsTraceReplay
+
+import comms_utils
+import commsTraceReplay
+
 from param_bench.train.compute.python.tools.eg_replay_utils import (
     build_fbgemm_func,
     build_torchscript_func,
@@ -556,17 +557,19 @@ if not compute_only:
     )
 
     args = traceBench.readArgs(parser)
-    traceBench.setTraceFile(args, comms_env_params)
+    traceBench.trace_file = \"{eg_input}\"
+    # traceBench.setTraceFile(args, comms_env_params)
     traceBench.checkArgs(args)
 
     time.sleep(1)
-    comms_world_info = comms_utils.comms_world_info_holder(
+    bootstrap_info = comms_utils.bootstrap_info_holder(
         args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
     )
     global commsParams
     commsParams = comms_utils.commsParamsHolderBase(args)
+    traceBench.initBackend(bootstrap_info, commsParams)
     traceBench.initBench(commsParams, args)
-    traceBench.replayInit(comms_world_info, commsParams)
+    traceBench.replayInit(commsParams)
 
 """
     return template_prefix.format(

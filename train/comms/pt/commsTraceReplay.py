@@ -1022,6 +1022,62 @@ class commsTraceReplayBench(paramCommsBench):
                     f"{logLable}[{cnt} / {self.max_msg_cnt}] Replayed {recordName} in block [{curBlockStack}]... {global_latency:.2f} us"
                 )
 
+    def replaySingle(
+        self, commsParams: commsParamsHolderBase, id: int, regenerateTensors: True
+    ) -> torch.tensor:
+        """
+        Replay comms trace.
+        Args:
+            commsParams: Run-time parameters for replay.
+            id: comms op id.
+        Returns:
+            Output tensor.
+        """
+        for _, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
+            if curComm.id == id:
+                collName = paramToCommName(curComm.comms)
+                if collName not in self.allowList:
+                    return
+
+                curBlocks = (
+                    curComm.markerStack if curComm.markerStack is not None else []
+                )
+                curBlockStack = (
+                    " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
+                )
+
+                if self.backendFuncs.get_global_rank() == 0:
+                    logger.debug(
+                        f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(curComm.comms)}\n"
+                    )
+
+                # read fields and prepare the tensors
+                (
+                    self.collectiveArgs.ipTensor,
+                    self.collectiveArgs.opTensor,
+                ) = self.prepComms(curComm, commsParams, regenerateTensors)
+
+                # send comm request to pytorch backend
+                (latency, global_latency) = self.runComms(
+                    collName, curComm, curBlockStack
+                )
+
+                # perform data validation check on the final opTensor
+                if (
+                    self.is_blocking
+                    and commsParams.dcheck == 1
+                    and collName not in ("wait", "barrier")
+                ):
+                    commsParams.collective = collName
+                    commsParams.srcOrDst = (
+                        curComm.root if curComm.root is not None else 0
+                    )
+                    self.dcheck(
+                        commsParams, curComm.outMsgSize, self.collectiveArgs.opTensor
+                    )
+
+                return self.collectiveArgs.opTensor
+
     def benchTime(self, commsParams: commsParamsHolderBase) -> None:
         """
         Run all collectives in current rank and record timing metrics for benchmarkng.

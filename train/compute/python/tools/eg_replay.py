@@ -1,17 +1,15 @@
 import argparse
-import gc
-import json
-
-import logging
-import time
+import fbgemm_gpu
+from fbgemm_gpu.split_table_batched_embeddings_ops import PoolingMode, WeightDecayMode
 from collections import defaultdict
 from datetime import datetime
 from functools import reduce
-
-import comms_utils
+import gc
+import json
+import logging
 import numpy as np
+import time
 import torch
-from param_bench.train.comms.pt import commsTraceReplay
 
 from param_bench.train.compute.python.lib import pytorch as lib_pytorch
 from param_bench.train.compute.python.lib.init_helper import load_modules
@@ -46,6 +44,15 @@ from param_bench.train.compute.python.tools.execution_graph import (
 from param_bench.train.compute.python.tools.utility import trace_handler
 from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
 from torch.profiler import ExecutionTraceObserver
+
+import os
+import sys
+
+comms_package_path = os.path.abspath(__file__).split('/')[:-4] + ['comms', 'pt']
+sys.path.append('/'.join(comms_package_path))
+
+import comms_utils
+import commsTraceReplay
 
 
 class ExgrReplayManager:
@@ -1226,7 +1233,7 @@ class ExgrReplayManager:
         self.commsBench.checkArgs(comms_args)
 
         time.sleep(1)
-        self.comms_world_info = comms_utils.comms_world_info_holder(
+        self.bootstrap_info = comms_utils.bootstrap_info_holder(
             comms_args.master_ip,
             comms_args.master_port,
             comms_args.num_tpu_cores,
@@ -1234,8 +1241,10 @@ class ExgrReplayManager:
         )
         self.commsParams = comms_utils.commsParamsHolderBase(comms_args)
 
+        self.commsBench.initBackend(self.bootstrap_info, self.commsParams)
         self.commsBench.initBench(self.commsParams, comms_args)
-        self.commsBench.replayInit(self.comms_world_info, self.commsParams)
+        
+        self.commsBench.replayInit(self.commsParams)
 
     def analyze_ops(self):
         fused_cnt = 0
@@ -1313,7 +1322,7 @@ class ExgrReplayManager:
             return
         print("Start to execution: ")
         time.sleep(2)
-
+        
         total_time = 0.0
         event_1 = torch.cuda.Event(enable_timing=True)
         event_2 = torch.cuda.Event(enable_timing=True)
@@ -1368,6 +1377,7 @@ class ExgrReplayManager:
                     event_1.record()
                     for node in self.sorted_nodes:
                         self.run_op(node, iter)
+                        # torch.cuda.synchronize(self.device)
                     print("Finished one iteration.")
                     event_2.record()
                     torch.cuda.synchronize(self.device)
