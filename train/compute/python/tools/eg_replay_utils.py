@@ -530,7 +530,7 @@ if len(operators_count) > 1:
         operators_count[1] + 1 : operators_count[2]
     ]
 
-print("#Operators to execute: ", len(sorted_nodes))
+print("#Operators to replay: ", len(sorted_nodes))
 
 for node in sorted_nodes:
     if is_fbgemm_forward(node):

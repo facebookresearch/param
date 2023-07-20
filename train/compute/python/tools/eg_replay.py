@@ -57,8 +57,8 @@ import commsTraceReplay
 
 class ExgrReplayManager:
     def __init__(self):
-        self.numWarmupIters = 1
-        self.numIters = 1
+        self.numWarmupIters = 10
+        self.numIters = 10
         self.profile_replay = False
         self.profile_memory = False
         self.eg = None
@@ -71,7 +71,12 @@ class ExgrReplayManager:
         self.trace_file = ""
         self.dump = False
         self.dump_path = ""
+        self.subgraph = ""
+        self.separate = True
+        self.cuda = "cuda"
+        self.device = torch.device(self.cuda)
         self.args = None
+
         # Comms env.
         self.comms_env_params = comms_utils.read_comms_env_vars()
         self.commsBench = None
@@ -79,8 +84,10 @@ class ExgrReplayManager:
         self.commsParams = None
         self.regenerate_tensors = None
 
-        self.cuda = "cuda"
-        self.device = torch.device(self.cuda)
+        # Embedding table parameters.
+        self.rows = 1024
+        self.pooling_factor = 1
+        self.alpha = 1
 
         # Permanent registry of the tensors that need to be initialized.
         self.tensor_registry_permanent = {}
@@ -207,6 +214,11 @@ class ExgrReplayManager:
         self.wait_delay = self.args.delay
         self.cpu = self.args.cpu
         self.tf32 = self.args.tf32
+        self.subgraph = self.args.subgraph
+        self.separate = self.args.separate
+        self.rows = self.args.rows
+        self.pooling_factor = self.args.pooling_factor
+        self.alpha = self.args.alpha
 
         # Single trace.
         if not self.args.trace_path:
@@ -330,7 +342,7 @@ class ExgrReplayManager:
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
                 if node.name == "record_param_comms" and (
-                    self.compute_only or self.args.separate
+                    self.compute_only or self.separate
                 ):
                     continue
                 self.dependency_permanent.add(t_id)
@@ -368,7 +380,7 @@ class ExgrReplayManager:
             self.sorted_nodes = self.sorted_nodes[
                 self.operators_count[1] + 1 : self.operators_count[2]
             ]
-        print("#Operators to execute: ", len(self.sorted_nodes))
+        print("#Operators to replay: ", len(self.sorted_nodes))
         for node in self.sorted_nodes:
             anlayze_node(node)
         self.select_parallel_nodes()
@@ -482,7 +494,7 @@ class ExgrReplayManager:
 
         for node in self.sorted_nodes:
             if node.name == "record_param_comms" and (
-                self.compute_only or self.args.separate
+                self.compute_only or self.separate
             ):
                 continue
             for _, t_id, shape in get_input_tensors(node):
@@ -513,7 +525,7 @@ class ExgrReplayManager:
         output_set = set()
         for node in self.sorted_nodes:
             if node.name == "record_param_comms" and (
-                self.compute_only or self.args.separate
+                self.compute_only or self.separate
             ):
                 continue
             for _, t_id, _ in get_input_tensors(node):
@@ -534,7 +546,7 @@ class ExgrReplayManager:
     def allocate_tensors(self):
         for node in self.sorted_nodes:
             if node.name == "record_param_comms" and (
-                self.compute_only or self.args.separate
+                self.compute_only or self.separate
             ):
                 continue
             if is_fbgemm_forward(node):
@@ -542,17 +554,17 @@ class ExgrReplayManager:
                     input_args, _ = generate_fbgemm_tensors(
                         node,
                         "cpu",
-                        self.args.rows,
-                        self.args.pooling_factor,
-                        self.args.alpha,
+                        self.rows,
+                        self.pooling_factor,
+                        self.alpha,
                     )
                 else:
                     input_args, _ = generate_fbgemm_tensors(
                         node,
                         self.cuda,
-                        self.args.rows,
-                        self.args.pooling_factor,
-                        self.args.alpha,
+                        self.rows,
+                        self.pooling_factor,
+                        self.alpha,
                     )
             for idx, (data_type, t_id, shape) in enumerate(get_input_tensors(node)):
                 if self.tensor_with_device:
@@ -616,9 +628,9 @@ class ExgrReplayManager:
     def build_func(self, node):
         if is_fbgemm_forward(node):
             if self.cpu:
-                func, output_count = build_fbgemm_func(node, "cpu", self.args.rows)
+                func, output_count = build_fbgemm_func(node, "cpu", self.rows)
             else:
-                func, output_count = build_fbgemm_func(node, self.cuda, self.args.rows)
+                func, output_count = build_fbgemm_func(node, self.cuda, self.rows)
             self.fbgemm_backward_ops.append((func.backward, node.id))
             return func.forward, output_count
         elif is_fbgemm_backward(node):
@@ -639,27 +651,27 @@ class ExgrReplayManager:
             tensor_allocate_template = """{tensor} = {rng}({shape}).to({dtype}){cuda}"""
             for node in self.sorted_nodes:
                 if node.name == "record_param_comms" and (
-                    self.compute_only or self.args.separate
+                    self.compute_only or self.separate
                 ):
                     continue
                 if is_fbgemm_forward(node):
                     if self.cpu:
-                        tensor_allocation_str += f'input_args, _ = generate_fbgemm_tensors(nodes[{node.id}], "cpu", {self.args.rows}, {self.args.pooling_factor}, {self.args.alpha})\n'
+                        tensor_allocation_str += f'input_args, _ = generate_fbgemm_tensors(nodes[{node.id}], "cpu", {self.rows}, {self.pooling_factor}, {self.alpha})\n'
                         input_args, _ = generate_fbgemm_tensors(
                             node,
                             "cpu",
-                            self.args.rows,
-                            self.args.pooling_factor,
-                            self.args.alpha,
+                            self.rows,
+                            self.pooling_factor,
+                            self.alpha,
                         )
                     else:
-                        tensor_allocation_str += f'input_args, _ = generate_fbgemm_tensors(nodes[{node.id}], "{self.cuda}", {self.args.rows}, {self.args.pooling_factor}, {self.args.alpha})\n'
+                        tensor_allocation_str += f'input_args, _ = generate_fbgemm_tensors(nodes[{node.id}], "{self.cuda}", {self.rows}, {self.pooling_factor}, {self.alpha})\n'
                         input_args, _ = generate_fbgemm_tensors(
                             node,
                             self.cuda,
-                            self.args.rows,
-                            self.args.pooling_factor,
-                            self.args.alpha,
+                            self.rows,
+                            self.pooling_factor,
+                            self.alpha,
                         )
 
                 for idx, (dtype, t_id, shape) in enumerate(get_input_tensors(node)):
@@ -953,7 +965,7 @@ class ExgrReplayManager:
                 "cpu",
                 self.compute_only,
                 self.tf32,
-                self.args.rows,
+                self.rows,
             )
         else:
             code_str += generate_prefix(
@@ -963,7 +975,7 @@ class ExgrReplayManager:
                 self.cuda,
                 self.compute_only,
                 self.tf32,
-                self.args.rows,
+                self.rows,
             )
 
         (
@@ -1078,7 +1090,7 @@ class ExgrReplayManager:
                 if self.wait_delay != 0:
                     time.sleep(self.wait_delay / 1000.0)
                 return
-            if self.args.separate:
+            if self.separate:
                 return
 
             # # Total dimension of the output tensor should be the same as
@@ -1277,16 +1289,16 @@ class ExgrReplayManager:
             self.init_comms()
 
         nodes = self.eg.get_nodes(clean=True)
-        assert isinstance(self.args.subgraph, str)
-        if self.args.subgraph != "":
+        assert isinstance(self.subgraph, str)
+        if self.subgraph != "":
             find_subgraph = False
             for _, n in nodes.items():
-                if self.args.subgraph in n.name:
+                if self.subgraph in n.name:
                     root = n
                     find_subgraph = True
                     break
             if not find_subgraph:
-                print(f"Cannot find subgraph with name {self.args.subgraph}.")
+                print(f"Cannot find subgraph with name {self.subgraph}.")
                 exit(1)
         else:
             root = nodes[1]  # 1-base
@@ -1320,7 +1332,7 @@ class ExgrReplayManager:
         self.preprocess_graph()
         if self.generator:
             return
-        print("Start to execution: ")
+        print("Start execution: ")
         time.sleep(2)
         
         total_time = 0.0
