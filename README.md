@@ -10,6 +10,8 @@ Our initial release of PARAM benchmarks focuses on AI training and comprises of:
 1. Communication: PyTorch based collective benchmarks across arbitrary message sizes, effectiveness of compute-communication overlap, and DLRM communication patterns in fwd/bwd pass
 2. Compute: PyTorch based GEMM, embedding lookup, and linear layer
 3. DLRM: tracks the `ext_dist` branch of DRLM benchmark use Facebook's DLRM benchmark (https://github.com/facebookresearch/dlrm). In short, PARAM fully relies on DLRM benchmark for end-to-end workload evaluation; with additional extensions as required for scale-out AI training platforms.
+4. PyTorch Execution Trace (ET) replay based tests: The PyTorch ET capturing capabilities, which have recently been introduced, allow for the recording of runtime information of a model at the operator level. This capability enables the creation of replay-based benchmarks (https://dl.acm.org/doi/abs/10.1145/3579371.3589072) to accurately reproduce the original performance.
+
 
 In essence, PARAM bridges the gap between stand-alone C++ benchmarks and PyTorch/Tensorflow based application benchmarks. This enables us to gain deep insights into the inner workings of the system architecture as well as identify framework-level overheads by stressing all subcomponents of a system.
 
