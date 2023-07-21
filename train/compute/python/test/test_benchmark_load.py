@@ -1,9 +1,18 @@
+import logging
 import os
 import unittest
 
-from ..lib.config import BenchmarkConfig
-from ..lib.pytorch.benchmark import Benchmark, make_default_benchmark
-from ..lib.pytorch.config_util import get_benchmark_options
+from param_bench.train.compute.python.lib import pytorch as lib_pytorch
+
+from param_bench.train.compute.python.lib.config import BenchmarkConfig
+from param_bench.train.compute.python.lib.init_helper import load_modules
+from param_bench.train.compute.python.lib.pytorch.benchmark import (
+    Benchmark,
+    make_default_benchmark,
+)
+from param_bench.train.compute.python.lib.pytorch.config_util import (
+    get_benchmark_options,
+)
 
 CURR_DIR = os.path.dirname(os.path.realpath(__file__))
 
@@ -13,6 +22,8 @@ class TestBenchmarkLoad(unittest.TestCase):
         self.config_path = os.path.join(
             CURR_DIR, "pytorch", "configs", "test_native_basic_ops.json"
         )
+        # Load PyTorch implementations for data generator and operators.
+        load_modules(lib_pytorch)
 
     def test_json_load_benchmark(self):
         run_options = get_benchmark_options()

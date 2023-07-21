@@ -1,8 +1,16 @@
 import unittest
 
-from ..lib.data import data_generator_map, DataGenerator, register_data_generator
-from ..lib.iterator import config_iterator_map, ConfigIterator, register_config_iterator
-from ..lib.operator import (
+from param_bench.train.compute.python.lib.data import (
+    data_generator_map,
+    DataGenerator,
+    register_data_generator,
+)
+from param_bench.train.compute.python.lib.iterator import (
+    config_iterator_map,
+    ConfigIterator,
+    register_config_iterator,
+)
+from param_bench.train.compute.python.lib.operator import (
     op_map,
     OperatorInterface,
     register_operator,

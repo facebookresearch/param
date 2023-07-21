@@ -1,7 +1,12 @@
 import copy
 import unittest
 
-from ..lib.generator import full_range, IterableList, ListProduct, TableProduct
+from param_bench.train.compute.python.lib.generator import (
+    full_range,
+    IterableList,
+    ListProduct,
+    TableProduct,
+)
 
 
 class TestGenerator(unittest.TestCase):

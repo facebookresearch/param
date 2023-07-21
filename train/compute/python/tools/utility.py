@@ -1,4 +1,9 @@
+import gzip
+import json
 import logging
+from typing import Any, Dict
+
+from param_bench.train.compute.python.tools.execution_graph import ExecutionGraph
 
 
 def get_tmp_trace_filename():
@@ -31,3 +36,16 @@ def trace_handler(prof):
     # except Exception as e:
     #     logging.info(f"Upload trace error: {e}")
     #     pass
+
+
+def load_execution_trace_file(et_file_path: str) -> ExecutionGraph:
+    """Loads Execution Trace from json file and parses it."""
+    data = read_dictionary_from_json_file(et_file_path)
+    return ExecutionGraph(data)
+
+
+def read_dictionary_from_json_file(file_path: str) -> Dict[Any, Any]:
+    with gzip.open(file_path, "rb") if file_path.endswith("gz") else open(
+        file_path, "r"
+    ) as f:
+        return json.load(f)
