@@ -2,4 +2,5 @@ gitpython
 networkx
 numpy
 pydot
+scipy
 torch>=1.12
