@@ -1541,7 +1541,7 @@ class ExgrReplayManager:
             help="Path to dump generated benchmark file.",
         )
         parser.add_argument(
-            "--trace-path",
+            "--trace_path",
             type=str,
             required=False,
             help="File path to read the trace. All rank read their own trace file.",
