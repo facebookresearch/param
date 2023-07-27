@@ -20,7 +20,7 @@ from argparse import ArgumentParser, Namespace
 from collections import OrderedDict
 from contextlib import ContextDecorator
 from io import StringIO
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 try:
     from internals import (
@@ -140,7 +140,7 @@ def parseRankList(ipStr: str) -> List[int]:
     return rankList
 
 
-def getAlgBW(elapsedTimeNS: float, dataSize: int, numIters: int) -> (float, float):
+def getAlgBW(elapsedTimeNS: float, dataSize: int, numIters: int) -> Tuple[float, float]:
     """
     Similar to how algorithmic bandwidth is computed in nccl-tests.
 
@@ -231,7 +231,7 @@ def fixBeginSize(commsParams: commsParamsHolder, world_size: int) -> None:
 
 def get_rank_details(
     backendFuncs: backendFunctions,
-) -> (int, int, int, ProcessGroup, str, str):
+) -> Tuple[int, int, int, ProcessGroup, str, str]:
     """
     Returns the details of the rank for the current backendFunction.
 
@@ -740,7 +740,7 @@ class commsDlrmParamsHolder(commsParamsHolderBase):
     def __init__(
         self,
         args,
-        mpi_env_params: Dict[str:int],
+        mpi_env_params: Dict[str, int],
     ) -> None:
         super().__init__(args)
 
@@ -845,7 +845,8 @@ class paramCommsBench(ABC):
             "Byte": torch.uint8,
         }
         self.supportedDtype = list(self.dtypeMap.keys())
-        self.backendFuncs = ""
+        self.backendFuncs: backendFunctions
+
         self.collectiveArgs = collectiveArgsHolder()
         self.comm_size = 1
         self.global_rank = -1
@@ -954,7 +955,7 @@ class paramCommsBench(ABC):
 
     def _prep_all_to_allv(
         self,
-        ipTensor: torch.tensor,
+        ipTensor: torch.Tensor,
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
@@ -964,7 +965,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Prepare the all_to_allv mode"""
 
         opTensor = []
@@ -988,7 +989,7 @@ class paramCommsBench(ABC):
 
     def _prep_all_to_all(
         self,
-        ipTensor: torch.tensor,
+        ipTensor: torch.Tensor,
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
@@ -998,7 +999,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # all_to_all requires two tensor lists, e.g., List[torch.Tensor]
 
         ipTensor = []
@@ -1044,7 +1045,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         opTensor = []
 
         if not commsParams.size_from_trace:
@@ -1083,7 +1084,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         opTensor = []
         if not commsParams.size_from_trace:
@@ -1122,7 +1123,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # incast requires a tensor list with length of src_ranks, e.g., List[torch.Tensor]
         opTensor = []
 
@@ -1147,7 +1148,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         ipTensor = []
         opTensor = []
@@ -1194,7 +1195,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         ipTensor = []
         opTensor = []
@@ -1233,7 +1234,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # pt2pt or out-of-place collectives
         opTensor = []
         if allocate:
@@ -1254,7 +1255,7 @@ class paramCommsBench(ABC):
         dtype: str,
         curDevice: str,
         gemmTensor: torch.tensor = None,
-    ) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if gemmTensor is None:
             in1 = np.random.rand(mm0_dim0, mm0_dim1)
             in2 = np.random.rand(mm1_dim0, mm1_dim1)
@@ -1280,7 +1281,7 @@ class paramCommsBench(ABC):
 
     def prepGemm(
         self, mm_dim: int, dtype: str, curDevice: str, gemmTensor: torch.tensor = None
-    ) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         return self.prepGemmNotSquare(
             mm_dim, mm_dim, mm_dim, mm_dim, dtype, curDevice, gemmTensor
         )
@@ -1290,7 +1291,7 @@ class paramCommsBench(ABC):
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         allocate: bool = True,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Allocate the tensors for collective.
 
