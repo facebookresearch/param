@@ -3,6 +3,7 @@ import gc
 import json
 
 import logging
+import sys
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -1608,6 +1609,11 @@ class ExgrReplayManager:
             help="when a eg_id is being replayed multiple times, setting this to false will use temsors from previous runs.",
         )
         self.args, _ = parser.parse_known_args()
+
+        # Check if both 'input' and 'trace_path' are not provided
+        if self.args.input is None and self.args.trace_path is None:
+            parser.print_help(sys.stderr)
+            sys.exit(1)
 
 
 def main():
