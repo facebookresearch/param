@@ -48,9 +48,6 @@ from torch.profiler import ExecutionTraceObserver
 import os
 import sys
 
-comms_package_path = os.path.abspath(__file__).split('/')[:-4] + ['comms', 'pt']
-sys.path.append('/'.join(comms_package_path))
-
 import comms_utils
 import commsTraceReplay
 
@@ -1255,7 +1252,7 @@ class ExgrReplayManager:
 
         self.commsBench.initBackend(self.bootstrap_info, self.commsParams)
         self.commsBench.initBench(self.commsParams, comms_args)
-        
+
         self.commsBench.replayInit(self.commsParams)
 
     def analyze_ops(self):
@@ -1334,7 +1331,7 @@ class ExgrReplayManager:
             return
         print("Start execution: ")
         time.sleep(2)
-        
+
         total_time = 0.0
         event_1 = torch.cuda.Event(enable_timing=True)
         event_2 = torch.cuda.Event(enable_timing=True)
