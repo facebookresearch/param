@@ -1,4 +1,5 @@
 gitpython
 networkx
 numpy
+pydot
 torch>=1.12
