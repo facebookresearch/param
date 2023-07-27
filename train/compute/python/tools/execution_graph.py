@@ -23,7 +23,9 @@ logging.getLogger().setLevel(logging.INFO)
 
 # OPERATOR: nodes actually does something
 # LABEL: nodes used as markers
-NodeType = Enum("NodeType", "OPERATOR LABEL")
+class NodeType(Enum):
+    OPERATOR = 1
+    LABEL = 2
 
 
 # Label markers
@@ -130,7 +132,7 @@ class Node:
     ):
         self.name: str = name
         self.parent_id: int = parent_id
-        self.parent: Node = None
+        self.parent: Optional[Node] = None
         self.children: List[Node] = []
         self.id: int = id
         self.rf_id: Optional[int] = rf_id
@@ -140,7 +142,7 @@ class Node:
         self.op_schema: str = op_schema
         self.fw_parent_id: int = fw_parent_id
         self.scope: int = scope
-        self.type: str = self.detect_type(name, inputs, outputs)
+        self.type: NodeType = self.detect_type(name, inputs, outputs)
         # self.inputs: List[Any] = [tuple(i) if isinstance(i, list) else i for i in inputs]
         self.inputs: List[Any] = inputs
         self.input_types: List[str] = input_types
@@ -205,7 +207,7 @@ class Node:
     def get_base_op(self) -> Node:
         return self._get_base_op()
 
-    def _get_child_by_name(self, name) -> Node:
+    def _get_child_by_name(self, name) -> Optional[Node]:
         for c in self.children:
             if name in c.name:
                 return c
@@ -214,14 +216,14 @@ class Node:
                 return node
         return None
 
-    def get_child_by_name(self, names) -> Node:
+    def get_child_by_name(self, names) -> Optional[Node]:
         for name in names:
             node = self._get_child_by_name(name)
             if node is not None:
                 return node
         return None
 
-    def _get_parent_by_name(self, name) -> Node:
+    def _get_parent_by_name(self, name) -> Optional[Node]:
         if self.parent:
             if name in self.parent.name:
                 return self.parent
@@ -230,7 +232,7 @@ class Node:
                 return node
         return None
 
-    def get_parent_by_name(self, names) -> Node:
+    def get_parent_by_name(self, names) -> Optional[Node]:
         for name in names:
             node = self._get_parent_by_name(name)
             if node is not None:
