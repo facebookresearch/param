@@ -16,7 +16,7 @@ from param_bench.train.comms.pt import commsTraceReplay
 
 from param_bench.train.compute.python.lib import pytorch as lib_pytorch
 from param_bench.train.compute.python.lib.init_helper import load_modules
-from param_bench.train.compute.python.tools.eg_replay_utils import (
+from param_bench.train.compute.python.tools.et_replay_utils import (
     build_fbgemm_func,
     build_torchscript_func,
     fbgemm_input_args_indices,
@@ -39,8 +39,8 @@ from param_bench.train.compute.python.tools.eg_replay_utils import (
     TORCH_DTYPES_RNG_str,
 )
 
-from param_bench.train.compute.python.tools.execution_graph import (
-    ExecutionGraph,
+from param_bench.train.compute.python.tools.execution_trace import (
+    ExecutionTrace,
     NodeType,
 )
 
@@ -55,8 +55,8 @@ class ExgrReplayManager:
         self.numIters = 1
         self.profile_replay = False
         self.profile_memory = False
-        self.eg = None
-        self.eg_profile = False
+        self.et = None
+        self.et_profile = False
         self.batch_size = 1
         self.cuda_id = 0
         self.debug = False
@@ -88,12 +88,12 @@ class ExgrReplayManager:
         self.funcs = {}
         # Mark some intermediate tensors (output of operators) as unchangeable.
         self.unchangeable_intermediate_tensors = set()
-        # Unique tensors in execution graph identified by (tensor_id, storage_id, offset, num_elem, elem_bytes).
+        # Unique tensors in execution trace identified by (tensor_id, storage_id, offset, num_elem, elem_bytes).
         self.original_unique_tensors = set()
         # Number of unique tensors in replay since tensors may have multiple shapes and to accommodate that
         # we treat tensors with same identifier tuple but different shapes as different tensors.
         self.replay_unique_tensor_num = 0
-        # Map (tensor_id, node,id) in eg to unique tensor_id in replay.
+        # Map (tensor_id, node,id) in et to unique tensor_id in replay.
         # We assume in only input or only output of an op, the shape of tensors with same id keeps the same.
         # Same tensor in input and output may be different (e.g., aten::unsqueeze()).
         self.tensors_mapping = {}
@@ -102,7 +102,7 @@ class ExgrReplayManager:
         # Dict that stores the shapes of a tensor, for the convenience of quickly determining whether
         # to create a unique tensor in replay if the id is same but shape is different.
         self.tensor_shapes = defaultdict(set)
-        # Mark those tensors that occur first as an input in the original eg as needing to be instantiated in replay
+        # Mark those tensors that occur first as an input in the original et as needing to be instantiated in replay
         # at the very beginning.
         self.instantiate = set()
         # Tensors that should be instantiated on cpu, e.g., input of aten::pin_memory and aten::to.
@@ -118,7 +118,7 @@ class ExgrReplayManager:
         # Ids of nodes that need to run in parallel.
         self.parallel_nodes_ids = []
 
-        # This is used to pick out a single iteration when eg trace contains multiple iterations.
+        # This is used to pick out a single iteration when trace contains multiple iterations.
         # Basically this label should be captured at the beginning of each iteration so that one iteration
         # is between two consecutive label nodes.
         self.label = ""
@@ -190,7 +190,7 @@ class ExgrReplayManager:
         self.numIters = self.args.iter
         self.profile_replay = self.args.profile_replay
         self.profile_memory = self.args.profile_memory
-        self.eg_profile = self.args.eg
+        self.et_profile = self.args.et
         self.batch_size = self.args.batch_size
         self.cuda_id = self.args.cuda
         self.debug = self.args.debug
@@ -204,7 +204,7 @@ class ExgrReplayManager:
 
         # Single trace.
         if not self.args.trace_path:
-            # Input eg trace should be explicitly specified after --input.
+            # Input et trace should be explicitly specified after --input.
             if "://" in self.args.input:
                 try:
                     from param_bench.train.compute.python.tools.fb.internals import (
@@ -214,12 +214,12 @@ class ExgrReplayManager:
                     logging.info("FB internals not present")
                     exit(1)
                 else:
-                    eg_trace, self.trace_file = read_remote_trace(self.args.input)
-                    self.eg = ExecutionGraph(json.load(eg_trace))
+                    et, self.trace_file = read_remote_trace(self.args.input)
+                    self.et = ExecutionTrace(json.load(et))
             else:
                 self.trace_file = self.args.input
                 with open(self.trace_file, "r") as f:
-                    self.eg = ExecutionGraph(json.load(f))
+                    self.et = ExecutionTrace(json.load(f))
 
             if self.cuda_id == -1:
                 self.cuda = "cuda"
@@ -233,7 +233,7 @@ class ExgrReplayManager:
             print(f"{os.getpid()} is rank{self.comms_env_params['global_rank']}")
             self.cuda_id = self.comms_env_params["local_rank"]
             self.cuda = f"cuda:{self.comms_env_params['local_rank']}"
-            # Different processes should read different eg traces based on global_rank_id.
+            # Different processes should read different traces based on global_rank_id.
             if "://" in self.args.trace_path:
                 try:
                     from param_bench.train.compute.python.tools.fb.internals import (
@@ -243,14 +243,14 @@ class ExgrReplayManager:
                     logging.info("FB internals not present")
                     exit(1)
                 else:
-                    eg_trace, self.trace_file = read_remote_trace(
+                    et, self.trace_file = read_remote_trace(
                         f"{self.args.trace_path}/rank-{self.comms_env_params['global_rank']}"
                     )
-                    self.eg = ExecutionGraph(json.load(eg_trace))
+                    self.et = ExecutionTrace(json.load(et))
             else:
                 self.trace_file = f"{self.args.trace_path}/rank{self.comms_env_params['global_rank']}.json"
                 with open(self.trace_file, "r") as f:
-                    self.eg = ExecutionGraph(json.load(f))
+                    self.et = ExecutionTrace(json.load(f))
 
             self.dump_path += f"benchmark_{self.comms_env_params['global_rank']}.py"
 
@@ -261,7 +261,7 @@ class ExgrReplayManager:
 
     def detect_tensor_device(self, root):
         # Automatically detect whether the captured tensor information includes device.
-        # Just a temporary utility to accommodate old and new versions eg and should be removed later.
+        # Just a temporary utility to accommodate old and new versions et and should be removed later.
         def traverse(root):
             for child in root.children:
                 for _, t_id, _ in get_input_tensors(child):
@@ -1076,7 +1076,7 @@ class ExgrReplayManager:
                 return
 
             # # Total dimension of the output tensor should be the same as
-            # # the original in eg, reshape if different.
+            # # the original in et, reshape if different.
             # if type(opTensor) is list:
             #     for t in opTensor:
             #         print(t)
@@ -1268,7 +1268,7 @@ class ExgrReplayManager:
         if not self.compute_only and not self.generator:
             self.init_comms()
 
-        nodes = self.eg.get_nodes(clean=True)
+        nodes = self.et.get_nodes(clean=True)
         assert isinstance(self.args.subgraph, str)
         if self.args.subgraph != "":
             find_subgraph = False
@@ -1319,10 +1319,10 @@ class ExgrReplayManager:
         event_1 = torch.cuda.Event(enable_timing=True)
         event_2 = torch.cuda.Event(enable_timing=True)
 
-        if self.eg_profile:
-            eg_file = "/tmp/replay_eg.json"
-            eg = ExecutionTraceObserver()
-            eg.register_callback(eg_file)
+        if self.et_profile:
+            et_file = "/tmp/replay_et.json"
+            et = ExecutionTraceObserver()
+            et.register_callback(et_file)
 
         # Print real time qps every # iterations.
         qps_print_interval = 10
@@ -1341,12 +1341,12 @@ class ExgrReplayManager:
                 on_trace_ready=trace_handler,
             ) as prof:
                 for iter in range(self.numWarmupIters + self.numIters):
-                    if self.eg_profile:
+                    if self.et_profile:
                         if iter == self.numWarmupIters:
-                            eg.start()
+                            et.start()
                         if iter == self.numWarmupIters + 1:
-                            eg.stop()
-                            eg.unregister_callback()
+                            et.stop()
+                            et.unregister_callback()
                     if iter == prev_iter:
                         start_ns = time.time_ns()
                     if iter == prev_iter + qps_print_interval:
@@ -1380,12 +1380,12 @@ class ExgrReplayManager:
                 print("Execution finished!")
         else:
             for iter in range(self.numWarmupIters + self.numIters):
-                if self.eg_profile:
+                if self.et_profile:
                     if iter == self.numWarmupIters:
-                        eg.start()
+                        et.start()
                     if iter == self.numWarmupIters + 1:
-                        eg.stop()
-                        eg.unregister_callback()
+                        et.stop()
+                        et.unregister_callback()
                 if iter == prev_iter:
                     start_ns = time.time_ns()
                 if iter == prev_iter + qps_print_interval:
@@ -1497,10 +1497,10 @@ class ExgrReplayManager:
             help="Profile memory usage in replay.",
         )
         parser.add_argument(
-            "--eg",
+            "--et",
             action="store_true",
             default=False,
-            help="Capture execution graph for replay.",
+            help="Capture execution trace for replay.",
         )
         parser.add_argument(
             "--batch-size",
@@ -1606,7 +1606,7 @@ class ExgrReplayManager:
             "--regenerate_tensors",
             action="store_true",
             default=True,
-            help="when a eg_id is being replayed multiple times, setting this to false will use temsors from previous runs.",
+            help="when a et_id is being replayed multiple times, setting this to false will use temsors from previous runs.",
         )
         self.args, _ = parser.parse_known_args()
 

@@ -103,7 +103,7 @@ graph.
 A node has an unique ID. This ID is in the order of execution in the original
 graph. Special nodes:
 - A single label node __ROOT_PROCESS__ has node ID 1 and is the root of the execution
-graph.
+trace.
 - Each thread has its __ROOT_THREAD__ node with an unique ID.
 
 All the input tensors will have ID < node ID.
@@ -271,7 +271,7 @@ class Node:
         self.children.sort(key=lambda x: x.id)
 
 
-class ExecutionGraph:
+class ExecutionTrace:
     def __init__(self, json):
         self.nodes = {}
         self.clean_nodes = {}  # w/o DataLoader ops
@@ -447,7 +447,7 @@ class ExecutionGraph:
 
     def gen_graphml(self, file_name):
         graphml = GraphML(self)
-        graphml.write("execution graph", file_name)
+        graphml.write("execution trace", file_name)
 
     def gen_graph(self, file_name, type=None):
         dot_max_nodes = 300
@@ -460,7 +460,7 @@ class ExecutionGraph:
             out_name = f"{file_name}.graphml"
             self.gen_graphml(out_name)
 
-        print(f"Execution graph written to {out_name}")
+        print(f"Execution trace written to {out_name}")
 
     def print_tensors(self, detail: bool = False):
         print("### TENSORS ###")
@@ -567,15 +567,15 @@ class ExecutionGraph:
 
 
 class GraphML:
-    def __init__(self, execution_graph: ExecutionGraph):
+    def __init__(self, execution_trace: ExecutionTrace):
         self.nodes: List = []
         self.edges: List = []
         # construct op nodes and edges
-        for id, n in execution_graph.nodes.items():
+        for id, n in execution_trace.nodes.items():
             self._create_node(id, f"{n.name} ({n.id})", n.name)
-        for tensor in execution_graph.tensors.values():
+        for tensor in execution_trace.tensors.values():
             self._create_tensor_node(tensor)
-        for id, n in execution_graph.nodes.items():
+        for id, n in execution_trace.nodes.items():
             self._create_edge(n.parent_id, id)
             for (_, input, _) in n.get_input_tensors():
                 self._create_edge(input, id)
@@ -693,10 +693,10 @@ class GraphML:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Execution graph building and analysis"
+        description="Execution trace building and analysis"
     )
     parser.add_argument(
-        "--input", type=str, required=True, help="input execution graph json file."
+        "--input", type=str, required=True, help="input execution trace json file."
     )
     parser.add_argument(
         "--graph",
@@ -731,7 +731,7 @@ def main():
         dest="list_op",
         default=False,
         action="store_true",
-        help="list all the ops in the execution graph.",
+        help="list all the ops in the execution trace.",
     )
     parser.add_argument(
         "--node",
@@ -775,29 +775,29 @@ def main():
 
     with open(execution_json) as execution_data:
         execution_data: TextIO
-        execution_graph: ExecutionGraph = ExecutionGraph(json.load(execution_data))
+        execution_trace: ExecutionTrace = ExecutionTrace(json.load(execution_data))
         if args.list_op:
-            execution_graph.print_op_stats(args.detail, args.json)
+            execution_trace.print_op_stats(args.detail, args.json)
         if args.list_tensor:
-            execution_graph.print_tensors(args.detail)
+            execution_trace.print_tensors(args.detail)
         if args.tree:
-            execution_graph.print_tree(args.detail)
+            execution_trace.print_tree(args.detail)
         if args.node != -1:
-            if args.node in execution_graph.nodes:
-                execution_graph.node_depend(args.node)
-            elif args.node in execution_graph.tensors:
-                execution_graph.tensor_depend(args.node)
+            if args.node in execution_trace.nodes:
+                execution_trace.node_depend(args.node)
+            elif args.node in execution_trace.tensors:
+                execution_trace.tensor_depend(args.node)
             else:
                 logging.error(f"node {args.node} not found.")
 
         if args.graph or args.graphviz or args.graphml:
-            out_file: str = "execution_graph"
+            out_file: str = "execution_trace"
             if args.graphviz:
-                execution_graph.gen_graph(out_file, "graphviz")
+                execution_trace.gen_graph(out_file, "graphviz")
             elif args.graphml:
-                execution_graph.gen_graph(out_file, "graphml")
+                execution_trace.gen_graph(out_file, "graphml")
             else:
-                execution_graph.gen_graph(out_file)
+                execution_trace.gen_graph(out_file)
 
 
 if __name__ == "__main__":

@@ -134,7 +134,7 @@ class commsTraceReplayBench(paramCommsBench):
         # how long it took to finish all collectives in the trace
         self.totalTraceLatency = 0.0
 
-        self.eg_to_tensors = {}
+        self.et_to_tensors = {}
 
         self.gemmTensor = None
 
@@ -632,13 +632,13 @@ class commsTraceReplayBench(paramCommsBench):
         if regenerateTensors:
             return super().prepComm(curComm, commsParams)
         else:
-            if curComm.id in self.eg_to_tensors:
+            if curComm.id in self.et_to_tensors:
                 # Allocate input/output tensors if first time replay, otherwise the previous ones.
                 super().prepComm(curComm, commsParams, False)
-                (ipTensor, opTensor) = self.eg_to_tensors[curComm.id]
+                (ipTensor, opTensor) = self.et_to_tensors[curComm.id]
             else:
                 (ipTensor, opTensor) = super().prepComm(curComm, commsParams, True)
-                self.eg_to_tensors[curComm.id] = (ipTensor, opTensor)
+                self.et_to_tensors[curComm.id] = (ipTensor, opTensor)
         return (ipTensor, opTensor)
 
     def commRebalance(self, curComm: commsArgs) -> None:

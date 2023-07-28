@@ -8,7 +8,7 @@ The general motivation and design philosophy for the new microbenchmarks are:
 * Decoupled workload configuration from Python code. It allows building tools in a pipeline to collect operator configuration from production runs, generate microbenchmark inputs, gather metrics.
 * Generates human readable and easy to parse output data format for downstream tools.
 * A library interface allowing external tools to run and collect data results from the microbenchmarks.
-* Support replay of workload through PyTorch execution graph.
+* Support replay of workload through PyTorch execution trace.
 
 For design and implementation details or make a contribution to the project, please look at the [development documentation](development.md).
 

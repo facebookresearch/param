@@ -102,8 +102,8 @@ class BenchmarkHelper:
 
         self.write_option: str = "a" if getattr(config, "append", True) else "w"
 
-        self.eg: bool = getattr(config, "eg", False)
-        self.eg_file: str = ""
+        self.et: bool = getattr(config, "et", False)
+        self.et_file: str = ""
 
         self.trace_file: str = ""
 
@@ -169,12 +169,12 @@ class BenchmarkHelper:
             if self.run_options["device"].startswith("cuda"):
                 use_cuda = True
 
-            eg = None
-            if self.eg:
-                self.eg_file = f"{self.out_file_prefix}_eg.json"
-                eg = ExecutionTraceObserver()
-                eg.register_callback(self.eg_file)
-                eg.start()
+            et = None
+            if self.et:
+                self.et_file = f"{self.out_file_prefix}_et.json"
+                et = ExecutionTraceObserver()
+                et.register_callback(self.et_file)
+                et.start()
 
             cupti_profiler_config = (
                 _ExperimentalConfig(
@@ -197,11 +197,11 @@ class BenchmarkHelper:
                 with record_function(f"[param|{self.run_options['device']}]"):
                     benchmark.run()
 
-            if eg:
-                eg.stop()
-                eg.unregister_callback()
-                self.logger.info(f"exeution graph: {self.eg_file}")
-                ret_files["eg_file"] = self.eg_file
+            if et:
+                et.stop()
+                et.unregister_callback()
+                self.logger.info(f"execution trace: {self.et_file}")
+                ret_files["et_file"] = self.et_file
 
             print(
                 json.dumps({"finish_time": time.process_time()}),

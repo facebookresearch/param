@@ -4,7 +4,7 @@ import torch
 from fbgemm_gpu.split_table_batched_embeddings_ops import PoolingMode, WeightDecayMode
 
 from param_bench.train.compute.python.lib.pytorch.config_util import create_op_args
-from param_bench.train.compute.python.tools.execution_graph import NodeType
+from param_bench.train.compute.python.tools.execution_trace import NodeType
 
 from param_bench.train.compute.python.workloads.pytorch.split_table_batched_embeddings_ops import (
     SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator,
@@ -443,7 +443,7 @@ def build_torchscript_func(n):
     return func, output_count
 
 
-def generate_prefix(label, skip_nodes, eg_input, cuda, compute_only, tf32, rows):
+def generate_prefix(label, skip_nodes, et_input, cuda, compute_only, tf32, rows):
     template_prefix = """import gc
 import argparse
 import json
@@ -455,7 +455,7 @@ import comms_utils
 
 import torch
 from param_bench.train.comms.pt import commsTraceReplay
-from param_bench.train.compute.python.tools.eg_replay_utils import (
+from param_bench.train.compute.python.tools.et_replay_utils import (
     build_fbgemm_func,
     build_torchscript_func,
     generate_fbgemm_tensors,
@@ -464,7 +464,7 @@ from param_bench.train.compute.python.tools.eg_replay_utils import (
     is_qualified,
 )
 
-from param_bench.train.compute.python.tools.execution_graph import ExecutionGraph
+from param_bench.train.compute.python.tools.execution_trace import ExecutionTrace
 from param_bench.train.compute.python.tools.utility import trace_handler
 
 
@@ -499,7 +499,7 @@ def dfs_traverse(node):
         else:
             dfs_traverse(child)
 
-if "://" in \"{eg_input}\":
+if "://" in \"{et_input}\":
     try:
         from param_bench.train.compute.python.tools.fb.internals import (
             read_remote_trace,
@@ -508,13 +508,13 @@ if "://" in \"{eg_input}\":
         logging.info("FB internals not present")
         exit(1)
     else:
-        eg_trace, _ = read_remote_trace(\"{eg_input}\")
-        exgr = ExecutionGraph(json.load(eg_trace))
+        et, _ = read_remote_trace(\"{et_input}\")
+        extr = ExecutionTrace(json.load(et))
 else:
-    with open(\"{eg_input}\", 'r') as f:
-        exgr = ExecutionGraph(json.load(f))
+    with open(\"{et_input}\", 'r') as f:
+        extr = ExecutionTrace(json.load(f))
 
-nodes = exgr.get_nodes(clean=True)
+nodes = extr.get_nodes(clean=True)
 node = nodes[1]
 dfs_traverse(node)
 
@@ -572,7 +572,7 @@ if not compute_only:
     return template_prefix.format(
         label=label,
         skip_nodes=skip_nodes,
-        eg_input=eg_input,
+        et_input=et_input,
         cuda=cuda,
         compute_only=str(compute_only),
         tf32=str(tf32),

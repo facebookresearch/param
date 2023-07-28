@@ -6,7 +6,7 @@ import os
 import uuid
 from typing import Any, Dict
 
-from param_bench.train.compute.python.tools.execution_graph import ExecutionGraph
+from param_bench.train.compute.python.tools.execution_trace import ExecutionTrace
 
 
 def get_tmp_trace_filename() -> str:
@@ -30,10 +30,10 @@ def trace_handler(prof: Any) -> None:
     logging.warning(f"Chrome profile trace written to /tmp/{fn}")
 
 
-def load_execution_trace_file(et_file_path: str) -> ExecutionGraph:
+def load_execution_trace_file(et_file_path: str) -> ExecutionTrace:
     """Loads Execution Trace from json file and parses it."""
     data = read_dictionary_from_json_file(et_file_path)
-    return ExecutionGraph(data)
+    return ExecutionTrace(data)
 
 
 def read_dictionary_from_json_file(file_path: str) -> Dict[Any, Any]:
