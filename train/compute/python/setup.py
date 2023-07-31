@@ -19,6 +19,7 @@ def main():
         f"{package_base}.tools": "tools",
         f"{package_base}.workloads": "workloads",
         f"{package_base}.workloads.pytorch": "workloads/pytorch",
+        f"": "../../comms/pt",
     }
 
     packages = list(package_dir_map)
