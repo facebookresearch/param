@@ -1,3 +1,4 @@
+fbgemm_gpu
 gitpython
 networkx
 numpy
