@@ -17,8 +17,13 @@ import numpy as np
 # pytorch
 import torch
 from comms_utils import (
+    benchType,
     bootstrap_info_holder,
+    commsCollPerfMetrics,
     commsParamsHolderBase,
+    commsPt2PtPerfMetrics,
+    commsQuantCollPerfMetrics,
+    customized_perf_loggers,
     ensureTensorFlush,
     paramCommsBench,
     paramStreamGuard,
@@ -1061,6 +1066,21 @@ class commsCollBench(paramCommsBench):
             )
         )
 
+        return commsQuantCollPerfMetrics(
+            self.collectiveArgs.collective,
+            self.collectiveArgs.data_type,
+            benchType.Collective,
+            self.tag,
+            results["memSize"],
+            results["memSize"],
+            results["numElements"],
+            results["numElements_pair"] if "numElements_pair" in results else 0,
+            float(quant_p95),
+            float(p95 - quant_p95 - dequant_p95),
+            float(dequant_p95),
+            float(p95),
+        )
+
     def reportBenchTime(
         self,
         commsParams,
@@ -1084,10 +1104,12 @@ class commsCollBench(paramCommsBench):
                 results["numElements"] // self.backendFuncs.get_world_size()
             )
 
+        perf_metrics = None
+
         if commsParams.collective == "pt2pt":
-            self.reportBenchTimePt2Pt(commsParams, tensorList, results)
+            perf_metrics = self.reportBenchTimePt2Pt(commsParams, tensorList, results)
         elif commsParams.bitwidth < 32:
-            self.reportBenchTimeCollWithQuant(
+            perf_metrics = self.reportBenchTimeCollWithQuant(
                 commsParams,
                 results,
                 tensorList,
@@ -1095,7 +1117,22 @@ class commsCollBench(paramCommsBench):
                 dequantTimeTensorList,
             )
         else:
-            self.reportBenchTimeColl(commsParams, results, tensorList)
+            perf_metrics = self.reportBenchTimeColl(commsParams, results, tensorList)
+
+        # use custom perf_loggers if specified and registered
+        if perf_metrics is not None and commsParams.use_perf_logger is not None:
+            for perfLoggerName in commsParams.use_perf_logger:
+                if perfLoggerName in customized_perf_loggers:
+                    customized_perf_loggers[perfLoggerName].logPerf(
+                        "comms",
+                        perf_metrics,
+                        commsParams,
+                        self.backendFuncs,
+                    )
+                else:
+                    logger.info(
+                        f"Skipping logger '{perfLoggerName}' because it is not registered or implemented"
+                    )
 
     def reportBenchTimeColl(self, commsParams, results, tensorList):
         if commsParams.backend == "xla":
@@ -1190,6 +1227,25 @@ class commsCollBench(paramCommsBench):
                 )
             )
 
+        return commsCollPerfMetrics(
+            self.collectiveArgs.collective,
+            self.collectiveArgs.data_type,
+            benchType.Collective,
+            self.tag,
+            results["memSize"],
+            results["memSize"],
+            results["numElements"],
+            results["numElements_pair"] if "numElements_pair" in results else 0,
+            float(p50),
+            float(p75),
+            float(p95),
+            float(minlat),
+            float(maxlat),
+            results["algBW"],
+            busBW,
+            tflops,
+        )
+
     def reportBenchTimePt2Pt(self, commsParams, resultsAcrossRanks, results):
         pingLatencyAcrossRanks = []
         pingPongLatencyAcrossRanks = []
@@ -1261,6 +1317,24 @@ class commsCollBench(paramCommsBench):
                 str("%.3f" % (totalUniBW)),
                 str("%.3f" % (totalBiBW)),
             )
+        )
+
+        return commsPt2PtPerfMetrics(
+            self.collectiveArgs.collective,
+            self.collectiveArgs.data_type,
+            benchType.Collective,
+            self.tag,
+            results["memSize"],
+            results["memSize"],
+            results["numElements"],
+            results["numElements_pair"] if "numElements_pair" in results else 0,
+            float(ping_p50),
+            float(ping_p75),
+            float(ping_p95),
+            float(avgUniBW),
+            float(avgBiBW),
+            float(totalUniBW),
+            float(totalBiBW),
         )
 
     def benchTime(self, index, commsParams, backendFuncs):

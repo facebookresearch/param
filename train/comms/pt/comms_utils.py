@@ -19,6 +19,7 @@ from abc import ABC, abstractmethod
 from argparse import ArgumentParser, Namespace
 from collections import OrderedDict
 from contextlib import ContextDecorator
+from enum import Enum
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -34,6 +35,8 @@ try:
     has_internal_libs = True
 except ImportError:
     has_internal_libs = False
+
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -53,6 +56,12 @@ logger = logging.getLogger(__name__)
 
 default_master_ip = "127.0.0.1"
 default_master_port = "29500"
+
+
+class benchType(Enum):
+    Collective = 0
+    Pt2Pt = 1
+    QuantCollective = 2
 
 
 def gracefulExit(args: Any = 0) -> None:
@@ -505,6 +514,106 @@ def sampleProfiler(stop: bool = False) -> None:
         logger.debug("Internal profiler is not available, skip...")
 
 
+@dataclass
+class commsPerfMetrics:
+    """
+    Base Class for storing performance metrics for communication op.
+    """
+
+    # collectiveArgs: collectiveArgsHolder = None
+    commsOp: str = None
+    Datatype: str = None
+    BenchCommsType: benchType = None
+    Tags: str = ""
+    InputSize: float = 0.0
+    OutputSize: float = 0.0
+    NumElements: int = 0
+    NumElements_pair: int = 0
+
+
+@dataclass
+class commsQuantCollPerfMetrics(commsPerfMetrics):
+    """
+    Class for storing performance metrics for a collective with quentization enabled.
+    """
+
+    p95_latency_us: float = 0.0
+    quant_p95_latency_us: float = 0.0
+    dequant_p95_latency_us: float = 0.0
+    quant_comms_p95_latency_us: float = 0.0
+    TFLOPs: Optional[float] = 0.0
+
+    def __post_init__(self):
+        self.BenchCommsType = benchType.QuantCollective
+
+
+@dataclass
+class commsCollPerfMetrics(commsPerfMetrics):
+    """
+    Class for storing performance metrics for a collective.
+    """
+
+    p50_latency_us: float = 0.0
+    p75_latency_us: float = 0.0
+    p95_latency_us: float = 0.0
+    min_latency_us: float = 0.0
+    max_latency_us: float = 0.0
+    AlgoBW_GBs: float = 0.0
+    BusBW_GBs: float = 0.0
+    TFLOPs: Optional[float] = 0.0
+
+    def __post_init__(self):
+        self.BenchCommsType = benchType.Collective
+
+
+@dataclass
+class commsPt2PtPerfMetrics(commsPerfMetrics):
+    """
+    Class for storing performance metrics for a point-to-point.
+    """
+
+    p50_latency_us: float = 0.0
+    p75_latency_us: float = 0.0
+    p95_latency_us: float = 0.0
+    AvgUniBW_GBs: float = 0.0
+    AvgBiBW_GBs: float = 0.0
+    TotalUniBW_GBs: float = 0.0
+    TotalBiBW_GBs: float = 0.0
+
+    def __post_init__(self):
+        self.BenchCommsType = benchType.Pt2Pt
+
+
+class commsPerfLogger:
+    """
+    Helper class for logging performance metrics.
+    """
+
+    def __init__(self, loggerName: str):
+        self.name = loggerName
+
+    @abstractmethod
+    def logPerf(
+        self,
+        benchmarkName: str,
+        results: commsPerfMetrics,
+        commsParams: commsParamsHolderBase,
+        backendFuncs: backendFunctions,
+        **kwargs,
+    ):
+        """
+        Log performance metrics for the collective.
+        Args:
+            benchmarkName: Name of benchmark, e.g., "comms" or "replay".
+            results: Performance metrics for this collective.
+            commsParams: Parameters used in this benchmark run.
+            backendFuncs: Backend function/object used in this benchmark.
+        Returns:
+            None
+        """
+        pass
+
+
 class commsArgs:
     """
     This class contains all of the args that we can use to perform a single collective.
@@ -732,6 +841,7 @@ class commsParamsHolderBase:
         self.init_method = args.init_method
         self.enable_local_report = args.enable_local_report
         self.enable_profiler = args.enable_profiler
+        self.use_perf_logger = args.use_perf_logger
 
 
 class commsDlrmParamsHolder(commsParamsHolderBase):
@@ -1498,6 +1608,14 @@ class paramCommsBench(ABC):
             default=False,
             help="toggle to enable pytorch profiler",
         )  # enable pytorch profiler
+        parser.add_argument(
+            "--use-perf-logger",
+            "--use-custom-perf-logger",
+            nargs="+",
+            type=str,
+            default=None,
+            help="add name of custom performer loggers to use them in additional to text output, user is responsible to implement and register the custom performance logger",
+        )  # use custom performer logger
         pass
 
     @abstractmethod
@@ -1640,3 +1758,15 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
         collectiveArgs.grad_output = torch.rand_like(collectiveArgs.LookupOut).to(
             collectiveArgs.device
         )
+
+
+customized_perf_loggers: Dict[str, commsPerfLogger] = {}
+
+
+def register_perf_logger(
+    name: str,
+    func: commsPerfLogger,
+) -> None:
+    global customized_perf_loggers
+    customized_perf_loggers[name] = func
+    logger.info(f"Registered custom perf logger {name}")
