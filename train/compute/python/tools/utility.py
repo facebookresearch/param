@@ -42,3 +42,13 @@ def read_dictionary_from_json_file(file_path: str) -> Dict[Any, Any]:
         file_path, "r"
     ) as f:
         return json.load(f)
+
+
+def write_dictionary_to_json_file(file_path: str, data: Dict[Any, Any]) -> None:
+    """Write input dictionary to a json file."""
+    if file_path.endswith("gz"):
+        with gzip.open(file_path, "w") as f:
+            f.write(json.dumps(data, indent=4).encode("utf-8"))
+    else:
+        with open(file_path, "w") as f:
+            json.dump(data, f, indent=4)

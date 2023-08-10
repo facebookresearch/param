@@ -7,6 +7,7 @@ from networkx.algorithms import isomorphism
 from param_bench.train.compute.python.tools.utility import (
     load_execution_trace_file,
     read_dictionary_from_json_file,
+    write_dictionary_to_json_file,
 )
 
 
@@ -132,6 +133,14 @@ def trace_analysis(et_file, kineto_file, annotation="DataLoader"):
     # otherwise find the iteration in kineto trace with the closest #ops to ET (usually ET has 3 additional annotation ops for processes/threads)
     if kineto_et_segs:
         kineto_et_events = find_closest_segment(kineto_et_segs, len(et_nodes) - 3)
+    else:
+        logger.warning(
+            f"Could not find annotation {annotation} in kineto file"
+            " using the whole file, processing could be very slow!!"
+        )
+        if len(kineto_et_events) > 1000:
+            logger.error(f"Kineto has {len(kineto_et_events)} > 1000 events. exiting")
+            sys.exit(-1)
 
     logger.info(f"Number of original ops in kineto trace: {len(kineto_et_events)}")
 
@@ -362,13 +371,12 @@ if __name__ == "__main__":
 
     # If linking works, add duration time to each ET node and dump as ET_plus
     if et_enhanced_duration:
-        with open(args.et_file, "r") as f:
-            et = json.load(f)
-            for node in et["nodes"]:
-                if node["id"] in et_enhanced_duration:
-                    node["dur"] = et_enhanced_duration[node["id"]]
+        et = read_dictionary_from_json_file(args.et_file)
+        for node in et["nodes"]:
+            if node["id"] in et_enhanced_duration:
+                node["dur"] = et_enhanced_duration[node["id"]]
 
         et_plus_file = args.et_file.replace(".json", "_plus.json")
         logger.info(f"Enhanced execution trace dumped to {et_plus_file}.")
-        with open(et_plus_file, "w") as f:
-            json.dump(et, f, indent=4)
+
+        write_dictionary_to_json_file(et_plus_file, et)
