@@ -1391,6 +1391,7 @@ class commsTraceReplayBench(paramCommsBench):
                         remotePath=remotePath,
                         rank=rank,
                         full_trace_path=self.use_one_trace,
+                        trace_type=self.trace_type,
                     )
 
             self.comms_trace = json.load(raw_comms_trace)
