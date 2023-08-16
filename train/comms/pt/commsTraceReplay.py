@@ -8,7 +8,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import argparse
-import copy
 import json
 import logging
 import time
@@ -32,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 # sleep for 20ms to wait for next collective
 LOOP_TIMER_S = 0.02
+
+VALID_TRACE_TYPES = ["basic", "pytorch_et", "kineto"]
 
 
 def writeCommDetails(commsTracePerf: List, rank: int, folder: str = "./") -> None:
@@ -90,6 +91,7 @@ class commsTraceReplayBench(paramCommsBench):
         super().__init__(supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu"])
         self.comms_trace = {}
         self.trace_file = ""
+        self.trace_type = ""
         self.use_remote_trace = False
         self.use_one_trace = False
         self.disable_parallel_read = False
@@ -156,6 +158,12 @@ class commsTraceReplayBench(paramCommsBench):
             type=str,
             default="./",
             help="File path to read the trace. All rank read their own trace file unless `--use-one-trace` is used.",
+        )
+        parser.add_argument(
+            "--trace-type",
+            type=str,
+            default="basic",
+            help=f"Trace type used for replay. Supported trace types: {str(VALID_TRACE_TYPES)}. By default use basic trace.",
         )
         parser.add_argument(
             "--use-one-trace",
@@ -282,6 +290,11 @@ class commsTraceReplayBench(paramCommsBench):
         if args.disable_parallel_read and not args.use_one_trace:
             raise ValueError(
                 "--disable-parallel-read is valid only when --use-one-trace is used."
+            )
+            comms_utils.gracefulExit()
+        if args.trace_type not in VALID_TRACE_TYPES:
+            raise ValueError(
+                f"Trace type {self.trace_type} is not valid! Please specify one supported trace type from {str(VALID_TRACE_TYPES)} by using --trace-type."
             )
             comms_utils.gracefulExit()
 
@@ -1155,7 +1168,9 @@ class commsTraceReplayBench(paramCommsBench):
         """
 
         global_rank = self.backendFuncs.get_global_rank()
-        logger.info(f"[Rank-{global_rank}] reading trace from {self.trace_file}")
+        logger.info(
+            f"[Rank-{global_rank}] reading {self.trace_type} trace from {self.trace_file}"
+        )
         self.report = (
             True
             if global_rank == 0
@@ -1344,6 +1359,7 @@ class commsTraceReplayBench(paramCommsBench):
     def setTraceFile(self, args, comms_env_params):
         # TODO: file name may get changed later
         self.trace_file = args.trace_path
+        self.trace_type = args.trace_type
         # assume the prefix is always "xxx://" when reading remote trace, e.g., http://xxx
         if "://" in args.trace_path:
             self.use_remote_trace = True
@@ -1422,13 +1438,13 @@ class commsTraceReplayBench(paramCommsBench):
             self.comms_trace = extractCommsInfo(self.comms_trace)
         else:
             self.comms_trace = commsTraceParser.parseTrace(
-                self.comms_trace, self.global_rank
+                self.comms_trace, self.trace_type, self.global_rank
             )
 
 
 def extractCommsInfo(in_trace: List[Dict]) -> List[commsArgs]:
     """
-    Convert UCC Trace to comms trace format.
+    Convert Basic Trace to comms trace format.
     """
     # print("in extract comms info")
     # exit(1)

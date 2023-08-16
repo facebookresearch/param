@@ -21,24 +21,25 @@ tensorDtypeMap = {
 }
 
 
-def parseTrace(in_trace: List, target_rank: int) -> List:
+def parseTrace(in_trace: List, trace_type: str, target_rank: int) -> List:
     """
     Parse trace files to be compatible with PARAM replay-mode.
-    Currently supports: Kineto Unitrace, UCC Trace, and PyTorch ET trace.
+    Currently supports: Basic Trace, Kineto Unitrace, and PyTorch ET trace.
 
     Args:
         in_trace: Trace file to be parsed.
+        trace_type: Trace type to be parsed with
         target_rank: The current rank of the device.
     Returns:
         parsed_trace: Parsed trace that is compatible with PARAM replay-mode.
     """
 
-    if type(in_trace) is dict and "schema" in in_trace:  # PyTorch ET trace
-        in_trace = _parsePyTorchET(in_trace["nodes"])
-    elif "comms" not in in_trace[0] and "ph" in in_trace[0]:  # Kineto Unitrace
-        in_trace = _parseKinetoUnitrace(in_trace, target_rank)
-    elif "comms" in in_trace[0]:  # Basic Trace
+    if trace_type == "basic":  # Basic Trace
         in_trace = _parseBasicTrace(in_trace)
+    elif trace_type == "pytorch_et":  # PyTorch ET trace
+        in_trace = _parsePyTorchET(in_trace["nodes"])
+    elif trace_type == "kineto":  # Kineto Unitrace
+        in_trace = _parseKinetoUnitrace(in_trace, target_rank)
     else:
         raise ValueError("Unrecognized trace format.")
 
