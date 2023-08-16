@@ -947,7 +947,7 @@ class commsTraceReplayBench(paramCommsBench):
 
                 # Running the kernel
                 logger.info(
-                    f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {curComm.compute}"
+                    f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {curComm.compute}"
                 )
 
                 # Run the kernel and report the total time
@@ -975,7 +975,7 @@ class commsTraceReplayBench(paramCommsBench):
                             f", InSplit={curComm.inSplit}, OutSplit={curComm.outSplit}"
                         )
                     logger.info(
-                        f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc}"
+                        f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc}"
                     )
 
                 # read fields and prepare the tensors
@@ -1036,7 +1036,7 @@ class commsTraceReplayBench(paramCommsBench):
 
             if self.backendFuncs.get_global_rank() == 0:
                 logger.info(
-                    f"{logLable}[{cnt} / {self.max_msg_cnt}] Replayed {recordName} in block [{curBlockStack}]... {global_latency:.2f} us"
+                    f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} in block [{curBlockStack}]... {global_latency:.2f} us"
                 )
 
     def benchTime(self, commsParams: commsParamsHolderBase) -> None:
