@@ -970,6 +970,10 @@ class commsTraceReplayBench(paramCommsBench):
 
                 if groupRank == 0:
                     commDesc = f"{str(curComm.comms)}: NumElemsIn={curComm.inMsgSize}, NumElemsOut={curComm.outMsgSize}, Dtype={curComm.dtype}"
+                    if curComm.comms == "all_to_allv":
+                        commDesc += (
+                            f", InSplit={curComm.inSplit}, OutSplit={curComm.outSplit}"
+                        )
                     logger.info(
                         f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc}"
                     )
