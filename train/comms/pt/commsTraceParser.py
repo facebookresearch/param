@@ -191,122 +191,100 @@ def _getTensorInfoFromPyTorchETEntry(
     for tensor in tensors:
         msg_size += tensor[3]
 
-    return msg_size, len(tensors), dtype
+    return msg_size, dtype
 
 
 def _parsePyTorchET(in_trace: List) -> List:
     """
-    Convert the PyTorch ET w/ comms metadata to the clean common trace format for replay.
+    Convert the PyTorch Execution Trace comms metadata to the common trace format for replay.
 
-    NOTE: This format can be changed at anytime. When an extract/parsing tool is available in ATC, switch to it.
     """
 
-    # first pass through to extract process group info.
-    etIdToRanks = {}
-    pgIdToEtId = {}
-
-    for entry in in_trace:
-        if "name" in entry and "process_group:init" in entry["name"]:
-            pgInfo = entry["name"]
-            pgInfo = pgInfo[
-                pgInfo.find("[") : pgInfo.rfind("]") + 1
-            ]  # extract [0,1,...]
-            ranks = json.loads(pgInfo)  # convert str of ranks to list
-            etIdToRanks[entry["id"]] = ranks
-
-        elif "name" in entry and entry["name"] == "record_param_comms":
-            if (
-                len(entry["inputs"]) == 6
-            ):  # this is wait, barrier, or init op since there is no input tensor
-                opName = entry["inputs"][3]
-                if opName == "init":
-                    pgIdToEtId[entry["inputs"][1]] = entry[
-                        "parent"
-                    ]  # map pgId to parent function where pg was created
-
+    initOps = []
     newCommsTrace = []
+    backendIdToGlobalRanks = {}
+    backendIdToPgid = {}
+    commsPerbackendId = {}
 
-    # Create process groups
-    pgIdToRanks = {}
-    for pgId, etId in pgIdToEtId.items():
-        if etId in etIdToRanks:
-            newComm = commsArgs()
-            newComm.comms = "init"
-            newComm.pgId = pgId
-            newComm.groupRanks = etIdToRanks[etId]
-            pgIdToRanks[pgId] = newComm.groupRanks
-            newCommsTrace.append(newComm)
-
-    commsCnt = 0
+    # Parse PG info from ET
     for entry in in_trace:
-        if "name" in entry and entry["name"] == "record_param_comms":
+        if "process_group:init" in entry.get("name"):
+            inputs = entry.get("inputs")
+            pgJson = inputs[0]
+            pgObj = json.loads(pgJson)
+            for pg in pgObj:
+                pgId = pg["pg_id"]
+                backendId = pg["backend_id"]
+                ranks = pg["ranks"]
+                backendIdToGlobalRanks[backendId] = [int(rank) for rank in ranks.keys()]
+                backendIdToPgid[backendId] = pgId
+                commsPerbackendId[backendId] = 0
+            break  # only one process_group init node per trace
 
+    # Parse comms nodes
+    for entry in in_trace:
+        if entry.get("name") == "record_param_comms":
+            inputs = entry.get("inputs")
             shift = (
-                0 if len(entry["inputs"]) == 7 else 1
-            )  # wait and barrier ops do not have an input tensor, shift index one over
-
+                0 if len(inputs) == 7 else 1
+            )  # wait/barrier ops do not have an input tensor (len=6), shift index one over
             newComm = commsArgs()
-            if entry.get("id") is not None:
-                newComm.id = entry["id"]
-            if entry.get("eg_id") is not None:
-                newComm.id = entry["eg_id"]
-            if entry.get("et_id") is not None:
-                newComm.id = entry["et_id"]
             newComm.comms = comms_utils.paramToCommName(
-                entry["inputs"][4 - shift].lower()
+                inputs[4 - shift].lower()
             )  # 5th value of inputs is colName
-
-            if newComm.comms == "init":
-                continue  # We extracted pgs in earlier loop.
-
-            newComm.req = entry["inputs"][
+            newComm.req = inputs[
                 1 - shift
             ]  # 2nd value of inputs is the req id of the collective
 
-            if newComm.comms not in ("wait"):  # wait doesn't need pg info
-                pgId = entry["inputs"][
-                    2 - shift
-                ]  # 3rd value of inputs is the pg id of the collective
-
-                # Assign pgId info for PGs that were created.
-                if pgId in pgIdToRanks:
-                    newComm.pgId = pgId
-                    newComm.worldSize = len(pgIdToRanks[pgId])
+            backendId = inputs[
+                2 - shift
+            ]  # 3rd value of inputs is the backend id of the collective
+            if backendId in backendIdToGlobalRanks:
+                # Assign pg_id info for PGs that were created.
+                newComm.pgId = backendIdToPgid[backendId]
+                newComm.groupRanks = backendIdToGlobalRanks[backendId]
+                newComm.worldSize = len(newComm.groupRanks)
+                commsPerbackendId[backendId] += 1
 
             if newComm.comms not in ("wait", "barrier"):
                 (
                     newComm.inMsgSize,
-                    inTensorCnt,
                     inMsgType,
-                ) = _getTensorInfoFromPyTorchETEntry(
-                    entry["inputs"], entry["input_types"][0]
-                )
-                (
-                    newComm.outMsgSize,
-                    outTensorCnt,
-                    outMsgType,
-                ) = _getTensorInfoFromPyTorchETEntry(
+                ) = _getTensorInfoFromPyTorchETEntry(inputs, entry["input_types"][0])
+                (newComm.outMsgSize, _,) = _getTensorInfoFromPyTorchETEntry(
                     entry["outputs"], entry["output_types"][0]
                 )
                 newComm.dtype = tensorDtypeMap[
                     inMsgType
                 ]  # 1st value of input_types is the data type for the tensors
-                if not newComm.worldSize:
-                    newComm.worldSize = max(inTensorCnt, outTensorCnt)
 
-                if newComm.comms in ("all_gather", "reduce_scatter"):
-                    newComm.inMsgSize = inTensorCnt
-                    newComm.outMsgSize = outTensorCnt
-
-            if newComm.comms in ("all_to_allv"):
-                newComm.inSplit = entry["inputs"][5]  # 6th value of inputs is in_split
-                newComm.outSplit = entry["inputs"][
-                    6
-                ]  # 7th value of inputs is out_split
-                if not newComm.inSplit or not newComm.outSplit:
-                    continue
-
+            if newComm.comms == "all_to_allv":
+                # 6th value of inputs is in_split, split evenly if not provided
+                newComm.inSplit = (
+                    inputs[5]
+                    if inputs[5]
+                    else [newComm.inMsgSize / newComm.worldSize] * newComm.worldSize
+                )
+                # 7th value of inputs is out_split, split evenly if not provided
+                newComm.outSplit = (
+                    inputs[6]
+                    if inputs[6]
+                    else [newComm.outMsgSize / newComm.worldSize] * newComm.worldSize
+                )
             newCommsTrace.append(newComm)
-            commsCnt += 1
+    newCommsTrace.sort(key=lambda x: x.req)
 
-    return newCommsTrace
+    # Build init node
+    initOps = []
+    for backend_id, global_ranks in backendIdToGlobalRanks.items():
+        if commsPerbackendId[backend_id] == 0:
+            continue
+        newComm = commsArgs()
+        newComm.comms = "init"
+        newComm.pgId = backendIdToPgid[backend_id]
+        newComm.req = -1
+        newComm.groupRanks = global_ranks
+        newComm.worldSize = len(global_ranks)
+        initOps.append(newComm)
+
+    return initOps + newCommsTrace
