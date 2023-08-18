@@ -939,20 +939,21 @@ class paramCommsBench(ABC):
         self.supportedNwstacks = supportedNwstacks
         self.supported_tpu_core_valuses = [1, 8]
         self.dtypeMap = {
+            "float": torch.float32,
             "float32": torch.float32,
-            "int32": torch.int32,
-            "long": torch.long,
             "float16": torch.half,
-            "bfloat16": torch.bfloat16,
             "float64": torch.double,
+            "double": torch.double,
+            "int32": torch.int32,
+            "int": torch.int32,
+            "long": torch.long,
+            "bfloat16": torch.bfloat16,
             "bool": torch.bool,
-            "Float": torch.float32,
-            "Int": torch.int32,
-            "Long": torch.long,
-            "Double": torch.double,
-            "Half": torch.half,
-            "Bool": torch.bool,
-            "Byte": torch.uint8,
+            "half": torch.half,
+            "byte": torch.uint8,
+            "uint8": torch.uint8,
+            "int8": torch.int8,
+            "short": torch.short,
         }
         self.supportedDtype = list(self.dtypeMap.keys())
         self.backendFuncs: backendFunctions

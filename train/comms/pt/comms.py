@@ -1604,7 +1604,7 @@ def main():
     collBenchObj.syncCommBenchDataTypes(args)
 
     for data_type in args.data_types:
-        args.data_type = data_type
+        args.data_type = data_type.lower()
 
         collBenchObj.checkArgs(args)
         element_size = torch.ones([1], dtype=args.dtype).element_size()

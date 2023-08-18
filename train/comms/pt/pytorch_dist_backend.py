@@ -666,7 +666,14 @@ class PyTorchDistBackend(backendFunctions):
     def alloc_random(
         self, sizeArr, curRankDevice="cuda", dtype=torch.float32, scaleFactor=1.0
     ):
-        if dtype in (torch.uint8, torch.int16, torch.int32, torch.long):
+        if dtype in (
+            torch.int8,
+            torch.uint8,
+            torch.short,
+            torch.int16,
+            torch.int32,
+            torch.long,
+        ):
             ipTensor = torch.randint(
                 low=0, high=10, size=tuple(sizeArr), device=curRankDevice, dtype=dtype
             )
