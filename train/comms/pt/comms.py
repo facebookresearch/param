@@ -1023,27 +1023,15 @@ class commsCollBench(paramCommsBench):
         quantTimeTensorList,
         dequantTimeTensorList,
     ):
-        if commsParams.backend == "xla":
-            latencyAcrossRanks = torch.transpose(tensorList.view(-1, 1), 0, 1)[0]
-            latencyAcrossRanks = latencyAcrossRanks.cpu().detach().numpy()
-            # quant tensor
-            quantLatencyAcrossRanks = torch.transpose(
-                quantTimeTensorList.view(-1, 1), 0, 1
-            )[0]
-            quantLatencyAcrossRanks = quantLatencyAcrossRanks.cpu().detach().numpy()
-            # dequant tensor
-            dequantLatencyAcrossRanks = torch.transpose(
-                dequantTimeTensorList.view(-1, 1), 0, 1
-            )[0]
-            dequantLatencyAcrossRanks = dequantLatencyAcrossRanks.cpu().detach().numpy()
-        else:
-            if isinstance(tensorList, list):
-                tensorList = [t.cpu().detach().numpy() for t in tensorList]
-            latencyAcrossRanks = np.array(tensorList)
-            # quant tensor
-            quantLatencyAcrossRanks = np.array(quantTimeTensorList)
-            # dequant tensor
-            dequantLatencyAcrossRanks = np.array(dequantTimeTensorList)
+        latencyAcrossRanks = self.backendFuncs.tensor_list_to_numpy(tensorList)
+        # quant tensor
+        quantLatencyAcrossRanks = self.backendFuncs.tensor_list_to_numpy(
+            quantTimeTensorList
+        )
+        # dequant tensor
+        dequantLatencyAcrossRanks = self.backendFuncs.tensor_list_to_numpy(
+            dequantTimeTensorList
+        )
 
         p95 = np.percentile(latencyAcrossRanks, 95)
 
@@ -1135,14 +1123,7 @@ class commsCollBench(paramCommsBench):
                     )
 
     def reportBenchTimeColl(self, commsParams, results, tensorList):
-        if commsParams.backend == "xla":
-            latencyAcrossRanks = torch.transpose(tensorList.view(-1, 1), 0, 1)[0]
-            latencyAcrossRanks = latencyAcrossRanks.cpu().detach().numpy()
-        else:
-            if isinstance(tensorList, list):
-                tensorList = [t.cpu().detach().numpy() for t in tensorList]
-            latencyAcrossRanks = np.array(tensorList)
-
+        latencyAcrossRanks = self.backendFuncs.tensor_list_to_numpy(tensorList)
         logger.debug(f"Latency across all ranks: {latencyAcrossRanks}")
 
         # Include only communicating ranks

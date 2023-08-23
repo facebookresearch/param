@@ -878,6 +878,11 @@ class PyTorchDistBackend(backendFunctions):
         else:
             return dist.new_group(ranks=group_ranks, backend=backend)
 
+    def tensor_list_to_numpy(self, tensorList):
+        if isinstance(tensorList, list):
+            tensorList = [t.cpu().detach().numpy() for t in tensorList]
+        return np.array(tensorList)
+
     def initialize_tcpstore(self, master_ip, master_port):
         global_rank = self.bootstrap_info.global_rank
         world_size = self.bootstrap_info.world_size
