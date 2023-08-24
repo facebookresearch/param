@@ -1637,12 +1637,22 @@ class paramCommsBench(ABC):
         if not isinstance(numeric_level, int):
             raise ValueError(f"Invalid log level: {args.log}")
         comms_env_params = read_comms_env_vars()
-        logging.basicConfig(
-            level=numeric_level,
-            format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
-                comms_env_params["global_rank"]
-            ),
-        )
+        if sys.version_info >= (3, 8):
+            # overwrite existing logging config. Require Python 3.8+
+            logging.basicConfig(
+                level=numeric_level,
+                format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
+                    comms_env_params["global_rank"]
+                ),
+                force=True,
+            )
+        else:
+            logging.basicConfig(
+                level=numeric_level,
+                format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
+                    comms_env_params["global_rank"]
+                ),
+            )
         # check master-ip and master-port with the following logic
         #   1) prefer the values passed to PARAM, i.e., through --master-ip and --master-port
         #   2) check and use the env. variable, i.e., MASTER_ADDR and MASTER_PORT
