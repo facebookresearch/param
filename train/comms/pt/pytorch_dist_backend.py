@@ -797,6 +797,18 @@ class PyTorchDistBackend(backendFunctions):
         else:
             return None
 
+    def get_new_event(self, enable_timing=False):
+        if self.commsParams.device == "cuda":
+            return torch.cuda.Event(enable_timing)
+        else:
+            return None
+
+    def get_current_stream(self, device: Optional[torch.device]):
+        if self.commsParams.device == "cuda":
+            return torch.cuda.current_stream(device)
+        else:
+            return None
+
     def switch_stream(self, stream, device: Optional[torch.device]):
         """switch to a new stream and return the current stream"""
         if device is None:

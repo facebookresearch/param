@@ -40,6 +40,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
+from param_profile import paramTimer
 
 from pytorch_backend_utils import (
     backendFunctions,
@@ -783,21 +784,59 @@ class paramStreamGuard(ContextDecorator):
         curDevice: torch.device,
         backendFuncs: backendFunctions,
         is_blocking: bool = True,
+        timer: Optional[paramDeviceTimer] = None,
     ) -> None:
         self.cur_stream = None
         self.stream = stream
         self.curDevice = curDevice
         self.backendFuncs = backendFuncs
         self.is_blocking = is_blocking
+        self.timer = timer
 
     def __enter__(self) -> paramStreamGuard:
         self.cur_stream = self.backendFuncs.switch_stream(self.stream, self.curDevice)
+        if self.timer:
+            self.timer.start(self.stream)
         return self
 
     def __exit__(self, *exc) -> None:
+        if self.timer:
+            self.timer.end(self.stream)
         if self.is_blocking:
             self.backendFuncs.sync_stream(self.cur_stream, self.curDevice)
         self.backendFuncs.switch_stream(self.cur_stream, self.curDevice)
+
+
+class paramDeviceTimer(paramTimer):
+    """
+    Device timer.
+    """
+
+    def __init__(self, name: str, backendFuncs: backendFunctions) -> None:
+        """
+        Initialize start and end device events
+        """
+        super().__init__()
+        self.name = name
+        self.start_event = backendFuncs.get_new_event(enable_timing=True)
+        self.end_event = backendFuncs.get_new_event(enable_timing=True)
+
+    def reset(self) -> None:
+        self.elapsedTimeNS = 0.0
+
+    def start(self, stream=None) -> None:
+        self.start_event.record(stream)
+
+    def end(self, stream=None) -> None:
+        self.end_event.record(stream)
+
+    def elapsedTime(self) -> None:
+        """
+        Record elapsedTime between start and end events.
+        Must be called after syncrhonization ensuring completion of the start and end recording
+        """
+        _elapsedTimeNS = self.start_event.elapsed_time(self.end_event) * 1e6
+        self.elapsedTimeNS += _elapsedTimeNS  # torch elapsed_time is in MS
 
 
 class bootstrap_info_holder:
