@@ -716,6 +716,9 @@ class PyTorchDistBackend(backendFunctions):
     def get_local_rank(self):
         return self.bootstrap_info.local_rank
 
+    def get_local_size(self):
+        return self.bootstrap_info.local_size
+
     def get_global_rank(self):
         return dist.get_rank()
 

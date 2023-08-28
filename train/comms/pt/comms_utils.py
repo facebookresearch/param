@@ -851,6 +851,7 @@ class bootstrap_info_holder:
     ) -> None:
         self.global_rank = comms_env_params["global_rank"]
         self.local_rank = comms_env_params["local_rank"]
+        self.local_size = comms_env_params["local_size"]
         self.world_size = comms_env_params["world_size"]
 
         self.master_ip = master_ip

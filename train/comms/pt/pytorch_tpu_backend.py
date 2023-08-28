@@ -128,6 +128,11 @@ class PyTorchTPUBackend(backendFunctions):
     ):
         return xm.get_local_ordinal()
 
+    def get_local_size(
+        self,
+    ):
+        return self.bootstrap_info.local_size
+
     def get_global_rank(
         self,
     ):

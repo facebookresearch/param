@@ -312,6 +312,10 @@ class backendFunctions(ABC):
         pass
 
     @abstractmethod
+    def get_local_size(self) -> int:
+        pass
+
+    @abstractmethod
     def get_device(self) -> str:
         pass
 
