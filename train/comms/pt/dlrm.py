@@ -30,7 +30,7 @@ from torch.autograd import Function
 logger = logging.getLogger(__name__)
 
 # All-to-all classes/functions
-class All2AllInfo(object):
+class All2AllInfo:
     pass
 
 
@@ -72,7 +72,7 @@ class All2All_Scatter_Wait(Function):
         return (None, grad_output)
 
 
-class Request(object):
+class Request:
     def __init__(self, bench):
         self.req = None
         self.tensor = None
