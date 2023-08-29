@@ -17,17 +17,19 @@ import numpy as np
 # pytorch
 import torch
 from comms_utils import (
-    benchType,
     bootstrap_info_holder,
-    commsCollPerfMetrics,
     commsParamsHolderBase,
-    commsPt2PtPerfMetrics,
-    commsQuantCollPerfMetrics,
-    customized_perf_loggers,
     ensureTensorFlush,
     paramCommsBench,
     paramDeviceTimer,
     paramStreamGuard,
+)
+from logger_utils import (
+    benchType,
+    commsCollPerfMetrics,
+    commsPt2PtPerfMetrics,
+    commsQuantCollPerfMetrics,
+    customized_perf_loggers,
 )
 from pytorch_backend_utils import (
     pt2ptPatterns,
@@ -1109,6 +1111,7 @@ class commsCollBench(paramCommsBench):
             self.collectiveArgs.collective,
             self.collectiveArgs.data_type,
             benchType.Collective,
+            commsParams.backend,
             self.tag,
             results["memSize"],
             results["memSize"],
@@ -1173,7 +1176,6 @@ class commsCollBench(paramCommsBench):
                     customized_perf_loggers[perfLoggerName].logPerf(
                         "comms",
                         perf_metrics,
-                        commsParams,
                         self.backendFuncs,
                     )
                 else:
@@ -1314,6 +1316,7 @@ class commsCollBench(paramCommsBench):
             self.collectiveArgs.collective,
             self.collectiveArgs.data_type,
             benchType.Collective,
+            commsParams.backend,
             self.tag,
             results["memSize"],
             results["memSize"],
@@ -1406,6 +1409,7 @@ class commsCollBench(paramCommsBench):
             self.collectiveArgs.collective,
             self.collectiveArgs.data_type,
             benchType.Collective,
+            commsParams.backend,
             self.tag,
             results["memSize"],
             results["memSize"],
