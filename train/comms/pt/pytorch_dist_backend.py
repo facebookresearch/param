@@ -596,6 +596,25 @@ class PyTorchDistBackend(backendFunctions):
         # Matrix multiplication as compute kernel
         collectiveArgs.MMout = torch.mm(collectiveArgs.MMin1, collectiveArgs.MMin2)
 
+    def add(self, collectiveArgs):
+        collectiveArgs.compOut = torch.add(
+            collectiveArgs.compIn1, collectiveArgs.compIn2, alpha=2
+        )
+
+    def sub(self, collectiveArgs):
+        collectiveArgs.compOut = torch.sub(
+            collectiveArgs.compIn1, collectiveArgs.compIn2, alpha=2
+        )
+
+    def add_num(self, collectiveArgs):
+        collectiveArgs.compOut = torch.add(collectiveArgs.compIn1, 20)
+
+    def sub_num(self, collectiveArgs):
+        collectiveArgs.compOut = torch.add(collectiveArgs.compIn1, 20)
+
+    def copy(self, collectiveArgs):
+        collectiveArgs.compIn1.copy_(collectiveArgs.compOut)
+
     def emb_lookup(self, collectiveArgs):
         # If we are using the batched embedding lookup with alltoall, don't do the embedding
         # lookup here, but pool it with the alltoalls in the collective
@@ -860,6 +879,13 @@ class PyTorchDistBackend(backendFunctions):
         self.collectiveFunc[
             "pt2pt"
         ] = self.noop  # dummy entry to support pt2pt benchmark
+
+        self.computeFunc["emb_lookup"] = self.emb_lookup
+        self.computeFunc["add"] = self.add
+        self.computeFunc["sub"] = self.sub
+        self.computeFunc["add_num"] = self.add_num
+        self.computeFunc["sub_num"] = self.sub_num
+        self.computeFunc["copy"] = self.copy
 
         backend = (
             self.commsParams["backend"]

@@ -142,6 +142,8 @@ class backendFunctions(ABC):
             "noop": self.noop,
         }
 
+        self.computeFunc = {"gemm": self.gemm}
+
     def getBusBW(
         self, collective: str, algBW: float, collectiveArgs: collectiveArgsHolder
     ) -> float:

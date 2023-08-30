@@ -138,7 +138,7 @@ class commsCollBench(paramCommsBench):
             type=str,
             default="gemm",
             help="Compute kernel, used for comms-compute or compute mode",
-            choices=["gemm", "emb_lookup"],
+            choices=["gemm", "emb_lookup", "add", "sub", "add_num", "sub_num", "copy"],
         )  # Compute kernel: "gemm"
         parser.add_argument(
             "--num-compute",
@@ -157,9 +157,10 @@ class commsCollBench(paramCommsBench):
         # For GEMM
         parser.add_argument(
             "--mm-dim",
+            "--comp-dim",
             type=int,
             default=100,
-            help="dimension size for GEMM compute kernel",
+            help="dimension size for GEMM or other compute kernels except emb_lookup",
         )  # Matrix multiplication dim n, A[n,n] * B [n,n]
         # For emb lookup
         parser.add_argument(
@@ -909,6 +910,23 @@ class commsCollBench(paramCommsBench):
                         f"[Rank {global_rank:>3}] mode: {commsParams.mode}, num_coll: {commsParams.num_coll}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, "
                         f"emb_dim {commsParams.emb_dim}, num_embs {commsParams.num_embs}, batch_size {commsParams.batch_size}"
                     )
+            elif commsParams.kernel in ["add", "sub", "add_num", "sub_num", "copy"]:
+                (
+                    self.collectiveArgs.compOut,
+                    self.collectiveArgs.compIn1,
+                    self.collectiveArgs.compIn2,
+                ) = self.prepComp(
+                    commsParams.mm_dim,
+                    commsParams.dtype,
+                    curDevice,
+                    commsParams.kernel,
+                )
+                computeFunc = self.backendFuncs.computeFunc[commsParams.kernel]
+                if self.report:
+                    print(
+                        f"[Rank {global_rank:>3}] mode: {commsParams.mode}, num_coll: {commsParams.num_coll}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {commsParams.mm_dim}"
+                    )
+
         # Enable device timer only for comms-compute mode
         # since CPU timer would capture individual time
         if commsParams.mode == "comms-compute":

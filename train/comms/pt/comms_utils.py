@@ -1322,6 +1322,17 @@ class paramCommsBench(ABC):
 
         return MMout, MMin1, MMin2
 
+    # Prepare generic compute operations that uses 1 or 2 input tensors, and 1 output tensor
+    def prepComp(
+        self, mm_dim: int, dtype: str, curDevice: str, kernel: str
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        compIn1 = self.backendFuncs.alloc_random([mm_dim, mm_dim], curDevice, dtype)
+        compOut = self.backendFuncs.alloc_empty([mm_dim, mm_dim], dtype, curDevice)
+        compIn2 = None
+        if kernel in ["add", "sub"]:
+            compIn2 = self.backendFuncs.alloc_random([mm_dim, mm_dim], curDevice, dtype)
+        return (compOut, compIn1, compIn2)
+
     def prepGemm(
         self, mm_dim: int, dtype: str, curDevice: str, gemmTensor: torch.tensor = None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
