@@ -9,14 +9,14 @@ import comms_utils
 from comms_utils import commsArgs
 
 tensorDtypeMap = {
-    "Tensor(int)": "Int",
-    "Tensor(float)": "Float",
-    "Tensor(bool)": "Bool",
-    "Tensor(long)": "Long",
-    "Tensor(double)": "Double",
-    "Tensor(half)": "Half",
-    "Tensor(byte)": "Byte",
-    "Tensor(c10::Half)": "Half",
+    "Tensor(int)": "int",
+    "Tensor(float)": "float",
+    "Tensor(bool)": "bool",
+    "Tensor(long)": "long",
+    "Tensor(double)": "double",
+    "Tensor(half)": "half",
+    "Tensor(byte)": "byte",
+    "Tensor(c10::Half)": "half",
     "Tensor(c10::BFloat16)": "bfloat16",
 }
 
@@ -87,7 +87,7 @@ def _parseBasicTraceComms(curComm, newComm: commsArgs) -> None:
     if newComm.comms not in ("wait", "barrier", "init"):
         newComm.inMsgSize = curComm["in_msg_size"]
         newComm.outMsgSize = curComm["out_msg_size"]
-        newComm.dtype = curComm["dtype"]
+        newComm.dtype = curComm["dtype"].lower()
 
     if newComm.comms == "all_to_allv":
         newComm.inSplit = curComm["in_split"]
@@ -115,7 +115,7 @@ def _parseBasicTraceCompute(curComm, newComm: commsArgs) -> None:
             newComm.mm0_dim1 = curComm.get("mm0_dim1")
             newComm.mm1_dim0 = curComm.get("mm1_dim0")
             newComm.mm1_dim1 = curComm.get("mm1_dim1")
-        newComm.dtype = curComm.get("dtype")
+        newComm.dtype = curComm.get("dtype").lower()
     elif newComm.compute == "emb_lookup":
         if "direction" in curComm:
             newComm.direction = curComm["direction"]
@@ -155,7 +155,7 @@ def _parseKinetoUnitrace(in_trace: List, target_rank: int) -> List:
             newComm.id = commsCnt
             newComm.inMsgSize = entry["args"]["in_msg_size"]
             newComm.outMsgSize = entry["args"]["out_msg_size"]
-            newComm.dtype = entry["args"]["dtype"]
+            newComm.dtype = entry["args"]["dtype"].lower()
             newComm.inSplit = entry["args"]["in_split"]
             newComm.outSplit = entry["args"]["out_split"]
             newComm.markerStack = marker
