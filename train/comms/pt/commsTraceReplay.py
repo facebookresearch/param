@@ -27,6 +27,11 @@ from comms_utils import (
 )
 from param_profile import paramProfile, paramTimer
 
+try:
+    from trainer_iteration_wrapper import setTrainingIteration  # @manual
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 # sleep for 20ms to wait for next collective
@@ -1130,6 +1135,12 @@ class commsTraceReplayBench(paramCommsBench):
 
             if self.collectiveArgs.enable_profiler:
                 comms_utils.sampleProfiler()
+
+            # set training iteration number in NCCL
+            try:
+                setTrainingIteration(i + 1)
+            except NameError:
+                pass
 
             # replay comms trace
             self.replayIter = i
