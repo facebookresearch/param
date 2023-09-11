@@ -7,6 +7,8 @@ from __future__ import (
 )
 
 import argparse
+import copy
+import gzip
 import json
 import logging
 import sys
@@ -20,6 +22,9 @@ FORMAT = "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
 logging.basicConfig(format=FORMAT)
 logging.getLogger().setLevel(logging.INFO)
 
+PROFILER_STEP_ANNOTATION: str = "ProfilerStep"
+EXECUTION_TRACE_PROCESS_ANNOTATION = "[pytorch|profiler|execution_trace|process]"
+EXECUTION_TRACE_THREAD_ANNOTATION = "[pytorch|profiler|execution_trace|thread]"
 
 # OPERATOR: nodes actually does something
 # LABEL: nodes used as markers
@@ -277,6 +282,8 @@ class ExecutionTrace:
         self.clean_nodes = {}  # w/o DataLoader ops
         self.tensors = {}
         self.proc_group = {}
+        # list of node ids that start an iteration
+        self.iteration_ids = []
         pid = json["pid"]
         self.proc_group = {pid: {}}
         nodes_list = json["nodes"]
@@ -301,6 +308,7 @@ class ExecutionTrace:
                 x["output_shapes"],
                 x.get("rf_id", None),
             )
+
             input_tensors = self.nodes[id].get_input_tensors()
             output_tensors = self.nodes[id].get_output_tensors()
 
@@ -345,6 +353,21 @@ class ExecutionTrace:
         if clean:
             return self.clean_nodes
         return self.nodes
+
+    def set_iterations(self, step_annotation=PROFILER_STEP_ANNOTATION) -> None:
+        """Sets an array demarcating interations in the trace"""
+        self.iteration_ids = [1]
+
+        for id in sorted(self.nodes.keys()):
+            if step_annotation in self.nodes[id].name:
+                self.iteration_ids.append(id)
+        self.iteration_ids = sorted(self.iteration_ids)
+        logging.info(f"Iteration node ids list = {self.iteration_ids}")
+
+    def iterations(self) -> Optional[int]:
+        if len(self.iteration_ids) == 0:
+            return None
+        return len(self.iteration_ids) - 1
 
     def get_unique_ops(
         self, detail: bool = False, clean: bool = False, json_format: bool = False
@@ -503,19 +526,25 @@ class ExecutionTrace:
         n = self.nodes[id]
         print(f"ID {id}: Operator")
         print("          name:", n.name)
+        print("            id:", n.id)
+        print("         rf_id:", n.rf_id)
         print("           tid:", n.tid)
         print("     parent_id:", n.parent_id)
         print("        fw_tid:", n.fw_tid)
-        print("        op_schema:", n.op_schema)
+        print("          type:", n.type)
+        print("     op_schema:", n.op_schema)
         print("  fw_parent_id:", n.fw_parent_id)
         print("         scope:", n.scope)
+        print("      children:", [child.id for child in n.children])
         print("        inputs:")
         for (dtype, tensor_id, shape) in n.get_input_tensors():
             prev_id = 0
             for s in self.tensors[tensor_id].sources:
                 if s < id and s > prev_id:
                     prev_id = s
-            if prev_id:
+            if prev_id not in self.nodes:
+                print(f"Missing source node for {prev_id}")
+            elif prev_id:
                 print(
                     f"{' '*16}{tensor_id}: {dtype} {shape} <-- {prev_id} ({self.nodes[prev_id].name})"
                 )
@@ -564,6 +593,66 @@ class ExecutionTrace:
             for id, node in self.nodes.items():
                 if not check_parent(node):  # if the op is not under dataloader
                     self.clean_nodes[id] = node
+
+    def clone_one_iteration(self, n) -> ExecutionTrace:
+        """Clone the entire Execution Trace but with only one iteration
+
+        @args: n (int): specific iteration to copy, zero based index.
+        """
+        assert n >= 0, "Iteration too low"
+        assert n < len(self.iteration_ids), "Iteration too high"
+
+        start_id, end_id = self.iteration_ids[n], self.iteration_ids[n + 1]
+        logging.info(
+            f"Copying nodes for iter {n} for ids in the range [{start_id}, {end_id})"
+        )
+
+        clone = copy.deepcopy(self)
+        trimmed_nodes = filter(
+            lambda p: (p[1].id >= start_id and p[1].id < end_id)
+            or p[1].parent_id == 1,  # process and thread nodes
+            clone.nodes.items(),
+        )
+        clone.nodes = dict(trimmed_nodes)
+        node_id_set = clone.nodes.keys()
+        logging.debug(f"filtered node ID set = {node_id_set}")
+
+        # There may be incomplete user annotations that are parents to events
+        # in the execution trace. If so just fix up the parent to the corresponding thread parent
+        # get all the top level thread nodes
+        thread_nodes = {
+            node.tid: node
+            for node in clone.nodes.values()
+            if node.parent_id == 1 and (EXECUTION_TRACE_THREAD_ANNOTATION in node.name)
+        }
+        assert len(thread_nodes) > 0
+
+        for node in clone.nodes.values():
+            if (
+                node.parent is not None
+                and node.parent_id != 1
+                and (node.parent_id not in node_id_set)
+            ):
+                logging.info(
+                    f"Fixing parent for node id = {node.id}, parent = {node.parent_id}"
+                )
+
+                thread_parent = thread_nodes[node.tid]
+                node.parent_id = thread_parent.id
+                node.set_parent(thread_parent)
+                thread_parent.add_child(node)
+
+        # Similarly fix the children relationship
+        for node in clone.nodes.values():
+            children = [child for child in node.children if child.id in node_id_set]
+            node.children = children
+
+        # remove all dataloader ops
+        clone.clean_nodes = {}
+        clone.remove_dataloader_ops()
+
+        logging.info(f"Nodes trimmed ET = {len(clone.get_nodes())}")
+        return clone
 
 
 class GraphML:
@@ -699,6 +788,12 @@ def main():
         "--input", type=str, required=True, help="input execution trace json file."
     )
     parser.add_argument(
+        "--step-annotation",
+        type=str,
+        default=PROFILER_STEP_ANNOTATION,
+        help="Annotation in the trace that distinguishes trace iterations.",
+    )
+    parser.add_argument(
         "--graph",
         dest="graph",
         default=False,
@@ -773,9 +868,15 @@ def main():
 
     execution_json: str = args.input
 
-    with open(execution_json) as execution_data:
+    with gzip.open(execution_json, "rb") if execution_json.endswith("gz") else open(
+        execution_json, "r"
+    ) as execution_data:
         execution_data: TextIO
         execution_trace: ExecutionTrace = ExecutionTrace(json.load(execution_data))
+        execution_trace.set_iterations(args.step_annotation)
+        # nocommit remove
+        execution_trace = execution_trace.clone_one_iteration(2)
+
         if args.list_op:
             execution_trace.print_op_stats(args.detail, args.json)
         if args.list_tensor:
