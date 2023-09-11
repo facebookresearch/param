@@ -4,6 +4,10 @@ import sys
 
 import networkx as nx
 from networkx.algorithms import isomorphism
+from param_bench.train.compute.python.tools.execution_trace import (
+    EXECUTION_TRACE_PROCESS_ANNOTATION,
+    EXECUTION_TRACE_THREAD_ANNOTATION,
+)
 from param_bench.train.compute.python.tools.utility import (
     load_execution_trace_file,
     read_dictionary_from_json_file,
@@ -15,9 +19,6 @@ from param_bench.train.compute.python.tools.utility import (
 sys.setrecursionlimit(10**6)
 
 logger = logging.getLogger()
-
-execution_trace_process_annotation = "[pytorch|profiler|execution_trace|process]"
-execution_trace_thread_annotation = "[pytorch|profiler|execution_trace|thread]"
 
 
 # Add and sort ET nodes from the execution trace
@@ -82,8 +83,17 @@ def find_closest_segment(segs, target_length):
 # Extract operator info from raw traces
 def trace_analysis(et_file, kineto_file, annotation="DataLoader"):
     et = load_execution_trace_file(et_file)
+    et.set_iterations(annotation)
 
-    nodes = et.get_nodes()
+    if et.iterations() > 1:
+        logger.info(f"Execution trace has {et.iterations()} > 1 iterations.")
+        # get an iteration further down the line
+        trim_iter = min(2, et.iterations() - 1)
+        et_ = et.clone_one_iteration(trim_iter)
+    else:
+        et_ = et
+
+    nodes = et_.get_nodes()
 
     # Root node of execution trace is 1-based
     et_nodes = collect_nodes(nodes[1])
@@ -120,6 +130,8 @@ def trace_analysis(et_file, kineto_file, annotation="DataLoader"):
             end_time = event["ts"] + event["dur"]
         else:
             kineto_et_seg.append(event)
+
+    logger.info(f"Kineto trace has {len(kineto_et_segs)} segments")
 
     # # Assume that an iteration starts with the specified annotation
     # for event in kineto_et_events:
@@ -167,7 +179,7 @@ def exact_match(kineto_et_events, et_nodes):
         process_end_time = max(process_end_time, event["ts"] + event["dur"])
 
     process_event = {
-        "name": execution_trace_process_annotation,
+        "name": EXECUTION_TRACE_PROCESS_ANNOTATION,
         "ts": kineto_et_events[0]["ts"],
         "dur": process_end_time - kineto_et_events[0]["ts"],
     }
@@ -180,7 +192,7 @@ def exact_match(kineto_et_events, et_nodes):
 
     for index, (tid, thread_info) in enumerate(sorted_threads.items()):
         thread_event = {
-            "name": execution_trace_thread_annotation,
+            "name": EXECUTION_TRACE_THREAD_ANNOTATION,
             "ts": thread_info["ts"],
             "dur": thread_info["end_ts"] - thread_info["ts"],
         }
@@ -225,17 +237,17 @@ def approximate_match(kineto_et_events, et_nodes):
     # Mapping node id to the corresponding node
     kineto_nodes_mapping = {}
 
+    start_time = kineto_et_events[0]["ts"]
+    end_time = -1
+
     for event in kineto_et_events:
         if event["tid"] not in kineto_event_per_thread:
             kineto_event_per_thread[event["tid"]] = []
         kineto_event_per_thread[event["tid"]].append(event)
-
-    start_time = kineto_et_events[0]["ts"]
-    end_time = -1
-    for event in kineto_et_events:
         end_time = max(end_time, event["ts"] + event["dur"])
+
     process_node = Kineto_node(
-        execution_trace_process_annotation, start_time, end_time, 0
+        EXECUTION_TRACE_PROCESS_ANNOTATION, start_time, end_time, 0
     )
     kineto_nodes_mapping[0] = process_node
 
@@ -247,7 +259,10 @@ def approximate_match(kineto_et_events, et_nodes):
             end_time = max(end_time, event["ts"] + event["dur"])
 
         thread_node = Kineto_node(
-            execution_trace_thread_annotation, start_time, end_time, cnt
+            EXECUTION_TRACE_THREAD_ANNOTATION, start_time, end_time, cnt
+        )
+        print(
+            f"thread {thread} thread_node start,end = {thread_node.start}, {thread_node.end}"
         )
         kineto_nodes_mapping[cnt] = thread_node
         cnt += 1
@@ -265,7 +280,7 @@ def approximate_match(kineto_et_events, et_nodes):
                 kineto_nodes[-1].children.append(tmp)
                 kineto_nodes.append(tmp)
             else:
-                while kineto_nodes[-1].end <= event["ts"]:
+                while kineto_nodes[-1].end <= event["ts"] and len(kineto_nodes) > 1:
                     kineto_nodes.pop()
                 tmp = Kineto_node(
                     event["name"], event["ts"], event["ts"] + event["dur"], cnt
@@ -377,6 +392,6 @@ if __name__ == "__main__":
                 node["dur"] = et_enhanced_duration[node["id"]]
 
         et_plus_file = args.et_file.replace(".json", "_plus.json")
-        logger.info(f"Enhanced execution trace dumped to {et_plus_file}.")
+        logger.info(f"Enhanced execution trace dumped to {et_plus_file}")
 
         write_dictionary_to_json_file(et_plus_file, et)
