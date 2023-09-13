@@ -1454,7 +1454,10 @@ class commsTraceReplayBench(paramCommsBench):
             self.comms_trace = extractCommsInfo(self.comms_trace)
         else:
             self.comms_trace = commsTraceParser.parseTrace(
-                self.comms_trace, self.trace_type, self.global_rank
+                self.comms_trace,
+                self.trace_type,
+                self.global_rank,
+                self.backendFuncs.get_world_size(),
             )
 
 

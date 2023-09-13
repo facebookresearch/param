@@ -21,7 +21,9 @@ tensorDtypeMap = {
 }
 
 
-def parseTrace(in_trace: List, trace_type: str, target_rank: int) -> List:
+def parseTrace(
+    in_trace: List, trace_type: str, target_rank: int, total_ranks: int
+) -> List:
     """
     Parse trace files to be compatible with PARAM replay-mode.
     Currently supports: Basic Trace, Kineto Unitrace, and PyTorch ET trace.
@@ -30,6 +32,7 @@ def parseTrace(in_trace: List, trace_type: str, target_rank: int) -> List:
         in_trace: Trace file to be parsed.
         trace_type: Trace type to be parsed with
         target_rank: The current rank of the device.
+        total_ranks: Total number of ranks.
     Returns:
         parsed_trace: Parsed trace that is compatible with PARAM replay-mode.
     """
@@ -37,7 +40,7 @@ def parseTrace(in_trace: List, trace_type: str, target_rank: int) -> List:
     if trace_type == "basic":  # Basic Trace
         in_trace = _parseBasicTrace(in_trace)
     elif trace_type == "pytorch_et":  # PyTorch ET trace
-        in_trace = _parsePyTorchET(in_trace["nodes"])
+        in_trace = _parsePyTorchET(in_trace["nodes"], total_ranks)
     elif trace_type == "kineto":  # Kineto Unitrace
         in_trace = _parseKinetoUnitrace(in_trace, target_rank)
     else:
@@ -194,7 +197,7 @@ def _getTensorInfoFromPyTorchETEntry(
     return msg_size, dtype
 
 
-def _parsePyTorchET(in_trace: List) -> List:
+def _parsePyTorchET(in_trace: List, total_ranks: int) -> List:
     """
     Convert the PyTorch Execution Trace comms metadata to the common trace format for replay.
 
@@ -260,16 +263,21 @@ def _parsePyTorchET(in_trace: List) -> List:
 
             if newComm.comms == "all_to_allv":
                 # 6th value of inputs is in_split, split evenly if not provided
+                if not newComm.worldSize:
+                    # if no pg info provided, use total ranks as world size
+                    newComm.worldSize = total_ranks
                 newComm.inSplit = (
                     inputs[5]
                     if inputs[5]
-                    else [newComm.inMsgSize / newComm.worldSize] * newComm.worldSize
+                    else [int(newComm.inMsgSize / newComm.worldSize)]
+                    * newComm.worldSize
                 )
                 # 7th value of inputs is out_split, split evenly if not provided
                 newComm.outSplit = (
                     inputs[6]
                     if inputs[6]
-                    else [newComm.outMsgSize / newComm.worldSize] * newComm.worldSize
+                    else [int(newComm.outMsgSize / newComm.worldSize)]
+                    * newComm.worldSize
                 )
             newCommsTrace.append(newComm)
     newCommsTrace.sort(key=lambda x: x.req)
