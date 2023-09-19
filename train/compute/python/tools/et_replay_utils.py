@@ -366,7 +366,11 @@ def build_torchscript_func(n):
     input_count = len(n.input_types)
     output_count = len(n.output_types)
 
-    if n.op_schema == "" or n.name == "aten::record_stream":
+    if (
+        n.op_schema == ""
+        or n.name == "aten::record_stream"
+        or n.name.startswith("aten::_foreach")
+    ):
         return None, None
 
     tmp = n.op_schema.split(") -> ")
