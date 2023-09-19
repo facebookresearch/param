@@ -560,13 +560,14 @@ if not compute_only:
     traceBench.checkArgs(args)
 
     time.sleep(1)
-    comms_world_info = comms_utils.comms_world_info_holder(
+    bootstrap_info = comms_utils.bootstrap_info_holder(
         args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
     )
     global commsParams
     commsParams = comms_utils.commsParamsHolderBase(args)
+    traceBench.initBackend(bootstrap_info, commsParams)
     traceBench.initBench(commsParams, args)
-    traceBench.replayInit(comms_world_info, commsParams)
+    traceBench.replayInit(commsParams)
 
 """
     return template_prefix.format(

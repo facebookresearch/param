@@ -1226,7 +1226,7 @@ class ExgrReplayManager:
         self.commsBench.checkArgs(comms_args)
 
         time.sleep(1)
-        self.comms_world_info = comms_utils.comms_world_info_holder(
+        self.bootstrap_info = comms_utils.bootstrap_info_holder(
             comms_args.master_ip,
             comms_args.master_port,
             comms_args.num_tpu_cores,
@@ -1234,8 +1234,9 @@ class ExgrReplayManager:
         )
         self.commsParams = comms_utils.commsParamsHolderBase(comms_args)
 
+        self.commsBench.initBackend(self.bootstrap_info, self.commsParams)
         self.commsBench.initBench(self.commsParams, comms_args)
-        self.commsBench.replayInit(self.comms_world_info, self.commsParams)
+        self.commsBench.replayInit(self.commsParams)
 
     def analyze_ops(self):
         fused_cnt = 0
