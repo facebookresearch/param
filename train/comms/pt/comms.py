@@ -11,19 +11,10 @@ import argparse
 import logging
 import time
 
-import comms_utils
 import numpy as np
 
 # pytorch
 import torch
-from comms_utils import (
-    bootstrap_info_holder,
-    commsParamsHolderBase,
-    ensureTensorFlush,
-    paramCommsBench,
-    paramDeviceTimer,
-    paramStreamGuard,
-)
 from logger_utils import (
     benchType,
     commsCollPerfMetrics,
@@ -31,7 +22,17 @@ from logger_utils import (
     commsQuantCollPerfMetrics,
     customized_perf_loggers,
 )
-from pytorch_backend_utils import (
+
+from param_bench.train.comms.pt import comms_utils
+from param_bench.train.comms.pt.comms_utils import (
+    bootstrap_info_holder,
+    commsParamsHolderBase,
+    ensureTensorFlush,
+    paramCommsBench,
+    paramDeviceTimer,
+    paramStreamGuard,
+)
+from param_bench.train.comms.pt.pytorch_backend_utils import (
     pt2ptPatterns,
     supportedC10dBackends,
     supportedCollectives,
@@ -1652,11 +1653,13 @@ class commsCollBench(paramCommsBench):
             commsParams.nw_stack == "pytorch-dist"
             and commsParams.backend in supportedC10dBackends
         ):
-            from pytorch_dist_backend import PyTorchDistBackend
+            from param_bench.train.comms.pt.pytorch_dist_backend import (
+                PyTorchDistBackend,
+            )
 
             backendObj = PyTorchDistBackend(bootstrap_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":
-            from pytorch_tpu_backend import PyTorchTPUBackend
+            from param_bench.train.comms.pt.pytorch_tpu_backend import PyTorchTPUBackend
 
             backendObj = PyTorchTPUBackend(bootstrap_info, commsParams)
         else:
@@ -1665,7 +1668,9 @@ class commsCollBench(paramCommsBench):
                 logging.warning(
                     f"Attempt loading customized backend {commsParams.backend} if registered. Note that this is not officially supported. Use it with caution and at your own risk."
                 )
-                from pytorch_backend_utils import customized_backend
+                from param_bench.train.comms.pt.pytorch_backend_utils import (
+                    customized_backend,
+                )
 
                 backendObj = customized_backend[commsParams.backend](
                     bootstrap_info, commsParams

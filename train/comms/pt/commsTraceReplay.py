@@ -14,10 +14,11 @@ import time
 from os import path
 from typing import Dict, List, Set
 
-import comms_utils
 import numpy as np
 import torch
-from comms_utils import (
+
+from param_bench.train.comms.pt import comms_utils
+from param_bench.train.comms.pt.comms_utils import (
     bootstrap_info_holder,
     commsArgs,
     commsParamsHolderBase,
@@ -25,7 +26,7 @@ from comms_utils import (
     paramStreamGuard,
     paramToCommName,
 )
-from param_profile import paramProfile, paramTimer
+from param_bench.train.comms.pt.param_profile import paramProfile, paramTimer
 
 try:
     from trainer_iteration_wrapper import setTrainingIteration  # @manual
@@ -1263,11 +1264,13 @@ class commsTraceReplayBench(paramCommsBench):
         """
         # init backend and corresponding function pointers
         if commsParams.nw_stack == "pytorch-dist":
-            from pytorch_dist_backend import PyTorchDistBackend
+            from param_bench.train.comms.pt.pytorch_dist_backend import (
+                PyTorchDistBackend,
+            )
 
             self.backendFuncs = PyTorchDistBackend(bootstrap_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":
-            from pytorch_tpu_backend import PyTorchTPUBackend
+            from param_bench.train.comms.pt.pytorch_tpu_backend import PyTorchTPUBackend
 
             self.backendFuncs = PyTorchTPUBackend(bootstrap_info, commsParams)
         else:
@@ -1448,7 +1451,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         # Convert trace to comms trace.
         try:
-            import commsTraceParser
+            from param_bench.train.comms.pt import commsTraceParser
         except ImportError:
             logger.info("FB internals not present, using base parser.")
             self.comms_trace = extractCommsInfo(self.comms_trace)
