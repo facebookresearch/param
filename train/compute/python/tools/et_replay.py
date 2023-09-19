@@ -1234,6 +1234,8 @@ class ExgrReplayManager:
         )
         self.commsParams = comms_utils.commsParamsHolderBase(comms_args)
 
+        self.commsBench.trace_type = "pytorch_et"
+
         self.commsBench.initBackend(self.bootstrap_info, self.commsParams)
         self.commsBench.initBench(self.commsParams, comms_args)
         self.commsBench.replayInit(self.commsParams)
