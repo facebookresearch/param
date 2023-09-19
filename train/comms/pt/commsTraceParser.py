@@ -235,6 +235,8 @@ def _parsePyTorchET(in_trace: List, total_ranks: int) -> List:
             newComm.comms = comms_utils.paramToCommName(
                 inputs[4 - shift].lower()
             )  # 5th value of inputs is colName
+            if newComm.comms == "init":
+                continue
             newComm.req = inputs[
                 1 - shift
             ]  # 2nd value of inputs is the req id of the collective
