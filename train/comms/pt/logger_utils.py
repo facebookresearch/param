@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import abstractmethod, Dict, Optional
 
-from param_bench.train.comms.pt.pytorch_backend_utils import backendFunctions
+from pytorch_backend_utils import backendFunctions
 
 logger = logging.getLogger(__name__)
 

@@ -455,7 +455,7 @@ import logging
 import os
 import time
 from datetime import datetime
-from param_bench.train.comms.pt import comms_utils
+import comms_utils
 
 import torch
 from param_bench.train.comms.pt import commsTraceReplay

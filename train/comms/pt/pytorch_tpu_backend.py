@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch_xla.core.xla_model as xm
 import torch_xla.distributed.xla_multiprocessing as xmp
-from param_bench.train.comms.pt.comms_utils import backendFunctions
+from comms_utils import backendFunctions
 
 
 class PyTorchTPUBackend(backendFunctions):
