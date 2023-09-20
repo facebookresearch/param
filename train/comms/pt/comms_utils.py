@@ -886,6 +886,7 @@ class paramCommsBench(ABC):
             "uint8": torch.uint8,
             "int8": torch.int8,
             "short": torch.short,
+            "char": torch.int8,
         }
         self.supportedDtype = list(self.dtypeMap.keys())
         self.backendFuncs: backendFunctions
