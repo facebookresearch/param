@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # sleep for 20ms to wait for next collective
 LOOP_TIMER_S = 0.02
 
-VALID_TRACE_TYPES = ["basic", "pytorch_et", "kineto"]
+VALID_TRACE_TYPES = ["basic", "et", "kineto"]
 
 
 def writeCommDetails(commsTracePerf: List, rank: int, folder: str = "./") -> None:
@@ -1512,7 +1512,7 @@ class commsTraceReplayBench(paramCommsBench):
             self.comms_trace = commsTraceParser.parseTrace(
                 self.comms_trace,
                 self.trace_type,
-                self.global_rank,
+                rank,
                 self.backendFuncs.get_world_size(),
             )
 

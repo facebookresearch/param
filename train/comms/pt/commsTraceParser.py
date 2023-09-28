@@ -8,6 +8,8 @@ from typing import List, Tuple
 import comms_utils
 from comms_utils import commsArgs
 
+from param_bench.train.compute.python.tools.execution_trace import ExecutionTrace
+
 tensorDtypeMap = {
     "Tensor(int)": "int",
     "Tensor(float)": "float",
@@ -39,15 +41,15 @@ def parseTrace(
     """
 
     if trace_type == "basic":  # Basic Trace
-        in_trace = _parseBasicTrace(in_trace)
-    elif trace_type == "pytorch_et":  # PyTorch ET trace
-        in_trace = _parsePyTorchET(in_trace["nodes"], total_ranks)
+        parsed_trace = _parseBasicTrace(in_trace)
+    elif trace_type == "et":  # Execution Trace (e.g. PyTorch ET, Chakra)
+        parsed_trace = _parseExecutionTrace(ExecutionTrace(in_trace), total_ranks)
     elif trace_type == "kineto":  # Kineto Unitrace
-        in_trace = _parseKinetoUnitrace(in_trace, target_rank)
+        parsed_trace = _parseKinetoUnitrace(in_trace, target_rank)
     else:
         raise ValueError("Unrecognized trace format.")
 
-    return in_trace
+    return parsed_trace
 
 
 def _parseBasicTrace(in_trace: List):
@@ -198,9 +200,9 @@ def _getTensorInfoFromPyTorchETEntry(
     return msg_size, dtype
 
 
-def _parsePyTorchET(in_trace: List, total_ranks: int) -> List:
+def _parseExecutionTrace(in_trace: ExecutionTrace, total_ranks: int) -> List:
     """
-    Convert the PyTorch Execution Trace comms metadata to the common trace format for replay.
+    Convert the Execution Trace comms metadata to the common trace format for replay.
 
     """
 
@@ -211,10 +213,9 @@ def _parsePyTorchET(in_trace: List, total_ranks: int) -> List:
     commsPerbackendId = {}
 
     # Parse PG info from ET
-    for entry in in_trace:
-        if "process_group:init" in entry.get("name"):
-            inputs = entry.get("inputs")
-            pgJson = inputs[0]
+    for node in in_trace.nodes.values():
+        if "process_group:init" in node.name:
+            pgJson = node.inputs[0]
             pgObj = json.loads(pgJson)
             for pg in pgObj:
                 pgId = pg["pg_id"]
@@ -226,23 +227,22 @@ def _parsePyTorchET(in_trace: List, total_ranks: int) -> List:
             break  # only one process_group init node per trace
 
     # Parse comms nodes
-    for entry in in_trace:
-        if entry.get("name") == "record_param_comms":
-            inputs = entry.get("inputs")
+    for node in in_trace.nodes.values():
+        if node.name == "record_param_comms":
             shift = (
-                0 if len(inputs) == 7 else 1
+                0 if len(node.inputs) == 7 else 1
             )  # wait/barrier ops do not have an input tensor (len=6), shift index one over
             newComm = commsArgs()
             newComm.comms = comms_utils.paramToCommName(
-                inputs[4 - shift].lower()
+                node.inputs[4 - shift].lower()
             )  # 5th value of inputs is colName
             if newComm.comms == "init":
                 continue
-            newComm.req = inputs[
+            newComm.req = node.inputs[
                 1 - shift
             ]  # 2nd value of inputs is the req id of the collective
 
-            backendId = inputs[
+            backendId = node.inputs[
                 2 - shift
             ]  # 3rd value of inputs is the backend id of the collective
             if backendId in backendIdToGlobalRanks:
@@ -256,10 +256,11 @@ def _parsePyTorchET(in_trace: List, total_ranks: int) -> List:
                 (
                     newComm.inMsgSize,
                     inMsgType,
-                ) = _getTensorInfoFromPyTorchETEntry(inputs, entry["input_types"][0])
-                (newComm.outMsgSize, _,) = _getTensorInfoFromPyTorchETEntry(
-                    entry["outputs"], entry["output_types"][0]
-                )
+                ) = _getTensorInfoFromPyTorchETEntry(node.inputs, node.input_types[0])
+                (
+                    newComm.outMsgSize,
+                    _,
+                ) = _getTensorInfoFromPyTorchETEntry(node.outputs, node.output_types[0])
                 newComm.dtype = tensorDtypeMap[
                     inMsgType
                 ]  # 1st value of input_types is the data type for the tensors
@@ -270,15 +271,15 @@ def _parsePyTorchET(in_trace: List, total_ranks: int) -> List:
                     # if no pg info provided, use total ranks as world size
                     newComm.worldSize = total_ranks
                 newComm.inSplit = (
-                    inputs[5]
-                    if inputs[5]
+                    node.inputs[5]
+                    if node.inputs[5]
                     else [int(newComm.inMsgSize / newComm.worldSize)]
                     * newComm.worldSize
                 )
                 # 7th value of inputs is out_split, split evenly if not provided
                 newComm.outSplit = (
-                    inputs[6]
-                    if inputs[6]
+                    node.inputs[6]
+                    if node.inputs[6]
                     else [int(newComm.outMsgSize / newComm.worldSize)]
                     * newComm.worldSize
                 )
