@@ -15,6 +15,7 @@ tensorDtypeMap = {
     "Tensor(float)": "float",
     "Tensor(bool)": "bool",
     "Tensor(long)": "long",
+    "Tensor(long int)": "long",
     "Tensor(double)": "double",
     "Tensor(half)": "half",
     "Tensor(byte)": "byte",
