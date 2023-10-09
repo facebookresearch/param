@@ -774,6 +774,7 @@ class commsParamsHolderBase:
         self.enable_local_report = args.enable_local_report
         self.enable_profiler = args.enable_profiler
         self.use_perf_logger = args.use_perf_logger
+        self.ibv_devices = args.ibv_devices
 
 
 class commsDlrmParamsHolder(commsParamsHolderBase):

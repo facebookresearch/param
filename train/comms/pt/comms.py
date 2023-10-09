@@ -267,7 +267,12 @@ class commsCollBench(paramCommsBench):
             default=None,
             help="customized tag or keyword to be added into final output lines",
         )  # execute pytorch profiler at specified size if applicable
-
+        parser.add_argument(
+            "--ibv-devices",
+            type=str,
+            default="",
+            help="list of ib devices to use for distributed communication",
+        )  # experimental feature
         return parser.parse_known_args()
 
     def _checkPt2Pt(self, args):
