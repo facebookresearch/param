@@ -1562,6 +1562,12 @@ class paramCommsBench(ABC):
             default=None,
             help="add name of custom performer loggers to use them in additional to text output, user is responsible to implement and register the custom performance logger",
         )  # use custom performer logger
+        parser.add_argument(
+            "--ibv-devices",
+            type=str,
+            default="",
+            help="list of ib devices to use for distributed communication",
+        )  # experimental feature
         pass
 
     @abstractmethod
