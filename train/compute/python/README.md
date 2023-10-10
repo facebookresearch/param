@@ -32,6 +32,8 @@ The installed packages are under **`param_bench.train.compute.python`**.
 
 To use the [`FBGEMM_GPU`](https://github.com/pytorch/FBGEMM/tree/main/fbgemm_gpu) library and its operator benchmark workload ([`split_table_batched_embeddings_ops.py`](workloads/pytorch/split_table_batched_embeddings_ops.py)), please follow its set up instruction to download and install. It's not required for the compute benchmarks. During initialization, if an operator fail to import, it'll be ignored and will not affect other benchmarks.
 
+Please make sure to install the `parambench-train-comms` package (`train/comms/pt`). This is important because some functions in this package reference those in the comms package.
+
 ## Usage
 The bundled tool scripts such as [`run_benchmark.py`](pytorch/run_benchmark.py) are written using relative import paths as part of the `parambench-train-compute` package, so they must be ran as a module using the `python -m` option.
 

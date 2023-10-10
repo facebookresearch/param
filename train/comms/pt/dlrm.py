@@ -16,14 +16,14 @@ import sys
 
 import time
 
-import comms_utils
-
 import dlrm_data as dd
 import numpy as np
 
 import torch
 import torch.nn as nn
 from comms_utils import paramCommsBench
+
+from param_bench.train.comms.pt import comms_utils
 from pytorch_dist_backend import PyTorchDistBackend
 from torch.autograd import Function
 

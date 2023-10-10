@@ -5,8 +5,8 @@ import json
 
 from typing import List, Tuple
 
-import comms_utils
-from comms_utils import commsArgs
+from param_bench.train.comms.pt import comms_utils
+from param_bench.train.comms.pt.comms_utils import commsArgs
 
 from param_bench.train.compute.python.tools.execution_trace import ExecutionTrace
 

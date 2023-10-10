@@ -38,9 +38,8 @@ except ImportError:
 
 import numpy as np
 import torch
-from param_profile import paramTimer
-
-from pytorch_backend_utils import (
+from param_bench.train.comms.pt.param_profile import paramTimer
+from param_bench.train.comms.pt.pytorch_backend_utils import (
     backendFunctions,
     collectiveArgsHolder,
     customized_backend,
