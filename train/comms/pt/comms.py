@@ -1653,11 +1653,13 @@ class commsCollBench(paramCommsBench):
             commsParams.nw_stack == "pytorch-dist"
             and commsParams.backend in supportedC10dBackends
         ):
-            from pytorch_dist_backend import PyTorchDistBackend
+            from param_bench.train.comms.pt.pytorch_dist_backend import (
+                PyTorchDistBackend,
+            )
 
             backendObj = PyTorchDistBackend(bootstrap_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":
-            from pytorch_tpu_backend import PyTorchTPUBackend
+            from param_bench.train.comms.pt.pytorch_tpu_backend import PyTorchTPUBackend
 
             backendObj = PyTorchTPUBackend(bootstrap_info, commsParams)
         else:

@@ -19,7 +19,11 @@ from param_bench.train.comms.pt.pytorch_backend_utils import (
 )
 
 try:
-    from internals import all_to_all_internal, all_to_allv_internal, extend_distributed
+    from param_bench.train.comms.pt.fb.internals import (
+        all_to_all_internal,
+        all_to_allv_internal,
+        extend_distributed,
+    )
 
     has_ext_dist = True
 except ImportError:
