@@ -362,17 +362,24 @@ class PyTorchDistBackend(backendFunctions):
             return retObj
 
     def reduce_scatter(self, collectiveArgs, retFlag=False, pair=False):
+        if pair:
+            ipTensor = collectiveArgs.ipTensor_pair
+            opTensor = collectiveArgs.opTensor_pair
+        else:
+            ipTensor = collectiveArgs.ipTensor
+            opTensor = collectiveArgs.opTensor
+
         if self.use_ext_dist:
             retObj = collectiveArgs.group.reduce_scatter(
-                output=collectiveArgs.opTensor,
-                input_list=collectiveArgs.ipTensor,
+                output=opTensor,
+                input_list=ipTensor,
                 op=collectiveArgs.op,
                 async_op=collectiveArgs.asyncOp,
             )  # synchronicity is maintained in runColl
         else:
             retObj = dist.reduce_scatter(
-                output=collectiveArgs.opTensor,
-                input_list=collectiveArgs.ipTensor,
+                output=opTensor,
+                input_list=ipTensor,
                 op=collectiveArgs.op,
                 group=collectiveArgs.group,
                 async_op=collectiveArgs.asyncOp,
@@ -385,9 +392,16 @@ class PyTorchDistBackend(backendFunctions):
             return retObj
 
     def reduce_scatter_base(self, collectiveArgs, retFlag=False, pair=False):
+        if pair:
+            ipTensor = collectiveArgs.ipTensor_pair
+            opTensor = collectiveArgs.opTensor_pair
+        else:
+            ipTensor = collectiveArgs.ipTensor
+            opTensor = collectiveArgs.opTensor
+
         retObj = dist.reduce_scatter_tensor(
-            output=collectiveArgs.opTensor,
-            input=collectiveArgs.ipTensor,
+            output=opTensor,
+            input=ipTensor,
             op=collectiveArgs.op,
             group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
@@ -400,9 +414,16 @@ class PyTorchDistBackend(backendFunctions):
             return retObj
 
     def all_gather_base(self, collectiveArgs, retFlag=False, pair=False):
+        if pair:
+            ipTensor = collectiveArgs.ipTensor_pair
+            opTensor = collectiveArgs.opTensor_pair
+        else:
+            ipTensor = collectiveArgs.ipTensor
+            opTensor = collectiveArgs.opTensor
+
         retObj = dist.all_gather_into_tensor(
-            output_tensor=collectiveArgs.opTensor,
-            input_tensor=collectiveArgs.ipTensor,
+            output_tensor=opTensor,
+            input_tensor=ipTensor,
             group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
         )  # synchronicity is maintained in runColl

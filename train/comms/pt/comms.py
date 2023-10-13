@@ -1489,6 +1489,7 @@ class commsCollBench(paramCommsBench):
                 commsArgs.worldSize = world_size
                 commsArgs.inSplit = commsParams.inSplit
                 commsArgs.outSplit = commsParams.outSplit
+                commsArgs.comms = commsParams.collective
 
                 (
                     self.collectiveArgs.ipTensor,
@@ -1522,6 +1523,7 @@ class commsCollBench(paramCommsBench):
                 commsArgs.inMsgSize = self.collectiveArgs.numElements_pair
                 commsArgs.outMsgSize = self.collectiveArgs.numElements_pair
                 commsArgs.worldSize = world_size
+                commsArgs.comms = commsParams.collective_pair
                 (
                     self.collectiveArgs.ipTensor_pair,
                     self.collectiveArgs.opTensor_pair,
