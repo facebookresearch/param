@@ -219,7 +219,7 @@ def _parseExecutionTrace(in_trace: ExecutionTrace, total_ranks: int) -> List:
             pgJson = node.inputs[0]
             pgObj = json.loads(pgJson)
             for pg in pgObj:
-                pgId = pg["pg_id"]
+                pgId = pg["pg_name"] if "pg_name" in pg else pg["pg_id"]
                 backendId = pg["backend_id"]
                 ranks = pg["ranks"]
                 backendIdToGlobalRanks[backendId] = [int(rank) for rank in ranks.keys()]
