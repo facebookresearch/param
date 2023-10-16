@@ -142,9 +142,6 @@ def trace_analysis(et_file, kineto_file, annotation="DataLoader"):
             f"Could not find annotation {annotation} in kineto file"
             " using the whole file, processing could be very slow!!"
         )
-        if len(kineto_et_events) > 1000:
-            logger.error(f"Kineto has {len(kineto_et_events)} > 1000 events. exiting")
-            sys.exit(-1)
 
     logger.info(f"Number of original ops in kineto trace: {len(kineto_et_events)}")
 
