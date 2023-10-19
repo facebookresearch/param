@@ -133,14 +133,6 @@ def trace_analysis(et_file, kineto_file, annotation="DataLoader"):
 
     logger.info(f"Kineto trace has {len(kineto_et_segs)} segments")
 
-    # # Assume that an iteration starts with the specified annotation
-    # for event in kineto_et_events:
-    #     if annotation in event['name']:
-    #         kineto_et_segs.append(kineto_et_seg)
-    #         kineto_et_seg = [event]
-    #     else:
-    #         kineto_et_seg.append(event)
-
     # In case of kineto only contains one iteration or the provided annotation is wrong, use the whole trace directly,
     # otherwise find the iteration in kineto trace with the closest #ops to ET (usually ET has 3 additional annotation ops for processes/threads)
     if kineto_et_segs:
