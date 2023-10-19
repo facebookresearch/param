@@ -100,15 +100,15 @@ def trace_analysis(et_file, kineto_file, annotation="DataLoader"):
 
     logger.info(f"Number of original ops in execution trace: {len(et_nodes)}")
 
-    kineto_trace_events = read_dictionary_from_json_file(kineto_file)["traceEvents"]
+    kineto_trace_ops = read_dictionary_from_json_file(kineto_file)["traceEvents"]
 
-    sorted_kineto_trace_events = sorted(kineto_trace_events, key=lambda kv: kv["ts"])
+    sorted_kineto_trace_ops = sorted(kineto_trace_ops, key=lambda kv: kv["ts"])
 
-    kineto_et_events = [
-        event
-        for event in sorted_kineto_trace_events
-        if "cat" in event
-        and (event["cat"] == "cpu_op" or event["cat"] == "user_annotation")
+    kineto_et_ops = [
+        op
+        for op in sorted_kineto_trace_ops
+        if "cat" in op
+        and (op["cat"] == "cpu_op" or op["cat"] == "user_annotation")
     ]
 
     kineto_et_segs = []
@@ -119,97 +119,97 @@ def trace_analysis(et_file, kineto_file, annotation="DataLoader"):
 
     # Assume that an iteration ends with the specified annotation
     end_time = -1
-    for event in kineto_et_events:
-        if end_time > 0 and event["ts"] >= end_time:
+    for op in kineto_et_ops:
+        if end_time > 0 and op["ts"] >= end_time:
             kineto_et_segs.append(kineto_et_seg)
             kineto_et_seg = []
             end_time = -1
 
-        if annotation in event["name"]:
-            kineto_et_seg.append(event)
-            end_time = event["ts"] + event["dur"]
+        if annotation in op["name"]:
+            kineto_et_seg.append(op)
+            end_time = op["ts"] + op["dur"]
         else:
-            kineto_et_seg.append(event)
+            kineto_et_seg.append(op)
 
     logger.info(f"Kineto trace has {len(kineto_et_segs)} segments")
 
     # In case of kineto only contains one iteration or the provided annotation is wrong, use the whole trace directly,
     # otherwise find the iteration in kineto trace with the closest #ops to ET (usually ET has 3 additional annotation ops for processes/threads)
     if kineto_et_segs:
-        kineto_et_events = find_closest_segment(kineto_et_segs, len(et_nodes) - 3)
+        kineto_et_ops = find_closest_segment(kineto_et_segs, len(et_nodes) - 3)
     else:
         logger.warning(
             f"Could not find annotation {annotation} in kineto file"
             " using the whole file, processing could be very slow!!"
         )
 
-    logger.info(f"Number of original ops in kineto trace: {len(kineto_et_events)}")
+    logger.info(f"Number of original ops in kineto trace: {len(kineto_et_ops)}")
 
-    return et_nodes, kineto_et_events
+    return et_nodes, kineto_et_ops
 
 
-def exact_match(kineto_et_events, et_nodes):
+def exact_match(kineto_et_ops, et_nodes):
     # Since kineto trace is missing the annotations for processes/threads, we add them back to match with ET
-    kineto_event_per_thread = {}
+    kineto_op_per_thread = {}
 
     process_end_time = -1
-    for i in range(len(kineto_et_events)):
-        event = kineto_et_events[i]
-        if event["tid"] not in kineto_event_per_thread:
-            kineto_event_per_thread[event["tid"]] = {}
-            kineto_event_per_thread[event["tid"]]["ts"] = event["ts"]
-            kineto_event_per_thread[event["tid"]]["end_ts"] = event["ts"] + event["dur"]
-            kineto_event_per_thread[event["tid"]]["index"] = i
+    for i in range(len(kineto_et_ops)):
+        op = kineto_et_ops[i]
+        if op["tid"] not in kineto_op_per_thread:
+            kineto_op_per_thread[op["tid"]] = {}
+            kineto_op_per_thread[op["tid"]]["ts"] = op["ts"]
+            kineto_op_per_thread[op["tid"]]["end_ts"] = op["ts"] + op["dur"]
+            kineto_op_per_thread[op["tid"]]["index"] = i
         else:
-            kineto_event_per_thread[event["tid"]]["end_ts"] = max(
-                kineto_event_per_thread[event["tid"]]["end_ts"],
-                event["ts"] + event["dur"],
+            kineto_op_per_thread[op["tid"]]["end_ts"] = max(
+                kineto_op_per_thread[op["tid"]]["end_ts"],
+                op["ts"] + op["dur"],
             )
-        process_end_time = max(process_end_time, event["ts"] + event["dur"])
+        process_end_time = max(process_end_time, op["ts"] + op["dur"])
 
-    process_event = {
+    process_op = {
         "name": EXECUTION_TRACE_PROCESS_ANNOTATION,
-        "ts": kineto_et_events[0]["ts"],
-        "dur": process_end_time - kineto_et_events[0]["ts"],
+        "ts": kineto_et_ops[0]["ts"],
+        "dur": process_end_time - kineto_et_ops[0]["ts"],
     }
 
-    kineto_et_events.insert(0, process_event)
+    kineto_et_ops.insert(0, process_op)
 
     sorted_threads = dict(
-        sorted(kineto_event_per_thread.items(), key=lambda x: x[1]["index"])
+        sorted(kineto_op_per_thread.items(), key=lambda x: x[1]["index"])
     )
 
     for index, (tid, thread_info) in enumerate(sorted_threads.items()):
-        thread_event = {
+        thread_op = {
             "name": EXECUTION_TRACE_THREAD_ANNOTATION,
             "ts": thread_info["ts"],
             "dur": thread_info["end_ts"] - thread_info["ts"],
         }
-        # Be careful of the insertion position, note that we already inserted process event
-        kineto_et_events.insert(index + 1 + thread_info["index"], thread_event)
+        # Be careful of the insertion position, note that we already inserted process op
+        kineto_et_ops.insert(index + 1 + thread_info["index"], thread_op)
 
     # Duration of ET nodes
     et_enhanced_duration = {}
 
     # Link kineto trace and execution trace
-    if len(kineto_et_events) == len(et_nodes):
+    if len(kineto_et_ops) == len(et_nodes):
         for i in range(len(et_nodes)):
             et_node = et_nodes[i]
-            kineto_et_event = kineto_et_events[i]
+            kineto_et_op = kineto_et_ops[i]
             if (
-                et_node.name == kineto_et_event["name"]
+                et_node.name == kineto_et_op["name"]
                 or (
                     "iteration#" in et_node.name
-                    and "iteration#" in kineto_et_event["name"]
+                    and "iteration#" in kineto_et_op["name"]
                 )
                 or et_node.name.replace("execution_graph", "execution_trace")
-                == kineto_et_event["name"]
+                == kineto_et_op["name"]
             ):
-                et_enhanced_duration[et_node.id] = kineto_et_event["dur"]
+                et_enhanced_duration[et_node.id] = kineto_et_op["dur"]
             else:
                 logger.info("Op mismatch between kineto and execution trace:")
                 logger.info(
-                    f'Op index: {i}, kineto op name: {kineto_et_event["name"]}, kineto op timestamp: {kineto_et_event["ts"]}, '
+                    f'Op index: {i}, kineto op name: {kineto_et_op["name"]}, kineto op timestamp: {kineto_et_op["ts"]}, '
                     f"execution trace op name: {et_node.name}, execution trace op id: {et_node.id}"
                 )
                 exit(0)
@@ -219,21 +219,21 @@ def exact_match(kineto_et_events, et_nodes):
     return et_enhanced_duration
 
 
-def approximate_match(kineto_et_events, et_nodes):
+def approximate_match(kineto_et_ops, et_nodes):
     # Since kineto trace is missing the annotations for processes/threads, we add them back to match with ET
-    kineto_event_per_thread = {}
+    kineto_op_per_thread = {}
 
     # Mapping node id to the corresponding node
     kineto_nodes_mapping = {}
 
-    start_time = kineto_et_events[0]["ts"]
+    start_time = kineto_et_ops[0]["ts"]
     end_time = -1
 
-    for event in kineto_et_events:
-        if event["tid"] not in kineto_event_per_thread:
-            kineto_event_per_thread[event["tid"]] = []
-        kineto_event_per_thread[event["tid"]].append(event)
-        end_time = max(end_time, event["ts"] + event["dur"])
+    for op in kineto_et_ops:
+        if op["tid"] not in kineto_op_per_thread:
+            kineto_op_per_thread[op["tid"]] = []
+        kineto_op_per_thread[op["tid"]].append(op)
+        end_time = max(end_time, op["ts"] + op["dur"])
 
     process_node = Kineto_node(
         EXECUTION_TRACE_PROCESS_ANNOTATION, start_time, end_time, 0
@@ -241,11 +241,11 @@ def approximate_match(kineto_et_events, et_nodes):
     kineto_nodes_mapping[0] = process_node
 
     cnt = 1
-    for thread in kineto_event_per_thread:
-        start_time = kineto_event_per_thread[thread][0]["ts"]
+    for thread in kineto_op_per_thread:
+        start_time = kineto_op_per_thread[thread][0]["ts"]
         end_time = -1
-        for event in kineto_event_per_thread[thread]:
-            end_time = max(end_time, event["ts"] + event["dur"])
+        for op in kineto_op_per_thread[thread]:
+            end_time = max(end_time, op["ts"] + op["dur"])
 
         thread_node = Kineto_node(
             EXECUTION_TRACE_THREAD_ANNOTATION, start_time, end_time, cnt
@@ -259,20 +259,20 @@ def approximate_match(kineto_et_events, et_nodes):
         process_node.children.append(thread_node)
 
         kineto_nodes = [thread_node]
-        for event in kineto_event_per_thread[thread]:
-            if event["ts"] < kineto_nodes[-1].end:
+        for op in kineto_op_per_thread[thread]:
+            if op["ts"] < kineto_nodes[-1].end:
                 tmp = Kineto_node(
-                    event["name"], event["ts"], event["ts"] + event["dur"], cnt
+                    op["name"], op["ts"], op["ts"] + op["dur"], cnt
                 )
                 kineto_nodes_mapping[cnt] = tmp
                 cnt += 1
                 kineto_nodes[-1].children.append(tmp)
                 kineto_nodes.append(tmp)
             else:
-                while kineto_nodes[-1].end <= event["ts"] and len(kineto_nodes) > 1:
+                while kineto_nodes[-1].end <= op["ts"] and len(kineto_nodes) > 1:
                     kineto_nodes.pop()
                 tmp = Kineto_node(
-                    event["name"], event["ts"], event["ts"] + event["dur"], cnt
+                    op["name"], op["ts"], op["ts"] + op["dur"], cnt
                 )
                 kineto_nodes_mapping[cnt] = tmp
                 cnt += 1
@@ -365,14 +365,14 @@ def main() -> None:
 
     logger.setLevel(args.log_level)
 
-    et_nodes, kineto_et_events = trace_analysis(
+    et_nodes, kineto_et_ops = trace_analysis(
         args.et_file, args.kineto_file, args.annotation
     )
 
     if args.exact_match:
-        et_enhanced_duration = exact_match(kineto_et_events, et_nodes)
+        et_enhanced_duration = exact_match(kineto_et_ops, et_nodes)
     else:
-        et_enhanced_duration = approximate_match(kineto_et_events, et_nodes)
+        et_enhanced_duration = approximate_match(kineto_et_ops, et_nodes)
 
     # If linking works, add duration time to each ET node and dump as ET_plus
     if et_enhanced_duration:
