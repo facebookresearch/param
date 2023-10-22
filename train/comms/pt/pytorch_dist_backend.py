@@ -530,6 +530,30 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    def P2POp(self, opType, collectiveArgs, peer, tag=0):
+        if opType == "send":
+            op = dist.isend
+            tensor = collectiveArgs.ipTensor
+        elif opType == "recv":
+            op = dist.irecv
+            tensor = collectiveArgs.opTensor
+        else:
+            raise RuntimeError(f"Unknown operation type {opType}")
+
+        return dist.P2POp(
+            op=op,
+            tensor=tensor,
+            peer=peer,
+            group=self.get_collective_group(collectiveArgs),
+            tag=tag,
+        )
+
+    def batch_isend_irecv(self, ops, collectiveArgs):
+        reqs = dist.batch_isend_irecv(ops)
+
+        for req in reqs:
+            collectiveArgs.waitObj.append(req)
+
     def device_sync(self, collectiveArgs):
         dev_str = (
             self.commsParams["device"]

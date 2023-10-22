@@ -678,6 +678,7 @@ class commsCollBench(paramCommsBench):
         # get unidirectional bandwidth
         uniLatencyNS = []
         for _ in range(numIters):
+            p2pReqs = []
             self.backendFuncs.sync_barrier(self.collectiveArgs)
             start = time.monotonic()
             for w in range(self.collectiveArgs.window):
@@ -685,16 +686,28 @@ class commsCollBench(paramCommsBench):
                     idx = self.collectiveArgs.src_ranks.index(
                         self.collectiveArgs.global_rank
                     )
-                    self.backendFuncs.isend(
-                        self.collectiveArgs, self.collectiveArgs.dst_ranks[idx], tag=w
+                    p2pReqs.append(
+                        self.backendFuncs.P2POp(
+                            opType="send",
+                            collectiveArgs=self.collectiveArgs,
+                            peer=self.collectiveArgs.dst_ranks[idx],
+                            tag=w,
+                        )
                     )
                 elif self.collectiveArgs.global_rank in self.collectiveArgs.dst_ranks:
                     idx = self.collectiveArgs.dst_ranks.index(
                         self.collectiveArgs.global_rank
                     )
-                    self.backendFuncs.irecv(
-                        self.collectiveArgs, self.collectiveArgs.src_ranks[idx], tag=w
+                    p2pReqs.append(
+                        self.backendFuncs.P2POp(
+                            opType="recv",
+                            collectiveArgs=self.collectiveArgs,
+                            peer=self.collectiveArgs.src_ranks[idx],
+                            tag=w,
+                        )
                     )
+            self.backendFuncs.batch_isend_irecv(p2pReqs, self.collectiveArgs)
+
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             uniLatencyNS.append(
                 (time.monotonic() - start) * 1e9
@@ -716,6 +729,7 @@ class commsCollBench(paramCommsBench):
         # get bidirectional bandwidth
         biLatencyNS = []
         for _ in range(numIters):
+            p2pReqs = []
             self.backendFuncs.sync_barrier(self.collectiveArgs)
             start = time.monotonic()
             for w in range(self.collectiveArgs.window):
@@ -723,26 +737,43 @@ class commsCollBench(paramCommsBench):
                     idx = self.collectiveArgs.src_ranks.index(
                         self.collectiveArgs.global_rank
                     )
-                    self.backendFuncs.isend(
-                        self.collectiveArgs, self.collectiveArgs.dst_ranks[idx], tag=w
+                    p2pReqs.append(
+                        self.backendFuncs.P2POp(
+                            opType="send",
+                            collectiveArgs=self.collectiveArgs,
+                            peer=self.collectiveArgs.dst_ranks[idx],
+                            tag=w,
+                        )
                     )
-                    self.backendFuncs.irecv(
-                        self.collectiveArgs,
-                        self.collectiveArgs.dst_ranks[idx],
-                        tag=w + self.collectiveArgs.window,
+                    p2pReqs.append(
+                        self.backendFuncs.P2POp(
+                            opType="recv",
+                            collectiveArgs=self.collectiveArgs,
+                            peer=self.collectiveArgs.dst_ranks[idx],
+                            tag=w + self.collectiveArgs.window,
+                        )
                     )
                 elif self.collectiveArgs.global_rank in self.collectiveArgs.dst_ranks:
                     idx = self.collectiveArgs.dst_ranks.index(
                         self.collectiveArgs.global_rank
                     )
-                    self.backendFuncs.irecv(
-                        self.collectiveArgs, self.collectiveArgs.src_ranks[idx], tag=w
+                    p2pReqs.append(
+                        self.backendFuncs.P2POp(
+                            opType="recv",
+                            collectiveArgs=self.collectiveArgs,
+                            peer=self.collectiveArgs.src_ranks[idx],
+                            tag=w,
+                        )
                     )
-                    self.backendFuncs.isend(
-                        self.collectiveArgs,
-                        self.collectiveArgs.src_ranks[idx],
-                        tag=w + self.collectiveArgs.window,
+                    p2pReqs.append(
+                        self.backendFuncs.P2POp(
+                            opType="send",
+                            collectiveArgs=self.collectiveArgs,
+                            peer=self.collectiveArgs.src_ranks[idx],
+                            tag=w + self.collectiveArgs.window,
+                        )
                     )
+            self.backendFuncs.batch_isend_irecv(p2pReqs, self.collectiveArgs)
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             biLatencyNS.append(
                 (time.monotonic() - start) * 1e9
