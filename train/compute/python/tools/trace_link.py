@@ -677,10 +677,10 @@ def assign_et_ids(total_assigned_ids, assigned_ids, id):
     """
     orig_id = id
     while True:
-        if id in total_assigned_ids:
+        if id in total_assigned_ids.keys():
             id += 1
         else:
-            total_assigned_ids.append(id)
+            total_assigned_ids[id] = True
             if orig_id not in assigned_ids.keys():
                 assigned_ids[orig_id] = id
             return id
@@ -733,9 +733,9 @@ def dump_et_file(
     with open(args.et_file, "r") as f:
         et = json.load(f)
         # assigned_ids: A dictionary mapping original ids to their corresponding unique ET ids.
-        # total_assigned_ids: A list containing all ET ids that have already been assigned.
+        # total_assigned_ids: A Dict containing all ET ids that have already been assigned.
         assigned_ids = {}
-        total_assigned_ids = []
+        total_assigned_ids = {}
 
         for node in et["nodes"]:
             # Meaning that it is kineto node.
