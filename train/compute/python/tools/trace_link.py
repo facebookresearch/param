@@ -206,6 +206,7 @@ def segment_ops_by_annotation(kineto_et_ops, annotation):
     kineto_et_seg = []
 
     end_time = -1
+    add_last_chunk = False
     for op in kineto_et_ops:
         if end_time > 0 and get_timestamp_field(op) >= end_time:
             kineto_et_segs.append(kineto_et_seg)
@@ -215,9 +216,14 @@ def segment_ops_by_annotation(kineto_et_ops, annotation):
         if annotation in get_name_field(op):
             kineto_et_seg.append(op)
             end_time = get_timestamp_field(op) + get_duration_field(op)
+            add_last_chunk = True
         else:
             kineto_et_seg.append(op)
+
+    if add_last_chunk:
+        kineto_et_segs.append(kineto_et_seg)
     logger.info(f"Kineto trace has {len(kineto_et_segs)} segments")
+
     return kineto_et_segs
 
 
