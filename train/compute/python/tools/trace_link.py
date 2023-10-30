@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -695,20 +696,23 @@ def update_gpu_nodes(
     gpu_nodes = sorted(
         et_gpu_ops_per_cpu_op_id[orig_node_id], key=lambda kv: get_timestamp_field(kv)
     )
+    new_gpu_nodes = []
 
     # Assign the gpu_node's parent with cpu_node
     for gpu_node in gpu_nodes:
-        gpu_node["parent"] = node["id"]
-        gpu_node["id"] = assign_et_ids(
+        copy_gpu_node = copy.deepcopy(gpu_node)
+        copy_gpu_node["parent"] = node["id"]
+        copy_gpu_node["id"] = assign_et_ids(
             total_assigned_ids, assigned_ids, orig_node_id
         )
-        gpu_node["inputs"] = node["inputs"]
-        gpu_node["input_shapes"] = node["input_shapes"]
-        gpu_node["input_types"] = node["input_types"]
-        gpu_node["outputs"] = node["outputs"]
-        gpu_node["output_shapes"] = node["output_shapes"]
-        gpu_node["output_types"] = node["output_types"]
-    return gpu_nodes
+        copy_gpu_node["inputs"] = node["inputs"]
+        copy_gpu_node["input_shapes"] = node["input_shapes"]
+        copy_gpu_node["input_types"] = node["input_types"]
+        copy_gpu_node["outputs"] = node["outputs"]
+        copy_gpu_node["output_shapes"] = node["output_shapes"]
+        copy_gpu_node["output_types"] = node["output_types"]
+        new_gpu_nodes.append(copy_gpu_node)
+    return new_gpu_nodes
 
 
 def dump_et_file(
