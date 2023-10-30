@@ -398,6 +398,47 @@ def op_exists(name, kineto_et_ops, i):
     )  # Return False and the op at index i if the name is not found.
 
 
+def find_op_shift(et_nodes, kineto_et_ops):
+    """
+    This function checks to see if the operations in Pytorch_et (et_nodes) and
+    Kineto (kineto_et_ops) are shifter by a constant number. Sometimes it is
+    possible that the operation in index i of et_nodes is mapped to index
+    i+shift in kineto_et_ops. The objective of this function is to detect the shift value.
+    To do this, this function picks N (max_pattern_length) number of consecutive
+    ops is et_nodes, and compare it with N consecutive ops in kineto_et_ops.
+    The maximum shift amount to check is determined by the max_shift_to_check variable.
+
+    Parameters:
+    - et_nodes: A list of Pytorch_et ops.
+    - kineto_et_ops: A list of kineto ops.
+
+    Returns:
+    - The amount of shift between et_nodes and kineto_et_ops
+    """
+    # Number of consecutive ops to check
+    max_pattern_length = 10
+    # Number of consecutive ops to check
+    max_shift_to_check = 1000
+    # We pick the N consecutive ops starting from the index 5 in Pytorch_et
+    start_index = 5
+    for shift in range(max_shift_to_check):
+        pattern_match = True
+        for index in range(max_pattern_length):
+            if start_index + index >= len(
+                et_nodes
+            ) or start_index + index + shift >= len(kineto_et_ops):
+                return 0
+            if (
+                et_nodes[start_index + index].name
+                != kineto_et_ops[start_index + index + shift]["name"]
+            ):
+                pattern_match = False
+                break
+        if pattern_match:
+            return shift
+    return 0
+
+
 def exact_match(
     kineto_et_ops,
     kineto_ac2g_s_ops,
@@ -477,12 +518,18 @@ def exact_match(
             kineto_gpu_ops_per_cpu_op_idx[parent_cpu_op["args"]["Ev Idx"]].append(
                 gpu_op
             )
+    shift = find_op_shift(et_nodes, kineto_et_ops)
+    if shift:
+        logger.info(
+            "shift found between et_nodes, and kineto_et_events. Shift amount: "
+            + str(shift)
+        )
     # Link kineto trace and execution trace
     if len(kineto_et_ops) == len(et_nodes):
         for i in range(len(et_nodes)):
             et_node = et_nodes[i]
 
-            name_exist, kineto_et_op = op_exists(et_node.name, kineto_et_ops, i)
+            name_exist, kineto_et_op = op_exists(et_node.name, kineto_et_ops, i + shift)
 
             if (
                 name_exist
