@@ -686,11 +686,11 @@ class commsCollBench(paramCommsBench):
                     idx = self.collectiveArgs.src_ranks.index(
                         self.collectiveArgs.global_rank
                     )
+                    self.collectiveArgs.dst_rank = self.collectiveArgs.dst_ranks[idx]
+                    self.collectiveArgs.collective = "send"
                     p2pReqs.append(
                         self.backendFuncs.P2POp(
-                            opType="send",
                             collectiveArgs=self.collectiveArgs,
-                            peer=self.collectiveArgs.dst_ranks[idx],
                             tag=w,
                         )
                     )
@@ -698,11 +698,11 @@ class commsCollBench(paramCommsBench):
                     idx = self.collectiveArgs.dst_ranks.index(
                         self.collectiveArgs.global_rank
                     )
+                    self.collectiveArgs.src_rank = self.collectiveArgs.src_ranks[idx]
+                    self.collectiveArgs.collective = "recv"
                     p2pReqs.append(
                         self.backendFuncs.P2POp(
-                            opType="recv",
                             collectiveArgs=self.collectiveArgs,
-                            peer=self.collectiveArgs.src_ranks[idx],
                             tag=w,
                         )
                     )
@@ -737,19 +737,19 @@ class commsCollBench(paramCommsBench):
                     idx = self.collectiveArgs.src_ranks.index(
                         self.collectiveArgs.global_rank
                     )
+                    self.collectiveArgs.collective = "send"
+                    self.collectiveArgs.src_rank = self.collectiveArgs.dst_ranks[idx]
+                    self.collectiveArgs.dst_rank = self.collectiveArgs.dst_ranks[idx]
                     p2pReqs.append(
                         self.backendFuncs.P2POp(
-                            opType="send",
                             collectiveArgs=self.collectiveArgs,
-                            peer=self.collectiveArgs.dst_ranks[idx],
                             tag=w,
                         )
                     )
+                    self.collectiveArgs.collective = "recv"
                     p2pReqs.append(
                         self.backendFuncs.P2POp(
-                            opType="recv",
                             collectiveArgs=self.collectiveArgs,
-                            peer=self.collectiveArgs.dst_ranks[idx],
                             tag=w + self.collectiveArgs.window,
                         )
                     )
@@ -757,19 +757,19 @@ class commsCollBench(paramCommsBench):
                     idx = self.collectiveArgs.dst_ranks.index(
                         self.collectiveArgs.global_rank
                     )
+                    self.collectiveArgs.src_rank = self.collectiveArgs.src_ranks[idx]
+                    self.collectiveArgs.dst_rank = self.collectiveArgs.src_ranks[idx]
+                    self.collectiveArgs.collective = "recv"
                     p2pReqs.append(
                         self.backendFuncs.P2POp(
-                            opType="recv",
                             collectiveArgs=self.collectiveArgs,
-                            peer=self.collectiveArgs.src_ranks[idx],
                             tag=w,
                         )
                     )
+                    self.collectiveArgs.collective = "send"
                     p2pReqs.append(
                         self.backendFuncs.P2POp(
-                            opType="send",
                             collectiveArgs=self.collectiveArgs,
-                            peer=self.collectiveArgs.src_ranks[idx],
                             tag=w + self.collectiveArgs.window,
                         )
                     )

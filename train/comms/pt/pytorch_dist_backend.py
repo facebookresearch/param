@@ -504,10 +504,10 @@ class PyTorchDistBackend(backendFunctions):
             tag=tag,
         )
 
-    def isend(self, collectiveArgs, dst_rank, retFlag=False, tag=0):
+    def isend(self, collectiveArgs, retFlag=False, tag=0):
         retObj = dist.isend(
             tensor=collectiveArgs.ipTensor,
-            dst=dst_rank,
+            dst=collectiveArgs.dst_rank,
             group=self.get_collective_group(collectiveArgs),
             tag=tag,
         )
@@ -517,10 +517,10 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
-    def irecv(self, collectiveArgs, src_rank, retFlag=False, tag=0):
+    def irecv(self, collectiveArgs, retFlag=False, tag=0):
         retObj = dist.irecv(
             tensor=collectiveArgs.opTensor,
-            src=src_rank,
+            src=collectiveArgs.src_rank,
             group=self.get_collective_group(collectiveArgs),
             tag=tag,
         )
@@ -530,15 +530,17 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
-    def P2POp(self, opType, collectiveArgs, peer, tag=0):
-        if opType == "send":
+    def P2POp(self, collectiveArgs, retFlag=False, tag=0):
+        if collectiveArgs.collective == "send":
             op = dist.isend
             tensor = collectiveArgs.ipTensor
-        elif opType == "recv":
+            peer = collectiveArgs.dst_rank
+        elif collectiveArgs.collective == "recv":
             op = dist.irecv
             tensor = collectiveArgs.opTensor
+            peer = collectiveArgs.src_rank
         else:
-            raise RuntimeError(f"Unknown operation type {opType}")
+            raise RuntimeError(f"Unknown operation type {collectiveArgs.collective}")
 
         return dist.P2POp(
             op=op,
@@ -928,6 +930,7 @@ class PyTorchDistBackend(backendFunctions):
         self.collectiveFunc["recv"] = self.recv
         self.collectiveFunc["isend"] = self.isend
         self.collectiveFunc["irecv"] = self.irecv
+        self.collectiveFunc["batch_isend_irecv"] = self.batch_isend_irecv
         self.collectiveFunc[
             "pt2pt"
         ] = self.noop  # dummy entry to support pt2pt benchmark
