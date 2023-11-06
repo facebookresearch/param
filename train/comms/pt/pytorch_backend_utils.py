@@ -38,6 +38,12 @@ pt2ptPatterns = [
     "one2one",
     "pairwise",
 ]
+supportedP2pOps = [
+    "send",
+    "recv",
+    "isend",
+    "irecv",
+]
 
 
 class collectiveArgsHolder:

@@ -26,6 +26,7 @@ from param_bench.train.comms.pt.comms_utils import (
     paramToCommName,
 )
 from param_bench.train.comms.pt.param_profile import paramProfile, paramTimer
+from param_bench.train.comms.pt.pytorch_backend_utils import supportedP2pOps
 
 try:
     from trainer_iteration_wrapper import setTrainingIteration  # @manual
@@ -583,7 +584,7 @@ class commsTraceReplayBench(paramCommsBench):
             (ipTensor, opTensor) if the current communication requires tensors, None otherwise.
         """
         commOp = paramToCommName(curComm.comms)
-        if commOp in ("wait", "barrier"):
+        if commOp in ("wait", "barrier", "batch_isend_irecv"):
             return ([], [])
 
         # prep process group for hard-coded traces
@@ -753,6 +754,15 @@ class commsTraceReplayBench(paramCommsBench):
                 # record collectiveID for wait ops
                 if curComm.req is not None:
                     self.collectiveArgs.collectiveId = curComm.req
+
+                # handle point-to-point separately
+                if collName in supportedP2pOps:
+                    self.collectiveArgs.src_rank = curComm.src_rank
+                    self.collectiveArgs.dst_rank = curComm.dst_rank
+
+                    if curComm.batch_p2p:
+                        self.collectiveArgs.collective = collName
+                        self.backendFuncs.P2POp(self.collectiveArgs, retFlag=True)
 
                 retObj = self.backendFuncs.collectiveFunc[collName](
                     self.collectiveArgs, retFlag=True
@@ -973,10 +983,21 @@ class commsTraceReplayBench(paramCommsBench):
                 collName = paramToCommName(curComm.comms)
                 (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
                 # Skip comm if the local process doesn't belong to the PG or encounter an unexpected collective
-                if collName not in self.allowList or groupRank == -1:
+                if (
+                    collName not in self.allowList
+                    or groupRank == -1
+                    or (
+                        collName in ("send", "isend")
+                        and curComm.src_rank != self.backendFuncs.get_global_rank()
+                    )
+                    or (
+                        collName in ("recv", "irecv")
+                        and curComm.dst_rank != self.backendFuncs.get_global_rank()
+                    )
+                ):
                     continue
 
-                if groupRank == 0:
+                if groupRank >= 0:
                     commDesc = f"{str(curComm.comms)}: NumElemsIn={curComm.inMsgSize}, NumElemsOut={curComm.outMsgSize}, Dtype={curComm.dtype}"
                     if curComm.comms == "all_to_allv":
                         commDesc += (
@@ -1535,6 +1556,7 @@ def extractCommsInfo(in_trace: List[Dict]) -> List[commsArgs]:
     for cnt, curComm in enumerate(in_trace):
         newComm = commsArgs()
         newComm.comms = paramToCommName(curComm["comms"].lower())
+        logger.info(f"in extract comms info of {newComm.comms}: {curComm}")
         newComm.id = cnt
         if "req" in curComm:
             newComm.req = curComm["req"]
@@ -1559,6 +1581,11 @@ def extractCommsInfo(in_trace: List[Dict]) -> List[commsArgs]:
         if newComm.comms in ("all_to_allv"):
             newComm.inSplit = curComm["in_split"]
             newComm.outSplit = curComm["out_split"]
+
+        if newComm.comms in supportedP2pOps:
+            newComm.src_rank = curComm["src_rank"]
+            newComm.dst_rank = curComm["dst_rank"]
+            newComm.batch_p2p = curComm["use_batch"]
 
         newCommsTrace.append(newComm)
 

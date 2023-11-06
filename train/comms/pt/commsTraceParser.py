@@ -7,6 +7,7 @@ from typing import List, Tuple
 
 from param_bench.train.comms.pt import comms_utils
 from param_bench.train.comms.pt.comms_utils import commsArgs
+from param_bench.train.comms.pt.pytorch_backend_utils import supportedP2pOps
 
 from param_bench.train.compute.python.tools.execution_trace import ExecutionTrace
 
@@ -91,7 +92,7 @@ def _parseBasicTraceComms(curComm, newComm: commsArgs) -> None:
     newComm.pgId = curComm.get("pg_id")
     newComm.groupRanks = curComm.get("global_ranks")
 
-    if newComm.comms not in ("wait", "barrier", "init"):
+    if newComm.comms not in ("wait", "barrier", "init", "batch_isend_irecv"):
         newComm.inMsgSize = curComm["in_msg_size"]
         newComm.outMsgSize = curComm["out_msg_size"]
         newComm.dtype = curComm["dtype"].lower()
@@ -99,6 +100,11 @@ def _parseBasicTraceComms(curComm, newComm: commsArgs) -> None:
     if newComm.comms == "all_to_allv":
         newComm.inSplit = curComm["in_split"]
         newComm.outSplit = curComm["out_split"]
+
+    if newComm.comms in supportedP2pOps:
+        newComm.src_rank = curComm["src_rank"]
+        newComm.dst_rank = curComm["dst_rank"]
+        newComm.batch_p2p = curComm["use_batch"]
 
 
 def _parseBasicTraceCompute(curComm, newComm: commsArgs) -> None:

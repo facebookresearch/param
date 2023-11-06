@@ -527,6 +527,8 @@ class commsArgs:
             worldSize: World size of current process group.
             markerStack: Current markers that this collective is a part of.
             root: Used to determine if collective is src or dst.
+            src_rank: Src rank of a send/recv op.
+            dst_rank: Dst rank of a send/recv op.
 
         GEMM Attributes:
             mm0_dim0: dimension 0 of the first matrix for replaying GEMM kernels
@@ -563,6 +565,9 @@ class commsArgs:
         self.worldSize = kwargs["worldSize"] if "worldSize" in kwargs else None
         self.markerStack = kwargs["markerStack"] if "markerStack" in kwargs else None
         self.root = kwargs["root"] if "root" in kwargs else None
+        self.src_rank = kwargs["src_rank"] if "src_rank" in kwargs else None
+        self.dst_rank = kwargs["dst_rank"] if "dst_rank" in kwargs else None
+        self.batch_p2p = kwargs["use_batch"] if "use_batch" in kwargs else None
 
         self.mm0_dim0 = kwargs["mm0_dim0"] if "mm0_dim0" in kwargs else None
         self.mm0_dim1 = kwargs["mm0_dim0"] if "mm0_dim1" in kwargs else None
