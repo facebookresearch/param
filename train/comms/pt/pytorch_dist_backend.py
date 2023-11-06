@@ -531,18 +531,18 @@ class PyTorchDistBackend(backendFunctions):
             return retObj
 
     def P2POp(self, collectiveArgs, retFlag=False, tag=0):
-        if collectiveArgs.collective == "send":
+        if collectiveArgs.collective in ("send", "isend"):
             op = dist.isend
             tensor = collectiveArgs.ipTensor
             peer = collectiveArgs.dst_rank
-        elif collectiveArgs.collective == "recv":
+        elif collectiveArgs.collective in ("recv", "irecv"):
             op = dist.irecv
             tensor = collectiveArgs.opTensor
             peer = collectiveArgs.src_rank
         else:
             raise RuntimeError(f"Unknown operation type {collectiveArgs.collective}")
 
-        return dist.P2POp(
+        req = dist.P2POp(
             op=op,
             tensor=tensor,
             peer=peer,
@@ -550,8 +550,15 @@ class PyTorchDistBackend(backendFunctions):
             tag=tag,
         )
 
-    def batch_isend_irecv(self, ops, collectiveArgs):
-        reqs = dist.batch_isend_irecv(ops)
+        collectiveArgs.p2pOps.append(req)
+
+        if retFlag:
+            return req
+
+    def batch_isend_irecv(self, collectiveArgs, retFlag=False):
+        reqs = dist.batch_isend_irecv(collectiveArgs.p2pOps)
+
+        collectiveArgs.p2pOps.clear()
 
         for req in reqs:
             collectiveArgs.waitObj.append(req)

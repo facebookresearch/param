@@ -60,6 +60,7 @@ class collectiveArgsHolder:
         self.pt2pt = ""
         self.src_rank = -1
         self.dst_rank = -1
+        self.p2pOps = []
 
         self.computeCount = -1
 
