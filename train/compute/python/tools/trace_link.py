@@ -531,7 +531,7 @@ def exact_match(
             + str(shift)
         )
     # Link kineto trace and execution trace
-    if len(kineto_et_ops) == len(et_nodes):
+    if len(kineto_et_ops) >= len(et_nodes):
         for i in range(len(et_nodes)):
             et_node = et_nodes[i]
 
