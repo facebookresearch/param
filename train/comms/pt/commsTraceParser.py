@@ -237,8 +237,8 @@ def _parseExecutionTrace(in_trace: ExecutionTrace, total_ranks: int) -> List:
     for node in in_trace.nodes.values():
         if node.name == "record_param_comms":
             shift = (
-                0 if len(node.inputs) == 7 else 1
-            )  # wait/barrier ops do not have an input tensor (len=6), shift index one over
+                0 if len(node.inputs) == 8 else 1
+            )  # wait/barrier ops do not have an input tensor (len=7), shift index one over
             newComm = commsArgs()
             newComm.id = node.id
             newComm.comms = comms_utils.paramToCommName(
