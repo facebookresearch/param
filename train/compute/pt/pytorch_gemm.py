@@ -139,7 +139,7 @@ def run(args, dataset):
         )
 
 
-if __name__ == "__main__":
+def main() -> None:
 
     import argparse
 
@@ -160,3 +160,7 @@ if __name__ == "__main__":
 
     d = [(args.msize, args.nsize, args.ksize)]
     run(args, d)
+
+
+if __name__ == "__main__":
+    main()  # pragma: no cover

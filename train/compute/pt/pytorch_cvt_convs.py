@@ -214,7 +214,7 @@ def run(layer_type, input_shape, kwargs, device, warmups, steps, forward_only):
     return global_elap, global_bytes, global_flops
 
 
-if __name__ == "__main__":
+def main() -> None:
 
     import argparse
 
@@ -411,3 +411,7 @@ if __name__ == "__main__":
         }
         print(benchmark_metrics)
         print("")
+
+
+if __name__ == "__main__":
+    main()  # pragma: no cover

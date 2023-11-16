@@ -8,7 +8,8 @@ import pytorch_emb as kemb
 import pytorch_gemm as kgemm
 import pytorch_linear as klinear
 
-if __name__ == "__main__":
+
+def main() -> None:
 
     import argparse
 
@@ -107,3 +108,7 @@ if __name__ == "__main__":
                 ds.append((layers_size, batch_size))
 
             klinear.run(args, ds)
+
+
+if __name__ == "__main__":
+    main()  # pragma: no cover

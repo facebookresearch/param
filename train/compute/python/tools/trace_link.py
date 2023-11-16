@@ -345,7 +345,8 @@ def approximate_match(kineto_et_events, et_nodes):
     return et_enhanced_duration
 
 
-if __name__ == "__main__":
+def main() -> None:
+    global kineto_et_events
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -395,3 +396,7 @@ if __name__ == "__main__":
         logger.info(f"Enhanced execution trace dumped to {et_plus_file}")
 
         write_dictionary_to_json_file(et_plus_file, et)
+
+
+if __name__ == "__main__":
+    main()  # pragma: no cover

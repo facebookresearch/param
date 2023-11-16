@@ -285,7 +285,7 @@ def run(args, dataset):
         )
 
 
-if __name__ == "__main__":
+def main() -> None:
 
     import argparse
 
@@ -323,3 +323,7 @@ if __name__ == "__main__":
 
     d = [(layer_num, input_size, hidden_size, output_size, batch_size)]
     run(args, d)
+
+
+if __name__ == "__main__":
+    main()  # pragma: no cover
