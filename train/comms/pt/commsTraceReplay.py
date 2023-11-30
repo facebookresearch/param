@@ -567,6 +567,39 @@ class commsTraceReplayBench(paramCommsBench):
 
         return (self.backendFuncs.get_group_rank(group), groupDesc)
 
+    def hashEtCommsOp(self, commsOp: commsArgs) -> int:
+        """
+        Hash the current collective communication into a unique integer for tensors reuse
+
+        """
+        op = None
+        if commsOp.comms in supportedP2pOps:
+            op = (
+                commsOp.comms,
+                commsOp.src_rank,
+                commsOp.dst_rank,
+                commsOp.inMsgSize,
+                commsOp.outMsgSize,
+            )
+        elif commsOp.inSplit or commsOp.outSplit:
+            op = (
+                commsOp.comms,
+                commsOp.pgId,
+                commsOp.inMsgSize,
+                commsOp.outMsgSize,
+                commsOp.inSplit,
+                commsOp.outSplit,
+            )
+        else:
+            op = (
+                commsOp.comms,
+                commsOp.pgId,
+                commsOp.inMsgSize,
+                commsOp.outMsgSize,
+            )
+
+        return hash(op)
+
     def prepComms(
         self,
         curComm: commsArgs,
@@ -648,19 +681,17 @@ class commsTraceReplayBench(paramCommsBench):
         # This avoid regenerating sizes such as in _prep_all_gather_base
         commsParams.size_from_trace = True
         commsParams.dtype = self.dtypeMap[curComm.dtype]
-        if not curComm.id:
-            return super().prepComm(curComm, commsParams)
-
-        if regenerateTensors:
+        if not curComm.id or regenerateTensors:
             return super().prepComm(curComm, commsParams)
         else:
-            if curComm.id in self.et_to_tensors:
+            commsOpHash = self.hashEtCommsOp(curComm)
+            if commsOpHash in self.et_to_tensors:
                 # Allocate input/output tensors if first time replay, otherwise the previous ones.
                 super().prepComm(curComm, commsParams, False)
-                (ipTensor, opTensor) = self.et_to_tensors[curComm.id]
+                (ipTensor, opTensor) = self.et_to_tensors[commsOpHash]
             else:
                 (ipTensor, opTensor) = super().prepComm(curComm, commsParams, True)
-                self.et_to_tensors[curComm.id] = (ipTensor, opTensor)
+                self.et_to_tensors[commsOpHash] = (ipTensor, opTensor)
         return (ipTensor, opTensor)
 
     def commRebalance(self, curComm: commsArgs) -> None:
