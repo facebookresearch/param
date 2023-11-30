@@ -488,18 +488,18 @@ class PyTorchDistBackend(backendFunctions):
             else:
                 self.recv(collectiveArgs, collectiveArgs.srcOrDst)
 
-    def send(self, collectiveArgs, dst_rank, retFlag=False, tag=0):
+    def send(self, collectiveArgs, retFlag=False, tag=0):
         dist.send(
             tensor=collectiveArgs.ipTensor,
-            dst=dst_rank,
+            dst=collectiveArgs.dst_rank,
             group=self.get_collective_group(collectiveArgs),
             tag=tag,
         )
 
-    def recv(self, collectiveArgs, src_rank, retFlag=False, tag=0):
+    def recv(self, collectiveArgs, retFlag=False, tag=0):
         dist.recv(
             tensor=collectiveArgs.opTensor,
-            src=src_rank,
+            src=collectiveArgs.src_rank,
             group=self.get_collective_group(collectiveArgs),
             tag=tag,
         )

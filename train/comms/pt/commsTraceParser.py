@@ -291,6 +291,16 @@ def _parseExecutionTrace(
                     inMsgType
                 ]  # 1st value of input_types is the data type for the tensors
 
+            if newComm.comms in supportedP2pOps:
+                if "send" in newComm.comms:
+                    newComm.src_rank = target_rank
+                    local_dst_rank = node.inputs[3 - shift]
+                    newComm.dst_rank = newComm.groupRanks[local_dst_rank]
+                if "recv" in newComm.comms:
+                    local_src_rank = node.inputs[3 - shift]
+                    newComm.src_rank = newComm.groupRanks[local_src_rank]
+                    newComm.dst_rank = target_rank
+
             if newComm.comms == "all_to_allv":
                 # 6th value of inputs is in_split, split evenly if not provided
                 if not newComm.worldSize:

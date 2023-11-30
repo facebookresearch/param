@@ -1003,6 +1003,8 @@ class commsTraceReplayBench(paramCommsBench):
                         commDesc += (
                             f", InSplit={curComm.inSplit}, OutSplit={curComm.outSplit}"
                         )
+                    if curComm.comms in supportedP2pOps:
+                        commDesc += f", Src_Rank={curComm.src_rank}, Dst_Rank={curComm.dst_rank}"
                     logger.info(
                         f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc}"
                     )
