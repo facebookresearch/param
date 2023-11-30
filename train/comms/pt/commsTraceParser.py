@@ -301,6 +301,10 @@ def _parseExecutionTrace(
                     newComm.src_rank = newComm.groupRanks[local_src_rank]
                     newComm.dst_rank = target_rank
 
+            if newComm.comms == "broadcast":
+                newComm.root = newComm.groupRanks[0]
+                newComm.srcOrDst = newComm.groupRanks[0]
+
             if newComm.comms == "all_to_allv":
                 # 6th value of inputs is in_split, split evenly if not provided
                 if not newComm.worldSize:

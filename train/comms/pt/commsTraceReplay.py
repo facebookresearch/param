@@ -795,6 +795,9 @@ class commsTraceReplayBench(paramCommsBench):
                         self.collectiveArgs.collective = collName
                         self.backendFuncs.P2POp(self.collectiveArgs, retFlag=True)
 
+                if collName in ["broadcast"]:
+                    self.collectiveArgs.srcOrDst = curComm.srcOrDst
+
                 retObj = self.backendFuncs.collectiveFunc[collName](
                     self.collectiveArgs, retFlag=True
                 )
