@@ -45,7 +45,9 @@ def parseTrace(
     if trace_type == "basic":  # Basic Trace
         parsed_trace = _parseBasicTrace(in_trace)
     elif trace_type == "et":  # Execution Trace (e.g. PyTorch ET, Chakra)
-        parsed_trace = _parseExecutionTrace(ExecutionTrace(in_trace), total_ranks)
+        parsed_trace = _parseExecutionTrace(
+            ExecutionTrace(in_trace), target_rank, total_ranks
+        )
     elif trace_type == "kineto":  # Kineto Unitrace
         parsed_trace = _parseKinetoUnitrace(in_trace, target_rank)
     else:
@@ -207,7 +209,9 @@ def _getTensorInfoFromPyTorchETEntry(
     return msg_size, dtype
 
 
-def _parseExecutionTrace(in_trace: ExecutionTrace, total_ranks: int) -> List:
+def _parseExecutionTrace(
+    in_trace: ExecutionTrace, target_rank: int, total_ranks: int
+) -> List:
     """
     Convert the Execution Trace comms metadata to the common trace format for replay.
 
@@ -215,22 +219,37 @@ def _parseExecutionTrace(in_trace: ExecutionTrace, total_ranks: int) -> List:
 
     initOps = []
     newCommsTrace = []
-    backendIdToGlobalRanks = {}
     backendIdToPgid = {}
-    commsPerbackendId = {}
+    pgRanksMap = {}
+    groupCnt = -1
 
     # Parse PG info from ET
     for node in in_trace.nodes.values():
         if "process_group:init" in node.name:
             pgJson = node.inputs[0]
-            pgObj = json.loads(pgJson)
+            try:
+                pgObj = json.loads(pgJson)
+            except json.decoder.JSONDecodeError:  # skip if pg_config_info is truncated
+                break
+
             for pg in pgObj:
-                pgId = pg["pg_name"] if "pg_name" in pg else pg["pg_id"]
                 backendId = pg["backend_id"]
                 ranks = pg["ranks"]
-                backendIdToGlobalRanks[backendId] = [int(rank) for rank in ranks.keys()]
+                if isinstance(ranks, list):
+                    pgId = int(pg["pg_name"])
+                    groupCnt = pg["group_count"]
+                    pgRanksMap[pgId] = (
+                        ranks
+                        if len(ranks) > 0
+                        else list(range(pg["group_size"]))
+                        # rank list is empty when all ranks are in a pg
+                    )
+                elif isinstance(
+                    ranks, dict
+                ):  # TODO for legacy traces: remove once all ET use the most recent pg
+                    pgId = pg["pg_id"]
+                    pgRanksMap[pgId] = [int(rank) for rank in ranks.keys()]
                 backendIdToPgid[backendId] = pgId
-                commsPerbackendId[backendId] = 0
             break  # only one process_group init node per trace
 
     # Parse comms nodes
@@ -253,12 +272,11 @@ def _parseExecutionTrace(in_trace: ExecutionTrace, total_ranks: int) -> List:
             backendId = node.inputs[
                 2 - shift
             ]  # 3rd value of inputs is the backend id of the collective
-            if backendId in backendIdToGlobalRanks:
+            if backendId in backendIdToPgid:
                 # Assign pg_id info for PGs that were created.
                 newComm.pgId = backendIdToPgid[backendId]
-                newComm.groupRanks = backendIdToGlobalRanks[backendId]
+                newComm.groupRanks = pgRanksMap[newComm.pgId]
                 newComm.worldSize = len(newComm.groupRanks)
-                commsPerbackendId[backendId] += 1
 
             if newComm.comms not in ("wait", "barrier"):
                 (
@@ -292,19 +310,33 @@ def _parseExecutionTrace(in_trace: ExecutionTrace, total_ranks: int) -> List:
                     * newComm.worldSize
                 )
             newCommsTrace.append(newComm)
-    newCommsTrace.sort(key=lambda x: x.req)
 
     # Build init node
     initOps = []
-    for backend_id, global_ranks in backendIdToGlobalRanks.items():
-        if commsPerbackendId[backend_id] == 0:
-            continue
-        newComm = commsArgs()
-        newComm.comms = "init"
-        newComm.pgId = backendIdToPgid[backend_id]
-        newComm.req = -1
-        newComm.groupRanks = global_ranks
-        newComm.worldSize = len(global_ranks)
-        initOps.append(newComm)
+    if groupCnt < 0:
+        # old format: To be removed
+        for pgId, ranks in pgRanksMap.items():
+            newComm = create_pg_init_node(pgId, ranks, len(ranks))
+            initOps.append(newComm)
+    else:
+        for pgId in range(groupCnt):
+            if pgId in pgRanksMap:
+                ranks = pgRanksMap[pgId]
+            else:
+                # create a dummy pg that the current rank is not part of
+                ranks = [0] if target_rank != 0 else [1]
+
+            newComm = create_pg_init_node(pgId, ranks, len(ranks))
+            initOps.append(newComm)
 
     return initOps + newCommsTrace
+
+
+def create_pg_init_node(pg_id: int, ranks: List[int], world_size: int):
+    newComm = commsArgs()
+    newComm.comms = "init"
+    newComm.pgId = pg_id
+    newComm.req = -1
+    newComm.groupRanks = ranks
+    newComm.worldSize = world_size
+    return newComm

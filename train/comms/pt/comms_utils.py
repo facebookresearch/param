@@ -426,6 +426,7 @@ def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
         "allgather": "all_gather",
         "allgatherbase": "all_gather_base",
         "reducescatter": "reduce_scatter",
+        "reducescatterbase": "reduce_scatter_base",
         "recvanysource": "recv",
     }
 
