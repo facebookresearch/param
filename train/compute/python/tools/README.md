@@ -28,7 +28,7 @@ $ python -m param_bench.train.compute.python.pytorch.run_benchmark -c train/comp
 
 After collecting the trace, replay it with the following command. Set the warm-up iteration count to at least 1 to exclude tensor transfer time to GPUs.
 ```bash
-$ python -m param_bench.train.compute.python.tools.et_replay --input <trace_path> --warmup-iter 1 --iter 1 --compute --profile-replay
+$ python -m param_bench.train.compute.python.tools.et_replay --input <trace_path> --warmup-iter 10 --iter 50 --compute --profile-replay
 ```
 
 > Note: When analyzing performance values from et_replay, refer to the collected Kineto traces rather than the execution time reported by et_replay. Kineto traces are only collected when --profile-replay is provided.
