@@ -243,7 +243,7 @@ class ExgrReplayManager:
                     exit(1)
                 else:
                     et, self.trace_file = read_remote_trace(
-                        f"{self.args.trace_path}/rank-{self.comms_env_params['global_rank']}"
+                        f"{self.args.trace_path}/rank-{self.comms_env_params['global_rank']}.json"
                     )
                     self.et = ExecutionTrace(json.load(et))
             else:
