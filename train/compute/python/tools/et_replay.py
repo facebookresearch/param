@@ -1331,6 +1331,20 @@ class ExgrReplayManager:
 
         prev_iter = self.numWarmupIters
         if self.profile_replay:
+            try:
+                from aiplatform.monitoring.unitrace.upload_manifold import (
+                    export_trace_func,
+                )
+
+                rank = self.comms_env_params["local_rank"]
+                on_trace_ready = export_trace_func(
+                    "/tmp",
+                    worker_name=f"rank-{rank}",
+                    bucket_name="hpc_traces",
+                    zoomer_request_callsite="hpc",
+                )
+            except ImportError:
+                on_trace_ready = trace_handler
             with torch.profiler.profile(
                 activities=[
                     torch.profiler.ProfilerActivity.CPU,
@@ -1340,7 +1354,7 @@ class ExgrReplayManager:
                     wait=0, warmup=self.numWarmupIters, active=self.numIters
                 ),
                 record_shapes=True,
-                on_trace_ready=trace_handler,
+                on_trace_ready=on_trace_ready,
             ) as prof:
                 for iter in range(self.numWarmupIters + self.numIters):
                     if self.et_profile:
