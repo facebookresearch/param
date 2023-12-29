@@ -1173,6 +1173,7 @@ class commsCollBench(paramCommsBench):
         if commsParams.collective in (
             "all_to_all",
             "all_to_allv",
+            "all_to_all_single",
             "reduce_scatter",
             "reduce_scatter_v",
             "reduce_scatter_base",
@@ -1318,7 +1319,11 @@ class commsCollBench(paramCommsBench):
             )
         else:
             # convernt to # of elements per rank
-            if commsParams.collective_pair in ("all_to_all", "all_to_allv"):
+            if commsParams.collective_pair in (
+                "all_to_all",
+                "all_to_allv",
+                "all_to_all_single",
+            ):
                 results["numElements_pair"] = int(
                     results["numElements_pair"] // self.backendFuncs.get_world_size()
                 )

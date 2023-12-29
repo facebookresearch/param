@@ -284,6 +284,25 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return work
 
+    def all_to_all_single(self, collectiveArgs, retFlag=False, pair=False):
+        # does not support quantization
+        if collectiveArgs.all2all_qcomm:
+            logger.warn("all_to_all_single does not support quantization")
+            return
+
+        work = dist.all_to_all_single(
+            collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
+            collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
+            group=collectiveArgs.group,
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(work)
+
+        if retFlag:
+            return work
+
     def all_gather(self, collectiveArgs, retFlag=False, pair=False):
         if self.use_ext_dist:
             retObj = collectiveArgs.group.all_gather(

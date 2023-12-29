@@ -132,6 +132,7 @@ class backendFunctions(ABC):
     def __init__(self) -> None:
         self.tcp_store = None
         self.collectiveFunc = {
+            "all_to_all_single": self.all_to_all_single,
             "all_to_all": self.all_to_all,
             "all_to_allv": self.all_to_allv,
             "all_reduce": self.all_reduce,
@@ -173,6 +174,7 @@ class backendFunctions(ABC):
                 )
             busBW = algBW * mulFactor
         elif collective in (
+            "all_to_all_single",
             "all_to_all",
             "all_to_allv",
             "gather",
