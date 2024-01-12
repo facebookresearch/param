@@ -614,15 +614,19 @@ class commsCollBench(paramCommsBench):
                 idx = self.collectiveArgs.src_ranks.index(
                     self.collectiveArgs.global_rank
                 )
-                self.backendFuncs.send(
-                    self.collectiveArgs, self.collectiveArgs.dst_ranks[idx]
+                self.collectiveArgs.dst_rank = self.collectiveArgs.dst_ranks[idx]
+                self.collectiveArgs.collective = "send"
+                self.backendFuncs.P2POp(
+                    collectiveArgs=self.collectiveArgs,
                 )
             elif self.collectiveArgs.global_rank in self.collectiveArgs.dst_ranks:
                 idx = self.collectiveArgs.dst_ranks.index(
                     self.collectiveArgs.global_rank
                 )
-                self.backendFuncs.recv(
-                    self.collectiveArgs, self.collectiveArgs.src_ranks[idx]
+                self.collectiveArgs.src_rank = self.collectiveArgs.src_ranks[idx]
+                self.collectiveArgs.collective = "recv"
+                self.backendFuncs.P2POp(
+                    collectiveArgs=self.collectiveArgs,
                 )
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             pingLatencyNS.append(
@@ -646,21 +650,29 @@ class commsCollBench(paramCommsBench):
                 idx = self.collectiveArgs.src_ranks.index(
                     self.collectiveArgs.global_rank
                 )
-                self.backendFuncs.send(
-                    self.collectiveArgs, self.collectiveArgs.dst_ranks[idx]
+                self.collectiveArgs.dst_rank = self.collectiveArgs.dst_ranks[idx]
+                self.collectiveArgs.collective = "send"
+                self.backendFuncs.P2POp(
+                    collectiveArgs=self.collectiveArgs,
                 )
-                self.backendFuncs.recv(
-                    self.collectiveArgs, self.collectiveArgs.dst_ranks[idx]
+                self.collectiveArgs.src_rank = self.collectiveArgs.dst_ranks[idx]
+                self.collectiveArgs.collective = "recv"
+                self.backendFuncs.P2POp(
+                    collectiveArgs=self.collectiveArgs,
                 )
             elif self.collectiveArgs.global_rank in self.collectiveArgs.dst_ranks:
                 idx = self.collectiveArgs.dst_ranks.index(
                     self.collectiveArgs.global_rank
                 )
-                self.backendFuncs.recv(
-                    self.collectiveArgs, self.collectiveArgs.src_ranks[idx]
+                self.collectiveArgs.src_rank = self.collectiveArgs.src_ranks[idx]
+                self.collectiveArgs.collective = "recv"
+                self.backendFuncs.P2POp(
+                    collectiveArgs=self.collectiveArgs,
                 )
-                self.backendFuncs.send(
-                    self.collectiveArgs, self.collectiveArgs.src_ranks[idx]
+                self.collectiveArgs.dst_rank = self.collectiveArgs.src_ranks[idx]
+                self.collectiveArgs.collective = "send"
+                self.backendFuncs.P2POp(
+                    collectiveArgs=self.collectiveArgs,
                 )
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
             pingPongLatencyNS.append(
