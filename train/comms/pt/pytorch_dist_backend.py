@@ -830,6 +830,12 @@ class PyTorchDistBackend(backendFunctions):
         else:
             return dist.get_rank(group)
 
+    def get_group_size(self, group):
+        if self.use_ext_dist:
+            return dist.get_world_size(group.my_pg)
+        else:
+            return dist.get_world_size(group)
+
     def get_device(self):
         """get current device: 'cpu' or 'cuda'"""
         # TODO: this is a temporary workaround; need to unify the type of commsParams in comms and dlrm
@@ -1068,6 +1074,11 @@ class PyTorchDistBackend(backendFunctions):
                 pg = self.get_default_group()
             else:
                 pg = self.get_new_pg(group_ranks=group_ranks, backend=backend)
+                global_rank = self.get_global_rank()
+                if global_rank in group_ranks:
+                    logger.info(
+                        f"initialize_groups: Rank {global_rank} creates new group pg_id {pg_id} {pg} with {group_ranks}"
+                    )
             groups[pg_id] = pg
 
         # if additional groups are created, overwrite the default groups list

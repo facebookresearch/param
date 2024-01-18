@@ -239,6 +239,12 @@ class commsCollBench(paramCommsBench):
             choices=supportedCollectives,
         )  # collective op to pair with the other collective, --collective should be non-empty
         parser.add_argument(
+            "--multi-comms",
+            type=int,
+            default=1,
+            help="Set to enable multi-comm group mode, cannot use together with --overlap-pair-pgs mode. Default 1 comm group",
+        )
+        parser.add_argument(
             "--overlap-pair-pgs",
             action="store_true",
             default=False,
@@ -430,6 +436,9 @@ class commsCollBench(paramCommsBench):
             ):
                 logger.error(f"wrong dst_ranks ({args.dst_ranks})")
                 comms_utils.gracefulExit()
+        if args.multi_comms > 1 and args.overlap_pair_pgs:
+            logger.error("--overlap-pair-pgs is not supported with --multi-comms > 1")
+            comms_utils.gracefulExit()
 
     def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None, dcheck=False):
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
@@ -490,10 +499,14 @@ class commsCollBench(paramCommsBench):
                 is_blocking=False,
             ):
                 for _ in range(self.collectiveArgs.numCollPerIter):
-                    self.collectiveArgs.group = self.backendFuncs.get_next_group()
+                    self.collectiveArgs.group = self.collectiveArgs.groups[
+                        self.collectiveArgs.pgId
+                    ]
                     comm_fn(self.collectiveArgs)
                     # post another collecitve if on comms pair mode, otherwise it's noop
-                    self.collectiveArgs.group = self.backendFuncs.get_next_group()
+                    self.collectiveArgs.group = self.collectiveArgs.groups[
+                        self.collectiveArgs.pairPgId
+                    ]
                     comm_fn_pair(self.collectiveArgs, pair=enable_comms_pair)
 
             if enable_compute:
@@ -565,6 +578,8 @@ class commsCollBench(paramCommsBench):
                 self.collectiveArgs,
             )
 
+        # reset group to sync among all global ranks
+        self.collectiveArgs.group = self.backendFuncs.get_default_group()
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_end")
 
         results = {
@@ -861,7 +876,13 @@ class commsCollBench(paramCommsBench):
         groups = self.backendFuncs.get_groups()
         num_pgs = len(groups)
 
+        # global world size
         self.comm_size = world_size
+
+        # Update world_size with the number of ranks in the group.
+        myGroup = groups[self.collectiveArgs.pgId]
+        world_size = self.backendFuncs.get_group_size(myGroup)
+
         self.global_rank = global_rank
         self.report = (
             True
@@ -902,6 +923,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.src_ranks = commsParams.src_ranks
         self.collectiveArgs.dst_ranks = commsParams.dst_ranks
         self.collectiveArgs.pair = commsParams.pair
+        self.collectiveArgs.pairPgId = 1 if commsParams.overlap_pair_pgs else 0
         self.collectiveArgs.collective_pair = commsParams.collective_pair
         self.collectiveArgs.pt2pt = commsParams.pt2pt
         self.collectiveArgs.window = commsParams.window
@@ -973,7 +995,8 @@ class commsCollBench(paramCommsBench):
         self.backendFuncs.sync_barrier(self.collectiveArgs)
         if self.report:
             print(
-                f"[Rank {global_rank:>3}] allSizes: {allSizes} local_rank: {local_rank} element_size: {commsParams.element_size}"
+                f"[Rank {global_rank:>3}] allSizes: {allSizes} element_size: {commsParams.element_size}"
+                + f" local_rank: {local_rank}, num_pg {self.collectiveArgs.num_pgs}, groupSize {self.collectiveArgs.world_size}"
             )
         if self.collectiveArgs.collective == "pt2pt":
             self.checkPt2PtRanks()
@@ -1173,6 +1196,7 @@ class commsCollBench(paramCommsBench):
 
     def reportBenchTime(
         self,
+        collectiveArgs,
         commsParams,
         results,
         tensorList,
@@ -1194,7 +1218,7 @@ class commsCollBench(paramCommsBench):
             "all_gather_base",
         ):
             results["numElements"] = int(
-                results["numElements"] // self.backendFuncs.get_world_size()
+                results["numElements"] // collectiveArgs.world_size
             )
 
         perf_metrics = None
@@ -1657,12 +1681,13 @@ class commsCollBench(paramCommsBench):
                     self.collectiveArgs, commsParams, computeUsElapsedList
                 )
 
-            # gather and report performance to stdout
+            # gather results from all global ranks and report performance to stdout
             tensorList = self.gatherBenchTime(
                 self.collectiveArgs, commsParams, timeUsElapsedList
             )
             if self.report:
                 self.reportBenchTime(
+                    self.collectiveArgs,
                     commsParams,
                     results,
                     tensorList,
@@ -1680,6 +1705,53 @@ class commsCollBench(paramCommsBench):
 
         # wait rank 0 reports results to avoid other ranks mess up the output
         self.backendFuncs.sync_barrier(self.collectiveArgs, "benchtime")
+
+    def genMultiCommGroups(self, commsParams: commsParamsHolderBase):
+        self.collectiveArgs.pgId = 0  # default group id
+        commsParams.groupRanks = {}
+        if commsParams.multi_comms > 1:
+            world_size = self.backendFuncs.get_world_size()
+            local_size = self.backendFuncs.get_local_size()
+            local_rank = self.backendFuncs.get_local_rank()
+            nnode = world_size // local_size
+            group_local_size = local_size // commsParams.multi_comms
+            global_rank = self.backendFuncs.get_global_rank()
+
+            self.collectiveArgs.pgId = local_rank // group_local_size
+
+            # create multi_comms number of groups
+            for pgId in range(0, commsParams.multi_comms):
+                commsParams.groupRanks[pgId] = []
+
+                # feed subset of global ranks for each group
+                for node in range(0, nnode):
+                    for group_local_rank in range(0, group_local_size):
+                        commsParams.groupRanks[pgId].append(
+                            node * local_size
+                            + pgId * group_local_size
+                            + group_local_rank
+                        )
+
+                logger.info(
+                    f"PARAM COMMS Rank {global_rank} created group {pgId} with ranks {commsParams.groupRanks[pgId]}"
+                )
+            # FIXME: how to proper generate groupRanks before initializing backend?
+            self.backendFuncs.commsParams.groupRanks = commsParams.groupRanks
+            self.backendFuncs.initialize_groups(commsParams.backend)
+
+        elif commsParams.pair and commsParams.overlap_pair_pgs:
+            # create two communicators each including all ranks
+            commsParams.num_pgs = 2
+            world_size = self.backendFuncs.get_world_size()
+            for pgId in commsParams.num_pgs:
+                commsParams.groupRanks[pgId] = []
+                for rank in range(0, world_size):
+                    commsParams.groupRanks[pgId].append(rank)
+                logger.info(
+                    f"PARAM COMMS Rank {global_rank} created group {pgId} with ranks {commsParams.groupRanks[pgId]}"
+                )
+            self.backendFuncs.commsParams.groupRanks = commsParams.groupRanks
+            self.backendFuncs.initialize_groups(commsParams.backend)
 
     def initBackend(
         self, bootstrap_info: bootstrap_info_holder, commsParams: commsParamsHolderBase
@@ -1786,8 +1858,9 @@ def main():
             args, bootstrap_info, element_size, collBenchObj.benchTime
         )
 
-        if args.pair and args.overlap_pair_pgs:
-            commsParams.num_pgs = 2
+        # FIXME: this should be outside dtype loop
+        collBenchObj.genMultiCommGroups(commsParams)
+
         collBenchObj.runBench(commsParams)
 
 

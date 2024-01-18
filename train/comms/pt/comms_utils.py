@@ -861,7 +861,9 @@ class commsParamsHolder(commsParamsHolderBase):
         self.bag_size = args.bag_size
 
         self.pair = args.pair
+        self.overlap_pair_pgs = args.overlap_pair_pgs
         self.collective_pair = args.collective_pair
+        self.multi_comms = args.multi_comms
 
         self.pt2pt = args.pt2pt
         self.window = args.window
