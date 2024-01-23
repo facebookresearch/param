@@ -917,7 +917,9 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.src_ranks = commsParams.src_ranks
         self.collectiveArgs.dst_ranks = commsParams.dst_ranks
         self.collectiveArgs.pair = commsParams.pair
-        self.collectiveArgs.pairPgId = 1 if commsParams.overlap_pair_pgs else 0
+        self.collectiveArgs.pairPgId = (
+            1 if commsParams.overlap_pair_pgs else self.collectiveArgs.pgId
+        )
         self.collectiveArgs.collective_pair = commsParams.collective_pair
         self.collectiveArgs.pt2pt = commsParams.pt2pt
         self.collectiveArgs.window = commsParams.window
@@ -1702,6 +1704,7 @@ class commsCollBench(paramCommsBench):
 
     def genMultiCommGroups(self, commsParams: commsParamsHolderBase):
         self.collectiveArgs.pgId = 0  # default group id
+        global_rank = self.backendFuncs.get_global_rank()
         commsParams.groupRanks = {}
         if commsParams.multi_comms > 1:
             world_size = self.backendFuncs.get_world_size()
@@ -1709,7 +1712,6 @@ class commsCollBench(paramCommsBench):
             local_rank = self.backendFuncs.get_local_rank()
             nnode = world_size // local_size
             group_local_size = local_size // commsParams.multi_comms
-            global_rank = self.backendFuncs.get_global_rank()
 
             self.collectiveArgs.pgId = local_rank // group_local_size
 
@@ -1737,7 +1739,7 @@ class commsCollBench(paramCommsBench):
             # create two communicators each including all ranks
             commsParams.num_pgs = 2
             world_size = self.backendFuncs.get_world_size()
-            for pgId in commsParams.num_pgs:
+            for pgId in range(0, commsParams.num_pgs):
                 commsParams.groupRanks[pgId] = []
                 for rank in range(0, world_size):
                     commsParams.groupRanks[pgId].append(rank)
