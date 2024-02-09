@@ -279,7 +279,14 @@ def read_comms_env_vars() -> Dict[str, int]:
         comms_env_params: Dict containing env var name as key and int for that env var as value.
     """
     world_size = env2int(
-        ["MV2_COMM_WORLD_SIZE", "OMPI_COMM_WORLD_SIZE", "PMI_SIZE", "WORLD_SIZE"], -1
+        [
+             "MV2_COMM_WORLD_SIZE",
+             "OMPI_COMM_WORLD_SIZE",
+             "PMI_SIZE",
+             "WORLD_SIZE",
+             "SLURM_NTASKS"
+        ],
+        -1
     )
 
     local_size = env2int(
@@ -288,12 +295,20 @@ def read_comms_env_vars() -> Dict[str, int]:
             "MPI_LOCALNRANKS",
             "MV2_COMM_WORLD_LOCAL_SIZE",
             "OMPI_COMM_WORLD_LOCAL_SIZE",
+            "SLURM_NTASKS_PER_NODE"
         ],
         -1,
     )
 
     global_rank = env2int(
-        ["MV2_COMM_WORLD_RANK", "OMPI_COMM_WORLD_RANK", "PMI_RANK", "RANK"], -1
+        [
+             "MV2_COMM_WORLD_RANK",
+             "OMPI_COMM_WORLD_RANK",
+             "PMI_RANK",
+             "RANK",
+             "SLURM_PROCID"
+        ],
+        -1
     )
 
     local_rank = env2int(
@@ -302,6 +317,7 @@ def read_comms_env_vars() -> Dict[str, int]:
             "MPI_LOCALRANKID",
             "MV2_COMM_WORLD_LOCAL_RANK",
             "OMPI_COMM_WORLD_LOCAL_RANK",
+            "SLURM_LOCALID"
         ],
         -1,
     )
