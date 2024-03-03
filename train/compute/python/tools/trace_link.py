@@ -555,9 +555,9 @@ def exact_match(
                     and "Ev Idx" in kineto_et_op["args"]
                     and kineto_et_op["args"]["Ev Idx"] in kineto_gpu_ops_per_cpu_op_idx
                 ):
-                    et_gpu_ops_per_cpu_op_id[
-                        et_node.id
-                    ] = kineto_gpu_ops_per_cpu_op_idx[kineto_et_op["args"]["Ev Idx"]]
+                    et_gpu_ops_per_cpu_op_id[et_node.id] = (
+                        kineto_gpu_ops_per_cpu_op_idx[kineto_et_op["args"]["Ev Idx"]]
+                    )
             else:  # If op_exists wasn't able to find the corresponding op.
                 logger.info(
                     "Op mismatch between kineto and execution trace ( et size = "

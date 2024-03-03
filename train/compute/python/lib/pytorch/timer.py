@@ -2,6 +2,7 @@ import time
 
 import torch
 
+
 # Timer
 class Timer:
     def __init__(self, device: str):

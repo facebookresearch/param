@@ -171,7 +171,7 @@ class OpBuildExecutor(BuildExecutor):
             self.build_input_config, "input", self.run_options["device"]
         )
 
-        for (input_id, input_config) in generate_input_config:
+        for input_id, input_config in generate_input_config:
             config_run_id = f"{self.op_config.name}|{self.config_build_id}|{input_id}"
             transition_state = self.get_transition_state(config_run_id)
             if transition_state == BenchmarkTransitionState.SKIP:

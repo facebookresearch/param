@@ -26,6 +26,7 @@ PROFILER_STEP_ANNOTATION: str = "ProfilerStep"
 EXECUTION_TRACE_PROCESS_ANNOTATION = "[pytorch|profiler|execution_trace|process]"
 EXECUTION_TRACE_THREAD_ANNOTATION = "[pytorch|profiler|execution_trace|thread]"
 
+
 # OPERATOR: nodes actually does something
 # LABEL: nodes used as markers
 class NodeType(Enum):
@@ -259,7 +260,7 @@ class Node:
 
     def get_tensors(self, param_list: Iterable) -> List[tuple]:
         tensors = []
-        for (type, input, shape) in param_list:
+        for type, input, shape in param_list:
             if type.startswith("Tensor"):
                 tensors.append((type, tuple(input), shape))
             # GenericList could have tensor elements
@@ -315,7 +316,7 @@ class ExecutionTrace:
                 self.proc_group[pid][tid] = id
 
             # build tensor reference table
-            for (t_type, t_id, shape) in input_tensors:
+            for t_type, t_id, shape in input_tensors:
                 if type(t_id) != tuple:
                     t_id = tuple(t_id)
                 if t_id not in self.tensors:
@@ -324,7 +325,7 @@ class ExecutionTrace:
                 self.tensors[t_id].add_sink(id)
                 self.tensors[t_id].add_shape(shape)
 
-            for (t_type, t_id, shape) in output_tensors:
+            for t_type, t_id, shape in output_tensors:
                 if type(t_id) != tuple:
                     t_id = tuple(t_id)
                 if t_id not in self.tensors:
@@ -457,7 +458,7 @@ class ExecutionTrace:
                 param["value"] = []
                 type_list = type[12:-1].split(",")
                 param_list = zip(value, type_list, shape)
-                for (v, t, s) in param_list:
+                for v, t, s in param_list:
                     param["value"].append(get_param(v, t, s))
                 param["size"] = len(value)
             elif type in SCALAR_TYPES or type == "device":
@@ -471,7 +472,7 @@ class ExecutionTrace:
         def convert_inputs(inputs, types, shapes):
             input_info = zip(inputs, types, shapes)
             params = []
-            for (value, type, shape) in input_info:
+            for value, type, shape in input_info:
                 params.append(get_param(value, type, shape))
             return params
 
@@ -534,10 +535,10 @@ class ExecutionTrace:
         for id, n in self.nodes.items():
             dot.add_edge(pydot.Edge(n.parent_id, id, arrowhead="odiamond"))
             edges += 1
-            for (_, input, _) in n.get_input_tensors():
+            for _, input, _ in n.get_input_tensors():
                 dot.add_edge(pydot.Edge(input, id))
                 edges += 1
-            for (_, output, _) in n.get_output_tensors():
+            for _, output, _ in n.get_output_tensors():
                 dot.add_edge(pydot.Edge(id, output))
                 edges += 1
         dot.write_svg(file_name, prog="dot")
@@ -613,7 +614,7 @@ class ExecutionTrace:
         print("         scope:", n.scope)
         print("      children:", [child.id for child in n.children])
         print("        inputs:")
-        for (dtype, tensor_id, shape) in n.get_input_tensors():
+        for dtype, tensor_id, shape in n.get_input_tensors():
             prev_id = 0
             for s in self.tensors[tensor_id].sources:
                 if s < id and s > prev_id:
@@ -628,7 +629,7 @@ class ExecutionTrace:
                 print(f"{' '*16}{tensor_id}: {dtype} {shape}")
 
         print("       outputs:")
-        for (dtype, tensor_id, shape) in n.get_output_tensors():
+        for dtype, tensor_id, shape in n.get_output_tensors():
             next_id = sys.maxsize
             for s in self.tensors[tensor_id].sinks:
                 # We could have cycle (s == id), where an op read and write to
@@ -742,9 +743,9 @@ class GraphML:
             self._create_tensor_node(tensor)
         for id, n in execution_trace.nodes.items():
             self._create_edge(n.parent_id, id)
-            for (_, input, _) in n.get_input_tensors():
+            for _, input, _ in n.get_input_tensors():
                 self._create_edge(input, id)
-            for (_, output, _) in n.get_output_tensors():
+            for _, output, _ in n.get_output_tensors():
                 self._create_edge(id, output)
 
         logging.info(f"nodes: {len(self.nodes)}")
@@ -944,8 +945,10 @@ def main():
 
     execution_json: str = args.input
 
-    with gzip.open(execution_json, "rb") if execution_json.endswith("gz") else open(
-        execution_json, "r"
+    with (
+        gzip.open(execution_json, "rb")
+        if execution_json.endswith("gz")
+        else open(execution_json, "r")
     ) as execution_data:
         execution_data: TextIO
         execution_trace: ExecutionTrace = ExecutionTrace(json.load(execution_data))

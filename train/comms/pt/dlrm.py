@@ -29,6 +29,7 @@ from torch.autograd import Function
 
 logger = logging.getLogger(__name__)
 
+
 # All-to-all classes/functions
 class All2AllInfo:
     pass

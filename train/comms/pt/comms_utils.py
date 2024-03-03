@@ -957,16 +957,16 @@ class paramCommsBench(ABC):
 
         if isinstance(tensor, list):
             # for allgather and incast, it's a list of tensors:
-            for (rank, t) in enumerate(tensor):
+            for rank, t in enumerate(tensor):
                 if not torch.all(torch.eq(t, expRes)):
-                    for (index, val) in enumerate(t):
+                    for index, val in enumerate(t):
                         if val != expRes:
                             raise ValueError(
                                 f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{rank}][{index}] = {t[index]}, expected {expRes}\n {tensor}"
                             )
         else:
             if not torch.all(torch.eq(tensor, expRes)):
-                for (index, val) in enumerate(tensor):
+                for index, val in enumerate(tensor):
                     if val != expRes:
                         raise ValueError(
                             f"[{curSize}-bytes {commsParams.collective}] Wrong value at [{index}] = {tensor[index]}, expected {expRes}\n {tensor}"
@@ -1490,17 +1490,21 @@ class paramCommsBench(ABC):
         parser.add_argument(
             "--master-ip",
             type=str,
-            default=default_master_ip
-            if "MASTER_ADDR" not in os.environ
-            else os.environ["MASTER_ADDR"],
+            default=(
+                default_master_ip
+                if "MASTER_ADDR" not in os.environ
+                else os.environ["MASTER_ADDR"]
+            ),
             help="The master-IP to coordinate for Pytorch distributed stack",
         )  # The master-IP to coordinate.
         parser.add_argument(
             "--master-port",
             type=str,
-            default=default_master_port
-            if "MASTER_PORT" not in os.environ
-            else os.environ["MASTER_PORT"],
+            default=(
+                default_master_port
+                if "MASTER_PORT" not in os.environ
+                else os.environ["MASTER_PORT"]
+            ),
             help="The master-port to coordinate for Pytorch distributed stack",
         )  # The master-port to coordinate.
         parser.add_argument(
@@ -1731,12 +1735,16 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
                 (
                     num_embeddings,
                     collectiveArgs.emb_dim,
-                    EmbeddingLocation.DEVICE
-                    if commsParams.device == "cuda"
-                    else EmbeddingLocation.HOST,
-                    ComputeDevice.CUDA
-                    if commsParams.device == "cuda"
-                    else ComputeDevice.CPU,
+                    (
+                        EmbeddingLocation.DEVICE
+                        if commsParams.device == "cuda"
+                        else EmbeddingLocation.HOST
+                    ),
+                    (
+                        ComputeDevice.CUDA
+                        if commsParams.device == "cuda"
+                        else ComputeDevice.CPU
+                    ),
                 )
                 for _ in range(num_emb_tables_batched)
             ],
