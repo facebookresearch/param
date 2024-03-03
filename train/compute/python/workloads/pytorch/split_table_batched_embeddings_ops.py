@@ -236,6 +236,7 @@ register_data_generator(
     SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator,
 )
 
+
 # Callable ops are ops can be called in the form of op(*args, **kwargs)
 class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
     def __init__(

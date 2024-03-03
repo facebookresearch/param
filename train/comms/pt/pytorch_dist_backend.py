@@ -256,24 +256,32 @@ class PyTorchDistBackend(backendFunctions):
             work = collectiveArgs.group.alltoall_single(
                 collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
                 collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
-                collectiveArgs.opTensor_split
-                if not pair
-                else collectiveArgs.opTensor_split_pair,
-                collectiveArgs.ipTensor_split
-                if not pair
-                else collectiveArgs.ipTensor_split_pair,
+                (
+                    collectiveArgs.opTensor_split
+                    if not pair
+                    else collectiveArgs.opTensor_split_pair
+                ),
+                (
+                    collectiveArgs.ipTensor_split
+                    if not pair
+                    else collectiveArgs.ipTensor_split_pair
+                ),
                 async_op=collectiveArgs.asyncOp,
             )
         else:
             work = dist.all_to_all_single(
                 collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
                 collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
-                collectiveArgs.opTensor_split
-                if not pair
-                else collectiveArgs.opTensor_split_pair,
-                collectiveArgs.ipTensor_split
-                if not pair
-                else collectiveArgs.ipTensor_split_pair,
+                (
+                    collectiveArgs.opTensor_split
+                    if not pair
+                    else collectiveArgs.opTensor_split_pair
+                ),
+                (
+                    collectiveArgs.ipTensor_split
+                    if not pair
+                    else collectiveArgs.ipTensor_split_pair
+                ),
                 group=collectiveArgs.group,
                 async_op=collectiveArgs.asyncOp,
             )
@@ -306,22 +314,30 @@ class PyTorchDistBackend(backendFunctions):
     def all_gather(self, collectiveArgs, retFlag=False, pair=False):
         if self.use_ext_dist:
             retObj = collectiveArgs.group.all_gather(
-                tensor_list=collectiveArgs.opTensor
-                if not pair
-                else collectiveArgs.opTensor_pair,
-                tensor=collectiveArgs.ipTensor
-                if not pair
-                else collectiveArgs.ipTensor_pair,
+                tensor_list=(
+                    collectiveArgs.opTensor
+                    if not pair
+                    else collectiveArgs.opTensor_pair
+                ),
+                tensor=(
+                    collectiveArgs.ipTensor
+                    if not pair
+                    else collectiveArgs.ipTensor_pair
+                ),
                 async_op=collectiveArgs.asyncOp,
             )
         else:
             retObj = dist.all_gather(
-                tensor_list=collectiveArgs.opTensor
-                if not pair
-                else collectiveArgs.opTensor_pair,
-                tensor=collectiveArgs.ipTensor
-                if not pair
-                else collectiveArgs.ipTensor_pair,
+                tensor_list=(
+                    collectiveArgs.opTensor
+                    if not pair
+                    else collectiveArgs.opTensor_pair
+                ),
+                tensor=(
+                    collectiveArgs.ipTensor
+                    if not pair
+                    else collectiveArgs.ipTensor_pair
+                ),
                 group=collectiveArgs.group,
                 async_op=collectiveArgs.asyncOp,
             )  # synchronicity is maintained in runColl
@@ -341,9 +357,11 @@ class PyTorchDistBackend(backendFunctions):
             opTensors = collectiveArgs.opTensor
 
         retObj = dist.gather(
-            gather_list=opTensors
-            if (collectiveArgs.global_rank == collectiveArgs.srcOrDst)
-            else None,
+            gather_list=(
+                opTensors
+                if (collectiveArgs.global_rank == collectiveArgs.srcOrDst)
+                else None
+            ),
             tensor=ipTensors,
             dst=collectiveArgs.srcOrDst,
             group=self.get_collective_group(collectiveArgs),
@@ -366,9 +384,11 @@ class PyTorchDistBackend(backendFunctions):
 
         retObj = dist.scatter(
             tensor=opTensors,
-            scatter_list=ipTensors
-            if (collectiveArgs.global_rank == collectiveArgs.srcOrDst)
-            else None,
+            scatter_list=(
+                ipTensors
+                if (collectiveArgs.global_rank == collectiveArgs.srcOrDst)
+                else None
+            ),
             src=collectiveArgs.srcOrDst,
             group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
@@ -477,9 +497,9 @@ class PyTorchDistBackend(backendFunctions):
 
     def broadcast(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist.broadcast(
-            tensor=collectiveArgs.opTensor
-            if not pair
-            else collectiveArgs.opTensor_pair,
+            tensor=(
+                collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair
+            ),
             src=collectiveArgs.srcOrDst,
             group=self.get_collective_group(collectiveArgs),
             async_op=collectiveArgs.asyncOp,
@@ -953,9 +973,7 @@ class PyTorchDistBackend(backendFunctions):
         self.bootstrap_info = bootstrap_info
         self.commsParams = commsParams
         # extra ops supported (Note these are not supported in pytorch_tpu_backend.py)
-        self.collectiveFunc[
-            "wait"
-        ] = (
+        self.collectiveFunc["wait"] = (
             self.wait
         )  # a noop until all collective operations can post a wait operation or specify async vs not async
         self.collectiveFunc["send"] = self.send
@@ -963,9 +981,9 @@ class PyTorchDistBackend(backendFunctions):
         self.collectiveFunc["isend"] = self.isend
         self.collectiveFunc["irecv"] = self.irecv
         self.collectiveFunc["batch_isend_irecv"] = self.batch_isend_irecv
-        self.collectiveFunc[
-            "pt2pt"
-        ] = self.noop  # dummy entry to support pt2pt benchmark
+        self.collectiveFunc["pt2pt"] = (
+            self.noop
+        )  # dummy entry to support pt2pt benchmark
 
         self.computeFunc["emb_lookup"] = self.emb_lookup
         self.computeFunc["add"] = self.add

@@ -12,7 +12,6 @@ import torch.nn as nn
 
 
 class XlaEmbeddingBag(nn.Module):
-
     """
     nn.EmbeddingBag is not lowered just yet to xla.
     This performs the same functionality, in an xla compatible, sub-optimal way.

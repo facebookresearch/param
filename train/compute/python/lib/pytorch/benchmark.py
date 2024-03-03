@@ -96,7 +96,7 @@ class Benchmark:
             build_input_config = {}
             if generate_build_config:
                 logger.debug("generating build config")
-                for (build_id, build_config) in generate_build_config:
+                for build_id, build_config in generate_build_config:
                     logger.info(f"build_id: [{build_id}]")
                     logger.debug(f"build_config: {build_config}")
                     op_run_id = f"{op_run_id}|{build_id}"

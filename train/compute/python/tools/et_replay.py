@@ -431,9 +431,9 @@ class ExgrReplayManager:
             if t_id not in self.original_unique_tensors:
                 self.original_unique_tensors.add(t_id)
                 self.replay_unique_tensor_num += 1
-                self.tensors_mapping[
-                    (node_id, t_id, input)
-                ] = self.replay_unique_tensor_num
+                self.tensors_mapping[(node_id, t_id, input)] = (
+                    self.replay_unique_tensor_num
+                )
                 self.replay_tensors_shapes[
                     self.tensors_mapping[(node_id, t_id, input)]
                 ] = shape
@@ -441,9 +441,9 @@ class ExgrReplayManager:
                     (self.tensors_mapping[(node_id, t_id, input)], tuple(shape))
                 )
                 if self.tensor_with_device:
-                    self.tensor_device[
-                        self.tensors_mapping[(node_id, t_id, input)]
-                    ] = device
+                    self.tensor_device[self.tensors_mapping[(node_id, t_id, input)]] = (
+                        device
+                    )
                 if node_name == "aten::to":
                     self.special_tensors.add(
                         self.tensors_mapping[(node_id, t_id, input)]
@@ -451,7 +451,7 @@ class ExgrReplayManager:
                 return
 
             # If we saw this tensor before but with a different shape, add it as a unique tensor.
-            for (relay_t_id, pre_shape) in self.tensor_shapes[t_id]:
+            for relay_t_id, pre_shape in self.tensor_shapes[t_id]:
                 if tuple(shape) == pre_shape:
                     self.tensors_mapping[(node_id, t_id, input)] = relay_t_id
                     if node_name == "aten::to":
@@ -460,16 +460,16 @@ class ExgrReplayManager:
 
             self.replay_unique_tensor_num += 1
             self.tensors_mapping[(node_id, t_id, input)] = self.replay_unique_tensor_num
-            self.replay_tensors_shapes[
-                self.tensors_mapping[(node_id, t_id, input)]
-            ] = shape
+            self.replay_tensors_shapes[self.tensors_mapping[(node_id, t_id, input)]] = (
+                shape
+            )
             self.tensor_shapes[t_id].add(
                 (self.tensors_mapping[(node_id, t_id, input)], tuple(shape))
             )
             if self.tensor_with_device:
-                self.tensor_device[
-                    self.tensors_mapping[(node_id, t_id, input)]
-                ] = device
+                self.tensor_device[self.tensors_mapping[(node_id, t_id, input)]] = (
+                    device
+                )
             if node_name == "aten::to":
                 self.special_tensors.add(self.tensors_mapping[(node_id, t_id, input)])
 

@@ -12,9 +12,9 @@ class TestSplitTableBatchedEmbeddingOps(unittest.TestCase):
     def test_build_op(self):
         op_name = "SplitTableBatchedEmbeddingBagsCodegen"
         op_info = create_op_info()
-        op_info[
-            "input_data_generator"
-        ] = "SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator"
+        op_info["input_data_generator"] = (
+            "SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator"
+        )
         op_config = make_op_config(op_name, op_info, "cpu")
         op_config.op.cleanup()
 

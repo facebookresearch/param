@@ -413,23 +413,29 @@ def build_torchscript_func(n):
         # Input arguments
         ", ".join(["%{}: {}".format(idx, t) for idx, t in enumerate(input_types)]),
         # Op
-        "%output: {}".format(output_types[0] if output_count == 1 else "NoneType")
-        if output_count <= 1
-        else ", ".join(
-            [
-                "%{}: {}".format(idx + input_count, t)
-                for idx, t in enumerate(output_types)
-            ]
+        (
+            "%output: {}".format(output_types[0] if output_count == 1 else "NoneType")
+            if output_count <= 1
+            else ", ".join(
+                [
+                    "%{}: {}".format(idx + input_count, t)
+                    for idx, t in enumerate(output_types)
+                ]
+            )
         ),
         n.name,
         ", ".join(["%{}".format(idx) for idx in range(input_count)]),
         # Tuple handling
-        "%output : ({}) = prim::TupleConstruct({})".format(
-            ", ".join(["Tensor" for _ in range(output_count)]),
-            ", ".join(["%{}".format(idx + input_count) for idx in range(output_count)]),
-        )
-        if output_count > 1
-        else "",
+        (
+            "%output : ({}) = prim::TupleConstruct({})".format(
+                ", ".join(["Tensor" for _ in range(output_count)]),
+                ", ".join(
+                    ["%{}".format(idx + input_count) for idx in range(output_count)]
+                ),
+            )
+            if output_count > 1
+            else ""
+        ),
         # Return
         "return (%output)" if output_count >= 1 else "",
     )

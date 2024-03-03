@@ -337,7 +337,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         logger.info("\n{} Message size Statistcs {}".format("=" * 20, "=" * 20))
 
-        for (name, collMsgs) in self.collInMsgBytes.items():
+        for name, collMsgs in self.collInMsgBytes.items():
             # input tensor
             msgSizes = np.array(collMsgs)
             print("-" * 50)
@@ -388,7 +388,7 @@ class commsTraceReplayBench(paramCommsBench):
                     "-" * 50,
                 )
             )
-            for (coll, lats) in self.collLat.items():
+            for coll, lats in self.collLat.items():
                 if len(lats) == 0:
                     continue
 

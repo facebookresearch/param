@@ -28,9 +28,9 @@ def main():
 
     op_name = "SplitTableBatchedEmbeddingBagsCodegen"
     op_info = create_op_info()
-    op_info[
-        "input_data_generator"
-    ] = "SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator"
+    op_info["input_data_generator"] = (
+        "SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator"
+    )
     print(op_info)
 
     # Get the default benchmark options.
