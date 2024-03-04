@@ -10,6 +10,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import argparse
 import json
 import logging
+import os
 import time
 from os import path
 from typing import Dict, List, Set
@@ -288,12 +289,15 @@ class commsTraceReplayBench(paramCommsBench):
         """
         super().checkArgs(args)
 
-        if (not self.use_remote_trace) and (
-            path.exists(self.trace_file) is False
-            or path.isfile(self.trace_file) is False
+        if (
+            not self.use_remote_trace
+            and not os.path.isfile(self.trace_file)
+            and not os.path.isdir(self.trace_file)
         ):
+
             raise ValueError(
-                f"Trace file {self.trace_file} does not exist or is not a file! Please specify the correct path by using --trace-path."
+                f"The specified trace path '{self.trace_file}' is neither a "
+                "file nor a directory. Please provide a valid path."
             )
             comms_utils.gracefulExit()
         if args.disable_parallel_read and not args.use_one_trace:
@@ -1499,10 +1503,13 @@ class commsTraceReplayBench(paramCommsBench):
 
     def readRawTrace(self, remotePath: str, rank: int) -> None:
         """
-        Read trace file from remote server or local disk.
+        Read trace file from remote server or local disk, supporting both
+        directory (with rank-specific files) and single file modes.
 
         Args:
             remotePath: Path to read from remotely if use_remote_trace is enabled.
+            rank: The rank of the current process, used to select the correct
+                 trace file in directory mode.
         Returns:
             None
         """
@@ -1532,8 +1539,16 @@ class commsTraceReplayBench(paramCommsBench):
 
             self.comms_trace = json.load(raw_comms_trace)
         else:
-            # read the json file from local disk
-            with open(self.trace_file) as f:
+            # Check if self.trace_file is a directory or a single file
+            if os.path.isdir(self.trace_file):
+                # Directory mode: construct the path to the rank-specific file
+                trace_file_path = f"{self.trace_file}/{rank}.json"
+            else:
+                # Single file mode: use self.trace_file as is
+                trace_file_path = self.trace_file
+
+            # Read the json file from local disk
+            with open(trace_file_path) as f:
                 self.comms_trace = json.load(f)
 
     def readTrace(self, remotePath: str, rank: int) -> None:
