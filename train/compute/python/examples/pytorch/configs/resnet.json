@@ -1,0 +1,27 @@
+{
+  "pytorch.model.resnet": {
+    "build_data_generator": "PyTorch:DefaultDataGenerator",
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "build": [],
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "float",
+                "shape": [
+                  128,
+                  3,
+                  224,
+                  224
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
