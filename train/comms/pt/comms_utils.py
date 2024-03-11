@@ -1781,7 +1781,7 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
     # If we are doing backward pass, then we need to initialize Lookup tensor using forward pass and grad output
     if collectiveArgs.direction == "backward":
         for i in range(len(collectiveArgs.embRequests)):
-            (indices, offsets, weights) = collectiveArgs.embRequests[i]
+            (indices, offsets, weights) = collectiveArgs.embRequests[i].unpack_3()
             collectiveArgs.LookupOut = collectiveArgs.emb[i].forward(
                 indices,
                 offsets,
