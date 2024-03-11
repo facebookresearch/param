@@ -65,7 +65,7 @@ def main():
     )
     parser.add_argument(
         "--cuda-l2-cache",
-        default="off",
+        default="on",
         nargs="?",
         choices=["on", "off"],
         help="Set option for CUDA GPU L2 cache between iterations in discrete mode.",

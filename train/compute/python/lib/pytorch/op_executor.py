@@ -1,4 +1,4 @@
-from ..init_helper import get_logger, load_package
+from ..init_helper import get_logger
 
 logger = get_logger()
 
@@ -12,12 +12,13 @@ from .config_util import ExecutionPass, OpExecutionMode
 from .timer import Timer
 
 
-def _clear_cache():
+def _clear_cache(device: torch.device):
     L2_cache_size = {
         70: 6 * 1024 * 1024,  # V100 6 MB L2 cache
         80: 40 * 1024 * 1024,  # A100 40 MB L2 cache
+        90: 50 * 1024 * 1024,  # H100 50 MB L2 cache
     }
-    capability = torch.cuda.get_device_capability()
+    capability = torch.cuda.get_device_capability(device)
     device_type = capability[0] * 10 + capability[1]
 
     with record_function("[param|clear_cache]"):
@@ -37,6 +38,10 @@ class OpExecutor:
         self.name = name
         self.op = op
         self.device = run_options["device"]
+        if self.device is None:
+            self.torch_device = None
+        else:
+            self.torch_device = torch.device(self.device)
         self.iteration = run_options["iteration"]
         self.warmup = run_options["warmup"]
         self.cuda_l2_cache = run_options["cuda_l2_cache"]
@@ -86,9 +91,9 @@ class OpExecutor:
         # flush cache
         if self.use_cuda:
             if not self.cuda_l2_cache:
-                _clear_cache()
+                _clear_cache(self.torch_device)
             # Reset to measure peak memory usage
-            torch.cuda.reset_peak_memory_stats()
+            torch.cuda.reset_peak_memory_stats(self.torch_device)
 
         with record_function(label_str):
             timer.start()
@@ -99,7 +104,9 @@ class OpExecutor:
             if self.use_cuda:
                 torch.cuda.nvtx.range_end(op_run_id_range)
                 # Memory size in MB
-                gpu_memory = torch.cuda.max_memory_allocated() / (1048576)
+                gpu_memory = torch.cuda.max_memory_allocated(self.torch_device) / (
+                    1048576
+                )
 
         # Return result in milliseconds.
         return timer.elapsed_time_ms(), gpu_memory
@@ -193,8 +200,8 @@ class OpExecutor:
         tag_range = torch.cuda.nvtx.range_start(f"[param|{tag}]")
 
         fw_events = create_cuda_start_stop_events(count)
-        torch.cuda.reset_peak_memory_stats()
-        torch.cuda.synchronize()
+        torch.cuda.reset_peak_memory_stats(self.torch_device)
+        torch.cuda.synchronize(self.torch_device)
         label_str = self._label_template_fwd.format(tag=tag, op_run_id=op_run_id)
         with record_function(label_str):
             op_run_id_range = torch.cuda.nvtx.range_start(label_str)
@@ -203,22 +210,24 @@ class OpExecutor:
                 self.op.forward(*args, **kwargs)
                 fw_events[i][1].record()
 
-            torch.cuda.synchronize()
+            torch.cuda.synchronize(self.torch_device)
             torch.cuda.nvtx.range_end(op_run_id_range)
 
         fw_time_records = compute_cuda_event_delta(fw_events)
-        fw_gpu_mem_records.append(torch.cuda.max_memory_allocated() / (1048576))
+        fw_gpu_mem_records.append(
+            torch.cuda.max_memory_allocated(self.torch_device) / (1048576)
+        )
 
         if self.pass_type == ExecutionPass.BACKWARD:
             self.op.create_grad()
 
             bw_events = create_cuda_start_stop_events(count)
-            torch.cuda.reset_peak_memory_stats()
+            torch.cuda.reset_peak_memory_stats(self.torch_device)
             label_str = self._label_template_fwd_bwd.format(
                 tag=tag, op_run_id=op_run_id
             )
             with record_function(label_str):
-                torch.cuda.synchronize()
+                torch.cuda.synchronize(self.torch_device)
                 op_run_id_range = torch.cuda.nvtx.range_start(label_str)
                 for i in range(count):
                     self.op.forward(*args, **kwargs)
@@ -226,10 +235,12 @@ class OpExecutor:
                     self.op.backward()
                     bw_events[i][1].record()
 
-                torch.cuda.synchronize()
+                torch.cuda.synchronize(self.torch_device)
                 torch.cuda.nvtx.range_end(op_run_id_range)
             bw_time_records = compute_cuda_event_delta(bw_events)
-            bw_gpu_mem_records.append(torch.cuda.max_memory_allocated() / (1048576))
+            bw_gpu_mem_records.append(
+                torch.cuda.max_memory_allocated(self.torch_device) / (1048576)
+            )
 
         torch.cuda.nvtx.range_end(tag_range)
 
@@ -257,7 +268,7 @@ class OpExecutor:
         fw_time = 0
         bw_time = 0
         # Always run forward.
-        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.reset_peak_memory_stats(self.torch_device)
         label_str = self._label_template_fwd.format(tag=tag, op_run_id=op_run_id)
         with record_function(label_str):
             timer = Timer(self.device)
@@ -270,11 +281,13 @@ class OpExecutor:
 
         fw_time = timer.elapsed_time_ms() / count
 
-        fw_gpu_mem_records.append(torch.cuda.max_memory_allocated() / (1048576))
+        fw_gpu_mem_records.append(
+            torch.cuda.max_memory_allocated(self.torch_device) / (1048576)
+        )
 
         if self.pass_type == ExecutionPass.BACKWARD:
             self.op.create_grad()
-            torch.cuda.reset_peak_memory_stats()
+            torch.cuda.reset_peak_memory_stats(self.torch_device)
             label_str = self._label_template_fwd_bwd.format(
                 tag=tag, op_run_id=op_run_id
             )
@@ -288,7 +301,9 @@ class OpExecutor:
                 torch.cuda.nvtx.range_end(op_run_id_range)
             # Subtract forward time to get backward time.
             bw_time = timer.elapsed_time_ms() / count - fw_time
-            bw_gpu_mem_records.append(torch.cuda.max_memory_allocated() / (1048576))
+            bw_gpu_mem_records.append(
+                torch.cuda.max_memory_allocated(self.torch_device) / (1048576)
+            )
 
         torch.cuda.nvtx.range_end(tag_range)
 

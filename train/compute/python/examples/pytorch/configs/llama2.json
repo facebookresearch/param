@@ -1,0 +1,151 @@
+{
+  "torch.mm": {
+    "input_data_generator": "PyTorch:DefaultDataGenerator",
+    "config": [
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  2048,
+                  4096
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  4096,
+                  4096
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  2048,
+                  4096
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  4096,
+                  4096
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  2048,
+                  4096
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  4096,
+                  4096
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  2048,
+                  4096
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  4096,
+                  2048
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  4096,
+                  11008
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  11008,
+                  11008
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "input": [
+          {
+            "args": [
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  11008,
+                  11008
+                ],
+                "type": "tensor"
+              },
+              {
+                "dtype": "bfloat16",
+                "shape": [
+                  11008,
+                  4096
+                ],
+                "type": "tensor"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
