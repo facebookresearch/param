@@ -7,17 +7,21 @@ import torch
 class Timer:
     def __init__(self, device: str):
         self.device: str = device
+        if self.device is None:
+            self.torch_device = None
+        else:
+            self.torch_device = torch.device(self.device)
         self.start_time: float = 0
         self.end_time: float = 0
 
     def start(self):
         if self.device.startswith("cuda"):
-            torch.cuda.synchronize()
+            torch.cuda.synchronize(self.torch_device)
         self.start_time = time.perf_counter()
 
     def stop(self):
         if self.device.startswith("cuda"):
-            torch.cuda.synchronize()
+            torch.cuda.synchronize(self.torch_device)
         self.end_time = time.perf_counter()
 
     # Return result in milliseconds.
