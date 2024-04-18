@@ -216,6 +216,9 @@ def _parseExecutionTrace(
     Convert the Execution Trace comms metadata to the common trace format for replay.
 
     """
+    # Execution Trace PG_ID types availability
+    ET_PG_NAME_TUPLE = True if in_trace.schema == "1.0.3-chakra.0.0.4" else False
+    ET_BACKENDID = True if in_trace.schema != "1.0.3-chakra.0.0.4" else False
 
     initOps = []
     newCommsTrace = []
@@ -233,23 +236,21 @@ def _parseExecutionTrace(
                 break
 
             for pg in pgObj:
-                backendId = pg["uid"] if "uid" in pg else pg["backend_id"]
+                if not pg["pg_name"].isdecimal():
+                    # TODO support local synchronization pg
+                    continue
+                pgId = int(pg["pg_name"])
                 ranks = pg["ranks"]
-                if isinstance(ranks, list):
-                    pgId = int(pg["pg_name"])
-                    groupCnt = pg["group_count"]
-                    pgRanksMap[pgId] = (
-                        ranks
-                        if len(ranks) > 0
-                        else list(range(pg["group_size"]))
-                        # rank list is empty when all ranks are in a pg
-                    )
-                elif isinstance(
-                    ranks, dict
-                ):  # TODO for legacy traces: remove once all ET use the most recent pg
-                    pgId = pg["pg_id"]
-                    pgRanksMap[pgId] = [int(rank) for rank in ranks.keys()]
-                backendIdToPgid[backendId] = pgId
+                groupCnt = pg["group_count"]
+                pgRanksMap[pgId] = (
+                    ranks
+                    if len(ranks) > 0
+                    else list(range(pg["group_size"]))
+                    # rank list is empty when all ranks are in a pg
+                )
+                if ET_BACKENDID:
+                    backendId = pg["uid"] if "uid" in pg else pg["backend_id"]
+                    backendIdToPgid[backendId] = pgId
             break  # only one process_group init node per trace
 
     # Parse comms nodes
@@ -269,12 +270,16 @@ def _parseExecutionTrace(
                 1 - shift
             ]  # 2nd value of inputs is the req id of the collective
 
-            backendId = node.inputs[
+            pgIdentifier = node.inputs[
                 2 - shift
-            ]  # 3rd value of inputs is the backend id of the collective
-            if backendId in backendIdToPgid:
-                # Assign pg_id info for PGs that were created.
-                newComm.pgId = backendIdToPgid[backendId]
+            ]  # 3rd value of inputs is the pg identifier of the collective
+            # Assign pg_id info for PGs that were created.
+            if ET_BACKENDID and pgIdentifier in backendIdToPgid:
+                newComm.pgId = backendIdToPgid[pgIdentifier]
+                newComm.groupRanks = pgRanksMap[newComm.pgId]
+                newComm.worldSize = len(newComm.groupRanks)
+            elif ET_PG_NAME_TUPLE and pgIdentifier[0].isdecimal():
+                newComm.pgId = int(pgIdentifier[0])
                 newComm.groupRanks = pgRanksMap[newComm.pgId]
                 newComm.worldSize = len(newComm.groupRanks)
 

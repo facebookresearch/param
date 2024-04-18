@@ -296,6 +296,8 @@ class ExecutionTrace:
         node_creation_func = {
             "1.0.1": ExecutionTrace._create_node_v1_0_1,
             "1.0.2-chakra.0.0.4": ExecutionTrace._create_node_v1_0_2_chakra_0_0_4,
+            # 1.0.3 expands pg name to <pg_name, pg_desc> so it use the same parser as 1.0.2
+            "1.0.3-chakra.0.0.4": ExecutionTrace._create_node_v1_0_2_chakra_0_0_4,
             # Add future versions here
         }
         create_node = node_creation_func.get(self.schema, None)
