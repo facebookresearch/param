@@ -350,6 +350,17 @@ class ExecutionTrace:
         # remove all dataloader ops
         self.remove_dataloader_ops()
 
+    def _versiontuple(self, v: str) -> Tuple[int]:
+        return tuple(map(int, (v.split("."))))
+
+    def schema_pytorch(self) -> Tuple[int]:
+        return self._versiontuple(self.schema.split("-")[0])
+
+    def schema_chakra(self) -> Tuple[int]:
+        if "-" not in self.schema:
+            return (0, 0, 0)
+        return self._versiontuple(self.schema.split("-")[1])
+
     @staticmethod
     def _read_attrs(node: Dict[str, Any]) -> Tuple:
         attr_types = {

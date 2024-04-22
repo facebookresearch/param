@@ -217,8 +217,8 @@ def _parseExecutionTrace(
 
     """
     # Execution Trace PG_ID types availability
-    ET_PG_NAME_TUPLE = True if in_trace.schema == "1.0.3-chakra.0.0.4" else False
-    ET_BACKENDID = True if in_trace.schema != "1.0.3-chakra.0.0.4" else False
+    ET_PG_NAME_TUPLE = in_trace.schema_pytorch() >= (1, 0, 3)
+    ET_BACKENDID = in_trace.schema_pytorch() < (1, 0, 3)
 
     initOps = []
     newCommsTrace = []
