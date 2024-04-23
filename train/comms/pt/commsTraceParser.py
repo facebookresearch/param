@@ -262,6 +262,12 @@ def _parseExecutionTrace(
             )  # wait/barrier ops do not have an input tensor (len=7), shift index one over
             newComm = commsArgs()
             newComm.id = node.id
+
+            if type(node.inputs[3]) == str:
+                shift = 1
+            else:
+                shift = 0
+
             newComm.comms = comms_utils.paramToCommName(
                 node.inputs[4 - shift].lower()
             )  # 5th value of inputs is colName
