@@ -23,6 +23,7 @@ tensorDtypeMap = {
     "Tensor(c10::Half)": "half",
     "Tensor(c10::BFloat16)": "bfloat16",
     "Tensor(unsigned char)": "char",
+    "Tensor(signed char)": "char",
 }
 
 
