@@ -59,6 +59,9 @@ LABEL_MARKERS = [
     "All2All_Pooled_Req",
     "All2All_Pooled_Wait",
     "c10d::",
+    "TorchDynamo Cache Lookup",
+    "CompiledFunction",
+    "Torch-Compiled Region",
 ]
 
 
@@ -136,6 +139,8 @@ class Node:
         output_types: List[str],
         output_shapes: List[Any],
         rf_id: Optional[int] = None,
+        kernel_backend: Optional[str] = None,
+        kernel_file: Optional[str] = None,
     ):
         self.name: str = name
         self.parent_id: int = parent_id
@@ -143,6 +148,8 @@ class Node:
         self.children: List[Node] = []
         self.id: int = id
         self.rf_id: Optional[int] = rf_id
+        self.kernel_backend: Optional[str] = kernel_backend
+        self.kernel_file: Optional[str] = kernel_file
         self.pid: int = pid
         self.tid: int = tid
         self.fw_tid: int = fw_tid
@@ -298,6 +305,7 @@ class ExecutionTrace:
             "1.0.2-chakra.0.0.4": ExecutionTrace._create_node_v1_0_2_chakra_0_0_4,
             # 1.0.3 expands pg name to <pg_name, pg_desc> so it use the same parser as 1.0.2
             "1.0.3-chakra.0.0.4": ExecutionTrace._create_node_v1_0_2_chakra_0_0_4,
+            "1.0.4-chakra.0.0.4": ExecutionTrace._create_node_v1_0_4_chakra_0_0_4,
             # Add future versions here
         }
         create_node = node_creation_func.get(self.schema, None)
@@ -371,6 +379,8 @@ class ExecutionTrace:
             "rf_id": int,
             "scope": int,
             "tid": int,
+            "kernel_backend": str,
+            "kernel_file": str,
         }
         attr_dict = {
             attr["name"]: attr_types[attr["name"]](attr["value"])
@@ -378,12 +388,9 @@ class ExecutionTrace:
             if attr["name"] in attr_types.keys()
         }
 
-        # Ensure all keys have values
-        if attr_dict.keys() != attr_types.keys():
-            raise ValueError(
-                "Not all keys in attr_dict have updated values. Node:" + str(node)
-            )
-        return tuple(attr_dict[key] for key in attr_types.keys())
+        return tuple(
+            attr_dict[key] for key in attr_types.keys() if key in attr_dict.keys()
+        )
 
     @staticmethod
     def _create_node_v1_0_1(pid, x: Dict[str, Any]) -> Node:
@@ -437,6 +444,42 @@ class ExecutionTrace:
             x["outputs"]["types"],
             x["outputs"]["shapes"],
             rf_id,
+        )
+
+    @staticmethod
+    def _create_node_v1_0_4_chakra_0_0_4(pid, x: Dict[str, Any]) -> Node:
+        (
+            fw_parent,
+            seq_id,
+            fw_tid,
+            op_schema,
+            rf_id,
+            scope,
+            tid,
+            kernel_backend,
+            kernel_file,
+        ) = ExecutionTrace._read_attrs(x)
+
+        return Node(
+            x["name"],
+            x["id"],
+            x["ctrl_deps"],
+            fw_parent,
+            seq_id,
+            pid,
+            tid,
+            fw_tid,
+            op_schema,
+            scope,
+            x["inputs"]["values"],
+            x["inputs"]["types"],
+            x["inputs"]["shapes"],
+            x["outputs"]["values"],
+            x["outputs"]["types"],
+            x["outputs"]["shapes"],
+            rf_id,
+            kernel_backend,
+            kernel_file,
         )
 
     def get_nodes(self, clean: bool = False):

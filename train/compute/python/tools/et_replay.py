@@ -3,6 +3,7 @@ import gc
 import json
 
 import logging
+import os
 import sys
 import time
 from collections import defaultdict
@@ -18,6 +19,7 @@ from param_bench.train.compute.python.lib.init_helper import load_modules
 from param_bench.train.compute.python.tools.et_replay_utils import (
     build_fbgemm_func,
     build_torchscript_func,
+    build_triton_func,
     fbgemm_input_args_indices,
     generate_fbgemm_tensors,
     generate_prefix,
@@ -45,6 +47,10 @@ from param_bench.train.compute.python.tools.execution_trace import (
 
 from param_bench.train.compute.python.tools.utility import trace_handler
 from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
+from torch._inductor.codecache import AsyncCompile, TritonFuture
+
+# grid and split_scan_grid are dynamically loaded
+from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid
 from torch.profiler import ExecutionTraceObserver
 
 
@@ -227,8 +233,6 @@ class ExgrReplayManager:
             self.dump_path += "benchmark.py"
         # Multiple traces.
         else:
-            import os
-
             print(f"{os.getpid()} is rank{self.comms_env_params['global_rank']}")
             self.cuda_id = self.comms_env_params["local_rank"]
             self.cuda = f"cuda:{self.comms_env_params['local_rank']}"
@@ -252,6 +256,14 @@ class ExgrReplayManager:
                     self.et = ExecutionTrace(json.load(f))
 
             self.dump_path += f"benchmark_{self.comms_env_params['global_rank']}.py"
+
+        # base_path is used to find the generated kernel files in the same directory of the trace file.
+        base_path, file_name = os.path.split(self.trace_file)
+        self.resource_dir = os.path.join(
+            base_path, os.path.splitext(file_name)[-2] + "_resources"
+        )
+        self.kernel_map = {}
+        self.async_compile = AsyncCompile()
 
         if self.cpu:
             self.device = torch.device("cpu")
@@ -364,6 +376,12 @@ class ExgrReplayManager:
         print("#Operators to execute: ", len(self.sorted_nodes))
         for node in self.sorted_nodes:
             anlayze_node(node)
+
+        # triton kernels are compiled in parallel, need to wait until
+        # all kernels are compiled.
+        self.async_compile.wait(globals())
+        del self.async_compile
+
         self.select_parallel_nodes()
 
     def select_parallel_nodes(self):
@@ -618,7 +636,22 @@ class ExgrReplayManager:
             assert self.fbgemm_backward_ops
             backward_op, forward_id = self.fbgemm_backward_ops.pop(-1)
             return backward_op, len(node.output_types)
-        func, output_count = build_torchscript_func(node)
+
+        if node.kernel_backend == "triton":
+            if node.kernel_file in self.kernel_map:
+                func = self.kernel_map[node.kernel_file]
+                # For a triton kernel, it is the caller's responsibility to allocate
+                # the output tensors, and pass them in as the input arguments.
+                # So the number of the output tensors is always 0
+                output_count = 0
+            else:
+                func, output_count = build_triton_func(
+                    node, self.resource_dir, self.async_compile, self.device
+                )
+                self.kernel_map[node.kernel_file] = func
+        else:
+            func, output_count = build_torchscript_func(node)
+
         if not func:
             self.actual_skip_nodes.append(node.name)
             self.actual_skip_nodes_cnt += 1
@@ -890,6 +923,9 @@ class ExgrReplayManager:
                 func, output_count = self.funcs[node.id]
                 if not func:
                     continue
+                if isinstance(func, TritonFuture):
+                    func = func.result()
+
                 func_str = f"funcs[{node.id}]"
                 inputs_str = _generate_inputs_str(node)
                 outputs_str = _generate_outputs_str(node, override=override)
@@ -1135,7 +1171,17 @@ class ExgrReplayManager:
         try:
             outputs = []
             if output_count == 0:
-                func(*inputs)
+                if node.kernel_backend == "triton":
+                    # remove the last comma
+                    grid_info = inputs[-2]
+                    index = grid_info.rfind(",")
+                    if index >= 0:
+                        grid_info = grid_info[:index] + grid_info[index + 1 :]
+                    exec(
+                        f"func.run(*inputs[:-2], grid={grid_info}, stream={inputs[-1]})"
+                    )
+                else:
+                    func(*inputs)
             else:
                 if output_count == 1:
                     tmp = (func(*inputs),)
