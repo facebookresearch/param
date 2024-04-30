@@ -1,3 +1,4 @@
+import os
 import re
 
 import torch
@@ -139,7 +140,6 @@ def skip_op(op):
                 and "fbgemm::split_embedding_codegen_lookup_" not in op.name
             )
         )
-        or ("fused" in op.name)
         or (
             op.name
             in [
@@ -451,6 +451,14 @@ def build_torchscript_func(n):
         print("TorchScript error: ", n.id, e, input_types, "\n", inputStr)
         return None, None
     return func, output_count
+
+
+def build_triton_func(n, resources_dir, async_compile, device):
+    with open(os.path.join(resources_dir, n.kernel_file), "r") as f:
+        code = f.read()
+
+    func = async_compile.triton(n.name, code, device_str=device)
+    return func, 0
 
 
 def generate_prefix(label, skip_nodes, et_input, cuda, compute_only, tf32, rows):
