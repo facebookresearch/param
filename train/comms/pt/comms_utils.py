@@ -799,6 +799,7 @@ class commsParamsHolderBase:
         self.enable_profiler = args.enable_profiler
         self.use_perf_logger = args.use_perf_logger
         self.ibv_devices = args.ibv_devices
+        self.init_only = args.init_only
 
 
 class commsDlrmParamsHolder(commsParamsHolderBase):
@@ -1635,6 +1636,12 @@ class paramCommsBench(ABC):
             default="",
             help="list of ib devices to use for distributed communication",
         )  # experimental feature
+        parser.add_argument(
+            "--init-only",
+            action="store_true",
+            default=False,
+            help="Toggle to skip running collectives and only do initalization",
+        )
         pass
 
     @abstractmethod

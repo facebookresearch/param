@@ -6,6 +6,7 @@
 import logging
 import os
 from itertools import cycle
+from time import sleep
 from typing import List, Optional
 
 import numpy as np
@@ -1033,10 +1034,16 @@ class PyTorchDistBackend(backendFunctions):
         global_rank = self.bootstrap_info.global_rank
         world_size = self.bootstrap_info.world_size
         self.tcp_store = dist.TCPStore(
-            master_ip, int(master_port), world_size, is_master=(global_rank == 0)
+            master_ip,
+            int(master_port),
+            world_size,
+            is_master=(global_rank == 0),
+            use_libuv=True,
         )
 
-    def initialize_backend(self, master_ip, master_port, backend="gloo"):
+    def initialize_backend(
+        self, master_ip, master_port, backend="gloo", eager_mode=False
+    ):
         # Set CUDA device before initializing backend
         # Required for backends that don't do lazy initialization, e.g. UCC
         self.set_device(self.bootstrap_info.local_rank, self.bootstrap_info.global_rank)
@@ -1067,6 +1074,11 @@ class PyTorchDistBackend(backendFunctions):
                 world_size=world_size,
                 store=self.tcp_store if self.commsParams.init_method is None else None,
                 init_method=self.commsParams.init_method,
+                device_id=(
+                    torch.device(f"cuda:{self.bootstrap_info.local_rank}")
+                    if eager_mode
+                    else None
+                ),
             )
 
         # default 1 group, maybe overwritten by user created groups via initialize_groups
@@ -1109,7 +1121,10 @@ class PyTorchDistBackend(backendFunctions):
 
     def benchmark_comms(self, benchTime, commsParams):
         index = 0  # used in TPU, where it is not initialized!
-        benchTime(index, commsParams, self)
+        if commsParams.init_only:
+            sleep(10)
+        else:
+            benchTime(index, commsParams, self)
         return
 
     def __del__(self):
