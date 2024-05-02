@@ -12,6 +12,7 @@ import gzip
 import json
 import logging
 import sys
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Iterable, List, Optional, Set, TextIO, Tuple
 
@@ -103,6 +104,15 @@ class TensorNode:
         ) and self.sinks  # A tensor having no sources yet having some sinks is a leaf tensor
 
 
+@dataclass
+class _CommArgs:
+    """Contains communication collective metadata"""
+
+    collective_name: str
+    dtype: str
+    # .. TODO add more see https://github.com/pytorch/pytorch/issues/124674
+
+
 """
 Node
 
@@ -141,6 +151,7 @@ class Node:
         rf_id: Optional[int] = None,
         kernel_backend: Optional[str] = None,
         kernel_file: Optional[str] = None,
+        comm_args: Optional[_CommArgs] = None,
     ):
         self.name: str = name
         self.parent_id: int = parent_id
@@ -166,6 +177,7 @@ class Node:
         self.outputs: List[Any] = outputs
         self.output_types: List[str] = output_types
         self.output_shapes: List[Any] = output_shapes
+        self.commArgs: Optional[_CommArgs] = comm_args
 
     def get_inputs(self) -> Iterable:
         return zip(self.input_types, self.inputs, self.input_shapes)
@@ -305,7 +317,10 @@ class ExecutionTrace:
             "1.0.2-chakra.0.0.4": ExecutionTrace._create_node_v1_0_2_chakra_0_0_4,
             # 1.0.3 expands pg name to <pg_name, pg_desc> so it use the same parser as 1.0.2
             "1.0.3-chakra.0.0.4": ExecutionTrace._create_node_v1_0_2_chakra_0_0_4,
-            "1.0.4-chakra.0.0.4": ExecutionTrace._create_node_v1_0_4_chakra_0_0_4,
+            # 1.0.4 adds PT2 kernel backend and kernel file
+            "1.0.4-chakra.0.0.4": ExecutionTrace._create_node_v1_0_2_chakra_0_0_4,
+            # 1.1.0 includes new comm args in record_param_comms
+            "1.1.0-chakra.0.0.4": ExecutionTrace._create_node_v1_0_2_chakra_0_0_4,
             # Add future versions here
         }
         create_node = node_creation_func.get(self.schema, None)
@@ -369,27 +384,32 @@ class ExecutionTrace:
             return (0, 0, 0)
         return self._versiontuple(self.schema.split("-")[1])
 
-    @staticmethod
-    def _read_attrs(node: Dict[str, Any]) -> Tuple:
-        attr_types = {
-            "fw_parent": int,
-            "seq_id": int,
-            "fw_tid": int,
-            "op_schema": str,
-            "rf_id": int,
-            "scope": int,
-            "tid": int,
-            "kernel_backend": str,
-            "kernel_file": str,
-        }
+    ATTR_TYPES = {
+        "fw_parent": int,
+        "seq_id": int,
+        "fw_tid": int,
+        "op_schema": str,
+        "rf_id": int,
+        "scope": int,
+        "tid": int,
+        "kernel_backend": str,
+        "kernel_file": str,
+    }
+    OPTIONAL_ATTR = ["kernel_backend", "kernel_file"]
+
+    @classmethod
+    def _read_attrs(cls, node: Dict[str, Any]) -> Tuple:
         attr_dict = {
-            attr["name"]: attr_types[attr["name"]](attr["value"])
+            attr["name"]: cls.ATTR_TYPES[attr["name"]](attr["value"])
             for attr in node["attrs"]
-            if attr["name"] in attr_types.keys()
+            if attr["name"] in cls.ATTR_TYPES.keys()
         }
+        for opt_key in cls.OPTIONAL_ATTR:
+            if opt_key not in attr_dict:
+                attr_dict[opt_key] = None
 
         return tuple(
-            attr_dict[key] for key in attr_types.keys() if key in attr_dict.keys()
+            attr_dict[key] for key in cls.ATTR_TYPES.keys() if key in attr_dict.keys()
         )
 
     @staticmethod
@@ -416,38 +436,6 @@ class ExecutionTrace:
 
     @staticmethod
     def _create_node_v1_0_2_chakra_0_0_4(pid, x: Dict[str, Any]) -> Node:
-        (
-            fw_parent,
-            seq_id,
-            fw_tid,
-            op_schema,
-            rf_id,
-            scope,
-            tid,
-        ) = ExecutionTrace._read_attrs(x)
-
-        return Node(
-            x["name"],
-            x["id"],
-            x["ctrl_deps"],
-            fw_parent,
-            seq_id,
-            pid,
-            tid,
-            fw_tid,
-            op_schema,
-            scope,
-            x["inputs"]["values"],
-            x["inputs"]["types"],
-            x["inputs"]["shapes"],
-            x["outputs"]["values"],
-            x["outputs"]["types"],
-            x["outputs"]["shapes"],
-            rf_id,
-        )
-
-    @staticmethod
-    def _create_node_v1_0_4_chakra_0_0_4(pid, x: Dict[str, Any]) -> Node:
         (
             fw_parent,
             seq_id,
