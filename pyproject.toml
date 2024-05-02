@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools", "setuptools-grpc"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "param"
+version = "2.0"
+
+[tool.setuptools]
+packages.find = { where = ["."] }
+
+[project.scripts]
+comm_replay = "tools.comm_replay:main"
+et_replay = "tools.et_replay:main"
+nsys_analysis = "tools.nsys_analysis:main"
+run_batch = "tools.run_batch:main"
+run_benchmark = "tools.run_benchmark:main"
+run_op = "tools.run_op:main"
+run_op_split_table_batched_embeddings = "tools.run_op_split_table_batched_embeddings:main"
+validate_trace = "tools.validate_trace:main"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["I", "B", "E", "F", "SIM", "W", "C90", "EXE"]
+
+[tool.ruff.format]
+indent-style = "space"

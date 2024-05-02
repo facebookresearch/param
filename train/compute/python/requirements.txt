@@ -1,7 +1,0 @@
-fbgemm_gpu
-gitpython
-networkx
-numpy
-pydot
-scipy
-torch>=2.0.0
