@@ -73,8 +73,8 @@ class commsCollBench(paramCommsBench):
             type=str,
             default="comms",
             help="benchmark mode",
-            choices=["comms", "compute", "dlrm", "comms-compute"],
-        )  # alternative is DLRM mode or comm-compute mode
+            choices=["comms", "compute", "comms-compute"],
+        )
         parser.add_argument(
             "--b",
             "--begin-size",

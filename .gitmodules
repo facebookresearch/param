@@ -1,4 +1,0 @@
-[submodule "train/workloads/dlrm"]
-	path = train/workloads/dlrm
-	url = https://github.com/facebookresearch/dlrm.git
-	branch = dist_exp
