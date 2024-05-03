@@ -369,20 +369,6 @@ def initQuantCommCtx(
         commsParams.bitwidth = 32
 
 
-def clearQuantCommCtx(collectiveArgs: collectiveArgsHolder) -> None:
-    """
-    Cleans up quantization handlers.
-
-    Args:
-        collectiveArgs: Contains the quantization handlers.
-    Returns:
-        None
-    """
-    if has_internal_libs:
-        logger.debug("Removing installed quantization handlers.")
-        remove_quantization_handlers(collectiveArgs)
-
-
 def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
     """
     Map any possible creative collective names to the internal name.
