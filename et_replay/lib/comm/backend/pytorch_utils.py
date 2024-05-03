@@ -356,19 +356,3 @@ class backendFunctions(ABC):
     @abstractmethod
     def benchmark_comms(self, benchTime, commsParams) -> None:
         pass
-
-
-customized_backend: Dict[str, backendFunctions] = {}
-
-
-def register_customized_backend(
-    name: str,
-    func: backendFunctions,
-    device: Optional[str] = None,
-) -> None:
-    global customized_backend
-    customized_backend[name] = func
-    if device is not None:
-        global supportedDevices
-        supportedDevices.append(device)
-    logger.info(f"Registered custom backend {name} with function {func.__name__}")

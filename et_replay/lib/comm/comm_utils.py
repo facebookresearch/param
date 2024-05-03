@@ -43,7 +43,6 @@ from param.utility import read_env_vars
 from param.comm.backend.pytorch_utils import (
     backendFunctions,
     collectiveArgsHolder,
-    customized_backend,
     supportedC10dBackends,
     supportedDevices,
 )
@@ -1354,7 +1353,7 @@ class paramCommsBench(ABC):
             "--backend",
             type=str,
             default=("nccl" if self.isCudaAvail() else "gloo"),
-            choices=supportedC10dBackends + list(customized_backend.keys()),
+            choices=supportedC10dBackends,
             help="The backend to be used in PyTorch distributed process group",
         )  #  backend used for the network stack
         parser.add_argument(
