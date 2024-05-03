@@ -2,10 +2,10 @@ import copy
 import unittest
 
 from param.comp.python.lib.generator import (
-    full_range,
     IterableList,
     ListProduct,
     TableProduct,
+    full_range,
 )
 
 

@@ -2,11 +2,10 @@ import unittest
 from unittest import mock
 
 import torch
-
 from comm_utils import commsArgs
 
-from param.comm.commsTraceReplay import commsTraceReplayBench
 from param.comm.backend.mock import MockBackendFunction
+from param.comm.commsTraceReplay import commsTraceReplayBench
 from param.comm.tests.test_utils import (
     commsParamsTest,
     createCommsArgs,
@@ -85,9 +84,7 @@ class TestPrepComms(unittest.TestCase):
         commsParams = commsParamsTest()
         commsParams.dcheck = 1
         commsParams.device = "cpu"
-        curComm = commsArgs(
-            comms="all_gather", dtype="Int", inMsgSize=4, outMsgSize=4, worldSize=4
-        )
+        curComm = commsArgs(comms="all_gather", dtype="Int", inMsgSize=4, outMsgSize=4, worldSize=4)
         testBench.shrink = True
         testBench.collectiveArgs.world_size = 1
         (iptensor, optensor) = testBench.prepComms(curComm, commsParams)
@@ -104,9 +101,7 @@ class TestReplayTrace(unittest.TestCase):
 
     def test_warm_up_bench(self):
         test_trace = [
-            createCommsArgs(
-                comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]
-            ),
+            createCommsArgs(comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]),
             createCommsArgs(comms="all_gather", inMsgSize=2, outmsgSize=2),
             createCommsArgs(comms="wait", markerStack=["test_stack"]),
         ]
@@ -119,9 +114,7 @@ class TestReplayTrace(unittest.TestCase):
 
     def test_replay(self):
         test_trace = [
-            createCommsArgs(
-                comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]
-            ),
+            createCommsArgs(comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]),
             createCommsArgs(comms="all_gather", inMsgSize=2, outmsgSize=2),
             createCommsArgs(comms="wait", markerStack=["test_stack"]),
         ]
@@ -170,9 +163,7 @@ class TestinitTraceStat(unittest.TestCase):
 
     def test_dry_run(self):
         test_trace = [
-            createCommsArgs(
-                comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]
-            ),
+            createCommsArgs(comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]),
             createCommsArgs(comms="all_gather", inMsgSize=2, outMsgSize=2),
             createCommsArgs(comms="wait", markerStack=["test_stack"]),
         ]
@@ -189,9 +180,7 @@ class TestinitTraceStat(unittest.TestCase):
         # Dry run records comm blocks. We have two colls in test_stack
         self.assertEqual(2, len(testBench.comms_blocks["test_stack"]))
         # check values of comm_blocks
-        self.assertEqual(
-            "test", testBench.comms_blocks["test_stack"][0]["comms"]
-        )  # first comm in "test_stack" is test
+        self.assertEqual("test", testBench.comms_blocks["test_stack"][0]["comms"])  # first comm in "test_stack" is test
         self.assertEqual(1, testBench.comms_blocks["test_stack"][0]["in_msg_size"])
         self.assertEqual(1, testBench.comms_blocks["test_stack"][0]["out_msg_size"])
 
@@ -201,9 +190,7 @@ class TestinitTraceStat(unittest.TestCase):
 
     def test_not_dry_run(self):
         test_trace = [
-            createCommsArgs(
-                comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]
-            ),
+            createCommsArgs(comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]),
             createCommsArgs(comms="all_gather", inMsgSize=2, outMsgSize=2),
             createCommsArgs(comms="wait", markerStack=["test_stack"]),
         ]
@@ -259,14 +246,10 @@ class TestRebalanceSplit(unittest.TestCase):
         testComm.inSplit = [3, 2]
         testComm.outSplit = [1, 2]
 
-        ipTensor = torch.tensor(
-            [16], dtype=torch.int
-        )  # Mock a second rank to have inMsgSize 11
+        ipTensor = torch.tensor([16], dtype=torch.int)  # Mock a second rank to have inMsgSize 11
         testBench.backendFuncs = MockBackendFunction()
         testBench.backendFuncs.mock_collective = mock.MagicMock(
-            side_effect=(
-                lambda collectiveArgs: setattr(collectiveArgs, "ipTensor", ipTensor)
-            )
+            side_effect=(lambda collectiveArgs: setattr(collectiveArgs, "ipTensor", ipTensor))
         )
 
         testBench.rebalanceSplit(testComm)
@@ -280,9 +263,7 @@ class TestRebalanceSplit(unittest.TestCase):
 
     def test_unsupported_policy(self):
         testBench = commsTraceReplayBench()
-        testBench.rebalance_policy = (
-            "unsupported"  # any str that isn't in supported is considered unsupported
-        )
+        testBench.rebalance_policy = "unsupported"  # any str that isn't in supported is considered unsupported
 
         testComm = commsArgs()
         testComm.comms = "all_to_allv"
