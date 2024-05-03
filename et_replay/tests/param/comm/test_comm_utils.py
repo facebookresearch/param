@@ -297,22 +297,5 @@ class TestParamToCommName(unittest.TestCase):
         self.assertEqual("all_to_all", result)
 
 
-class TestEnsureTensorFlush(unittest.TestCase):
-    """
-    Run the function to see if it completes without errors. We want to call item() on last
-    tensor to ensure flush.
-    """
-
-    def test_list_tensors(self):
-        tensor_list = [torch.ones(3)]
-        last_tensor_value = comm_utils.ensureTensorFlush(tensor_list)
-        self.assertEqual(1, last_tensor_value)
-
-    def test_tensors(self):
-        tensors = torch.ones(3)
-        last_tensor_value = comm_utils.ensureTensorFlush(tensors)
-        self.assertEqual(1, last_tensor_value)
-
-
 if __name__ == "__main__":
     unittest.main()

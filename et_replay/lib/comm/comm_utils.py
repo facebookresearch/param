@@ -466,25 +466,6 @@ def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
     return new_name
 
 
-def ensureTensorFlush(tensors: Union[List[torch.Tensor], torch.Tensor]) -> float:
-    """
-    Use this to flush non-blocking ops to ensure they are really complete.
-
-    Args:
-        tensors: Retrieve item of last tensor to force flush.
-    Returns:
-        x: A standard python number, can be float or int.
-    """
-    x = None
-    if isinstance(tensors, list) and len(tensors) > 0 and len(tensors[-1]) > 0:
-        # some collectives like allgather use a list of tensors
-        x = tensors[-1][-1].item()  # to ensure collective won't be optimized away.
-    elif isinstance(tensors, torch.Tensor) and tensors.nelement() > 0:
-        x = tensors[-1].item()  # to ensure collective won't be optimized away.
-
-    return x
-
-
 def startProfiler(rank: int, device: str, numWarmupIters: int, numIters: int) -> bool:
     """
     Starts internal profiler with given parameters.
