@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from typing import Dict, List, Tuple
 
-from param.comm.backend.pytorch_utils import supportedP2pOps
+from param.comm.backend.base_backend import SupportedP2pOps
 from param.comm.comm_utils import commsArgs, param_to_comm_name
 from param.execution_trace import ExecutionTrace
 
@@ -87,7 +87,7 @@ class ChakraTraceParser:
             new_comm.in_split = cur_comm["in_split"]
             new_comm.out_split = cur_comm["out_split"]
 
-        if new_comm.comms in supportedP2pOps:
+        if new_comm.comms in SupportedP2pOps:
             new_comm.src_rank = cur_comm["src_rank"]
             new_comm.dst_rank = cur_comm["dst_rank"]
             new_comm.batch_p2p = cur_comm["use_batch"]
@@ -183,7 +183,7 @@ class ChakraTraceParser:
                     )
                     new_comm.dtype = tensorDtypeMap[in_msg_type]
 
-                if new_comm.comms in supportedP2pOps:
+                if new_comm.comms in SupportedP2pOps:
                     if "send" in new_comm.comms:
                         new_comm.src_rank = target_rank
                         local_dst_rank = node.inputs[3]

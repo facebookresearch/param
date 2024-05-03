@@ -40,11 +40,11 @@ import numpy as np
 import torch
 from param.param_profile import ParamTimer
 from param.utility import read_env_vars
-from param.comm.backend.pytorch_utils import (
-    backendFunctions,
-    collectiveArgsHolder,
-    supportedC10dBackends,
-    supportedDevices,
+from param.comm.backend.base_backend import (
+    BaseBackend,
+    CollectiveArgsHolder,
+    SupportedC10dBackends,
+    SupportedDevices,
 )
 from torch._C._distributed_c10d import ProcessGroup
 
@@ -211,7 +211,7 @@ def fixBeginSize(commsParams: commsParamsHolder, world_size: int) -> None:
 
 
 def get_rank_details(
-    backendFuncs: backendFunctions,
+    backendFuncs: BaseBackend,
 ) -> Tuple[int, int, int, ProcessGroup, str, str]:
     """
     Returns the details of the rank for the current backendFunction.
@@ -249,7 +249,7 @@ def commonUrlRead(remotePath: str) -> StringIO:
 
 
 def initQuantCommCtx(
-    collectiveArgs: collectiveArgsHolder, commsParams: commsParamsHolderBase
+    collectiveArgs: CollectiveArgsHolder, commsParams: commsParamsHolderBase
 ) -> None:
     """
     Initialize quantization handlers.
@@ -524,7 +524,7 @@ class paramStreamGuard(ContextDecorator):
         self,
         stream: Optional[torch.cuda.Stream],
         curDevice: torch.device,
-        backendFuncs: backendFunctions,
+        backendFuncs: BaseBackend,
         is_blocking: bool = True,
         timer: Optional[paramDeviceTimer] = None,
     ) -> None:
@@ -554,7 +554,7 @@ class paramDeviceTimer(ParamTimer):
     Device timer.
     """
 
-    def __init__(self, name: str, backendFuncs: backendFunctions) -> None:
+    def __init__(self, name: str, backendFuncs: BaseBackend) -> None:
         """
         Initialize start and end device events
         """
@@ -712,9 +712,9 @@ class paramCommsBench(ABC):
             "char": torch.int8,
         }
         self.supportedDtype = list(self.dtypeMap.keys())
-        self.backendFuncs: backendFunctions
+        self.backendFuncs: BaseBackend
 
-        self.collectiveArgs = collectiveArgsHolder()
+        self.collectiveArgs = CollectiveArgsHolder()
         self.comm_size = 1
         self.global_rank = -1
         # update initVal to test different value
@@ -1346,14 +1346,14 @@ class paramCommsBench(ABC):
             "--device",
             type=str,
             default=("cuda" if self.isCudaAvail() else "cpu"),
-            choices=supportedDevices,
+            choices=SupportedDevices,
             help="data placement",
         )  # device to place data for collective benchmarking
         parser.add_argument(
             "--backend",
             type=str,
             default=("nccl" if self.isCudaAvail() else "gloo"),
-            choices=supportedC10dBackends,
+            choices=SupportedC10dBackends,
             help="The backend to be used in PyTorch distributed process group",
         )  #  backend used for the network stack
         parser.add_argument(

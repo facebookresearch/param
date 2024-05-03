@@ -1,17 +1,22 @@
-#!/usr/bin/env python3
 import os
 
-import numpy as np
 import torch
-import torch.nn as nn
 import torch_xla.core.xla_model as xm
 import torch_xla.distributed.xla_multiprocessing as xmp
-from comm_utils import backendFunctions
+
+from param.comm.backend.base_backend import BaseBackend
 
 
-class PyTorchTPUBackend(backendFunctions):
-    def sayHello(self):
-        myhost = os.uname()[1]
+class PyTorchTPUBackend(BaseBackend):
+    """Extends BaseBackend to implement backend functionalities specific to PyTorch on TPU."""
+
+    def __init__(self, bootstrap_info, comms_params):
+        self.bootstrap_info = bootstrap_info
+        self.comms_params = comms_params
+
+    def say_hello(self):
+        """Prints a startup message with device and network information."""
+        my_host = os.uname()[1]
         device = self.get_device()
         hw_device = self.get_hw_device()
         global_rank = self.get_global_rank()
@@ -19,168 +24,108 @@ class PyTorchTPUBackend(backendFunctions):
         world_size = self.get_world_size()
         master_ip = self.bootstrap_info.master_ip
         print(
-            "\tRunning on host: %s g-rank: %d, l-rank: %s world_size: %d master_ip: %s device: %s (%s)"
-            % (
-                myhost,
-                global_rank,
-                local_rank,
-                world_size,
-                master_ip,
-                device,
-                hw_device,
-            )
+            f"\tRunning on host: {my_host} g-rank: {global_rank}, "
+            f"l-rank: {local_rank} world_size: {world_size} "
+            f"master_ip: {master_ip} device: {device} ({hw_device})"
         )
 
-    # Collectives
-    def all_reduce(self, collectiveArgs, retFlag=False):
-        retObj = xm.all_reduce(collectiveArgs.op, [collectiveArgs.ipTensor])
-        if collectiveArgs.asyncOp:
-            collectiveArgs.waitObj.append(retObj)
-        if retFlag:
-            return retObj
+    def all_reduce(self, collective_args, ret_flag=False):
+        """Performs an all_reduce operation on TPU."""
+        ret_obj = xm.all_reduce(collective_args.op, [collective_args.ip_tensor])
+        if collective_args.async_op:
+            collective_args.wait_obj.append(ret_obj)
+        if ret_flag:
+            return ret_obj
 
-    def reduce(self, collectiveArgs, retFlag=False):
-        raise NotImplementedError("Func reduce: not implemented yet on TPU")
+    def reduce(self, collective_args, ret_flag=False):
+        """Raises NotImplementedError as reduce is not implemented yet on TPU."""
+        raise NotImplementedError("reduce: not implemented yet on TPU")
 
-    def all_to_all(self, collectiveArgs, retFlag=False):
-        retObj = xm.all_to_all(collectiveArgs.ipTensor, 0, 0, collectiveArgs.world_size)
-        collectiveArgs.opTensor = retObj
-        if collectiveArgs.asyncOp:
-            collectiveArgs.waitObj.append(retObj)
-        if retFlag:
-            return retObj
+    def all_to_all(self, collective_args, ret_flag=False):
+        """Performs an all-to-all operation on TPU."""
+        ret_obj = xm.all_to_all(collective_args.ip_tensor, 0, 0, collective_args.world_size)
+        collective_args.op_tensor = ret_obj
+        if collective_args.async_op:
+            collective_args.wait_obj.append(ret_obj)
+        if ret_flag:
+            return ret_obj
 
-    def all_to_allv(self, collectiveArgs, retFlag=False):
-        raise NotImplementedError("Func all_to_allv: not implemented yet on TPU")
+    def all_gather(self, collective_args, ret_flag=False):
+        """Performs an all_gather operation on TPU."""
+        ret_obj = xm.all_gather(collective_args.ip_tensor, dim=0)
+        collective_args.op_tensor = ret_obj
+        if collective_args.async_op:
+            collective_args.wait_obj.append(ret_obj)
+        if ret_flag:
+            return ret_obj
 
-    def all_gather(self, collectiveArgs, retFlag=False):
-        retObj = xm.all_gather(collectiveArgs.ipTensor, dim=0)
-        collectiveArgs.opTensor = retObj
-        if collectiveArgs.asyncOp:
-            collectiveArgs.waitObj.append(retObj)
-        if retFlag:
-            return retObj
-
-    def complete_accel_ops(self, collectiveArgs):
+    def complete_accel_ops(self, collective_args):
+        """Marks the completion of TPU operations for synchronization."""
         xm.mark_step()
 
-    def get_reduce_op(self, opName):
-        if opName == "sum":
+    def get_reduce_op(self, op_name):
+        """Returns the reduce operation based on the operation name."""
+        if op_name == "sum":
             return xm.REDUCE_SUM
-        elif opName == "max":
+        elif op_name == "max":
             return xm.REDUCE_MAX
         else:
             return xm.REDUCE_SUM
 
-    def barrier(self, collectiveArgs, name="world"):
+    def barrier(self, collective_args, name="world"):
+        """Synchronizes all processes in the environment."""
         xm.rendezvous(name)
 
-    # Compute functions
-    def compute_mm(self, collectiveArgs):
-        self.gemm(collectiveArgs)
+    def gemm(self, collective_args):
+        """Performs a general matrix multiplication (GEMM)."""
+        collective_args.mm_out = torch.mm(collective_args.mm_in1, collective_args.mm_in2)
 
-    def gemm(self, collectiveArgs):
-        collectiveArgs.MMout = torch.mm(collectiveArgs.MMin1, collectiveArgs.MMin2)
-
-    # Memory related
-    def get_mem_size(self, collectiveArgs):
-        return (
-            collectiveArgs.ipTensor.nelement() * collectiveArgs.ipTensor.element_size()
-        )
-
-    def alloc_random(self, sizeArr, curRankDevice, dtype, scaleFactor=1.0):
+    def alloc_random(self, size_arr, cur_rank_device, dtype, scale_factor=1.0):
+        """Allocates a tensor with random values scaled by the given factor."""
         if dtype in (torch.int32, torch.long):
-            ipTensor = torch.randint(
-                0, 1000, sizeArr, device=curRankDevice, dtype=dtype
-            )
+            ip_tensor = torch.randint(0, 1000, size_arr, device=cur_rank_device, dtype=dtype)
         else:
-            ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
-        # ipTensor = torch.full(
-        #     sizeArr, self.get_global_rank(), device=curRankDevice, dtype=dtype
-        # )
-        # print("IP: ", ipTensor, self.get_hw_device())
-        if (scaleFactor) != 0:
-            ipTensor = ipTensor / scaleFactor
-        return ipTensor
+            ip_tensor = torch.rand(size_arr, device=cur_rank_device, dtype=dtype)
+        if scale_factor != 1.0:
+            ip_tensor /= scale_factor
+        return ip_tensor
 
-    def alloc_embedding_tables(self, n, m, curRankDevice, dtype):
-        EE = nn.EmbeddingBag(n, m, mode="sum", sparse=True)
+    def alloc_empty(self, size_arr, dtype, cur_rank_device):
+        """Allocates an uninitialized tensor."""
+        return torch.empty(size_arr, device=cur_rank_device, dtype=dtype)
 
-        W = np.random.uniform(
-            low=-np.sqrt(1 / n), high=np.sqrt(1 / n), size=(n, m)
-        ).astype(np.float32)
-        # approach 1
+    def clear_memory(self, collective_args):
+        """Clears allocated memory, no operation for now."""
+        pass
 
-        EE.weight.data = torch.tensor(
-            W, dtype=dtype, requires_grad=True, device=curRankDevice
-        )
-        return EE
-
-    def alloc_empty(self, sizeArr, dtype, curRankDevice):
-        return torch.empty(sizeArr, device=curRankDevice, dtype=dtype)
-
-    def clear_memory(self, collectiveArgs):
-        pass  # torch.cuda.empty_cache()
-
-    # Getting world-size and other information.
-    def get_local_rank(
-        self,
-    ):
+    def get_local_rank(self):
+        """Returns the local rank of the process on the TPU device."""
         return xm.get_local_ordinal()
 
-    def get_local_size(
-        self,
-    ):
-        return self.bootstrap_info.local_size
-
-    def get_global_rank(
-        self,
-    ):
+    def get_global_rank(self):
+        """Returns the global rank of the process across all TPU devices."""
         return xm.get_ordinal()
 
-    def get_world_size(
-        self,
-    ):
+    def get_world_size(self):
+        """Returns the total number of processes participating in the environment."""
         return xm.xrt_world_size()
 
-    def get_device(
-        self,
-    ):
+    def get_device(self):
+        """Returns the current device in use as a string."""
         return xm.xla_device()
 
-    def get_hw_device(
-        self,
-    ):
+    def get_hw_device(self):
+        """Returns the hardware device information."""
         return xm._xla_real_device(xm.xla_device())
 
-    def get_default_group(self):
-        pass
-
-    def get_groups(self):
-        pass
-
-    def get_num_pgs(self):
-        pass
-
-    def tensor_list_to_numpy(self, tensorList):
-        tensorList = torch.transpose(tensorList.view(-1, 1), 0, 1)[0]
-        return tensorList.cpu().detach().numpy()
-
-    # Init functions
-    def __init__(self, bootstrap_info, commsParams):
-        self.bootstrap_info = bootstrap_info
-        self.commsParams = commsParams
-
-    def initialize_backend(self, master_ip, master_port, backend="gloo"):
-        pass
-
-    def benchmark_comms(self, benchTime, commsParams):
+    def benchmark_comms(self, bench_time, comms_params):
+        """Runs communication benchmarks across TPU cores."""
         xmp.spawn(
-            fn=benchTime,
-            args=(commsParams, self),
+            fn=bench_time,
+            args=(comms_params, self),
             nprocs=self.bootstrap_info.num_tpu_cores,
         )
-        return
 
     def __del__(self):
+        """Clean-up code for the backend, no operation for now."""
         pass

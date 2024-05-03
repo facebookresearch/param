@@ -28,7 +28,7 @@ from param.comm.comm_utils import (
 )
 from param.chakra_trace_parser import ChakraTraceParser
 from param.param_profile import ParamProfile, ParamTimer
-from param.comm.backend.pytorch_utils import supportedP2pOps
+from param.comm.backend.base_backend import SupportedP2pOps
 
 try:
     from trainer_iteration_wrapper import setTrainingIteration  # @manual
@@ -578,7 +578,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         """
         op = None
-        if commsOp.comms in supportedP2pOps:
+        if commsOp.comms in SupportedP2pOps:
             op = (
                 commsOp.comms,
                 commsOp.src_rank,
@@ -792,7 +792,7 @@ class commsTraceReplayBench(paramCommsBench):
                     self.collectiveArgs.collectiveId = curComm.req
 
                 # handle point-to-point separately
-                if collName in supportedP2pOps:
+                if collName in SupportedP2pOps:
                     self.collectiveArgs.src_rank = curComm.src_rank
                     self.collectiveArgs.dst_rank = curComm.dst_rank
 
@@ -1042,7 +1042,7 @@ class commsTraceReplayBench(paramCommsBench):
                         commDesc += (
                             f", InSplit={curComm.inSplit}, OutSplit={curComm.outSplit}"
                         )
-                    if curComm.comms in supportedP2pOps:
+                    if curComm.comms in SupportedP2pOps:
                         commDesc += f", Src_Rank={curComm.src_rank}, Dst_Rank={curComm.dst_rank}"
                     logger.info(
                         f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc}"
