@@ -141,27 +141,6 @@ def parseRankList(ipStr: str) -> List[int]:
     return rankList
 
 
-def getAlgBW(elapsedTimeNS: float, dataSize: int, numIters: int) -> Tuple[float, float]:
-    """
-    Similar to how algorithmic bandwidth is computed in nccl-tests.
-
-    Args:
-        elapsedTimeNS: Total elapsed time for run in ns.
-        dataSize: Size in bytes of the data being ran.
-        numIters: Number of iterations for run.
-    Returns:
-        (avgIterNs, algBW): Returns the average amount of time in ns per iteration, and the algBW (GBps) calculated.
-    """
-    avgIterNS = 0.0
-    if numIters != 0:
-        avgIterNS = elapsedTimeNS / numIters
-
-    algBW = 0.0
-    if avgIterNS != 0:
-        algBW = (dataSize) / (avgIterNS)  # dataSize dividied by ns gives us GBps
-    return (avgIterNS, algBW)
-
-
 def getSizes(
     beginSize: int, endSize: int, stepFactor: int, stepBytes: int
 ) -> List[int]:

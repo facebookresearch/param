@@ -133,30 +133,6 @@ class TestParseRankList(unittest.TestCase):
         self.assertEqual(5, parsed_rank_list[0])
 
 
-class TestGetAlgBW(unittest.TestCase):
-    """
-    Test if algorithmic bandwidth is being calculated properly.
-    """
-
-    def test_no_iterations(self):
-        elapsedTimeNs = 30000
-        dataSize = 90000  # bytes
-        numIters = 0
-        (avgIterNS, algBW) = comm_utils.getAlgBW(elapsedTimeNs, dataSize, numIters)
-        # If we had no iterations, then we have no avg iteration time or algBW.
-        self.assertEqual(0.0, avgIterNS, algBW)
-
-    def test_iterations(self):
-        elapsedTimeNs = 30000
-        dataSize = 90000  # bytes
-        numIters = 3
-        (avgIterNS, algBW) = comm_utils.getAlgBW(elapsedTimeNs, dataSize, numIters)
-        # avgIterNS = elapsedTimeNS / numIters = 10000
-        self.assertEqual(10000.0, avgIterNS)
-        # algBW = dataSize / avgIterNs = 9
-        self.assertEqual(9.0, algBW)
-
-
 class TestGetSizes(unittest.TestCase):
     """
     Test size getting between iterations.
