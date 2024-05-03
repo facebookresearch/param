@@ -369,48 +369,6 @@ def initQuantCommCtx(
         commsParams.bitwidth = 32
 
 
-def checkQuantArgs(
-    collective: str,
-    dtype: torch.dtype,
-    beginSize: int,
-    quant_a2a_embedding_dim: int,
-    blockingFlag: bool,
-) -> None:
-    """
-    Checks quantized args passed in parameter list to make sure they are supported, will exit if not.
-
-    Args:
-        collective: Name of collective to be quantized.
-        dtype: Torch datatype of collective.
-        beginSize: Starting size.
-        quant_a2a_embedding_dim: Quant embedding dimension for all_to_all.
-        blockingFlag: Flag to specify whether the collective will be ran in blocking or non-blocking mode.
-    Returns:
-        None
-    """
-    if collective not in (
-        "all_to_all",
-        "all_to_allv",
-        "all_to_all_single",
-        "reduce",
-        "all_reduce",
-    ):
-        raise NotImplementedError(
-            f"quantized communication for {collective} is currently unsupported."
-        )
-    if collective in ("all_to_all", "all_to_allv", "all_to_all_single"):
-        if (beginSize // 4) % quant_a2a_embedding_dim != 0:
-            logger.warning(
-                f"begin size {beginSize} must be a multiple of --quant-a2a-embedding-dim {quant_a2a_embedding_dim} for all_to_all operation"
-            )
-        if blockingFlag != 1:
-            raise NotImplementedError("quantized All_to_all must be synchronous.")
-    if dtype != torch.float32:
-        raise NotImplementedError(
-            f"quantization for {dtype} is not supported. Use float32 instead."
-        )
-
-
 def clearQuantCommCtx(collectiveArgs: collectiveArgsHolder) -> None:
     """
     Cleans up quantization handlers.
