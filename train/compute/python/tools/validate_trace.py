@@ -13,7 +13,6 @@ from .execution_trace import ExecutionTrace
 
 
 class TraceValidator:
-
     def __init__(self, execution_trace: ExecutionTrace):
         self.et = execution_trace
 
@@ -42,14 +41,14 @@ class TraceValidator:
 
     def _validate_param_comms(self) -> bool:
         """Check if param comms has correct attributes"""
-        # This should use the comms parser, for now something simple will be fine
-        # https://github.com/facebookresearch/param/blob/main/train/comms/pt/commsTraceParser.py#L256
 
         if self.et.schema_pytorch() < (1, 0, 2):
             return True
 
-        def check_comms_node(n) -> bool:
-            """TODO use comms parser"""
+        def check_comms_node_pre_1_1_0(n) -> bool:
+            """Roughly based on commsTraceParser"""
+            # https://github.com/facebookresearch/param/blob/main/train/comms/pt/commsTraceParser.py#L256
+
             has_pg_id = False
             # Slightly hacky but find a argument with tuple type
             for arg in n.get_inputs():
@@ -57,6 +56,20 @@ class TraceValidator:
                     print(f" {n.name}, process group args = {arg}")
                     has_pg_id = True
             return has_pg_id
+
+        def check_comms_node_1_1_0(n) -> bool:
+            """New elements are added as per
+            https://github.com/pytorch/pytorch/issues/124674
+            """
+            # TODO check for node.commArgs dataclass
+            print(n.commArgs)
+            return True
+
+        check_comms_node = (
+            check_comms_node_1_1_0
+            if self.et.schema_pytorch() >= (1, 1, 0)
+            else check_comms_node_pre_1_1_0
+        )
 
         return all(
             check_comms_node(n)
