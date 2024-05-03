@@ -5,18 +5,35 @@ import os
 import sqlite3
 from typing import Any, Dict, List, Tuple
 
-from ..lib.init_helper import get_logger, init_logging
+from param.comp.init_helper import get_logger, init_logging
 
 logger = get_logger()
 
 
-def print_rows(rows):
+def print_rows(rows: List[Tuple]) -> None:
+    """Print each row from a list of database query results.
+
+    Args:
+        rows (List[Tuple]): A list of tuples representing database rows.
+    """
     for row in rows:
         print(row)
 
 
 class OperatorEvent:
-    def __init__(self, name, id):
+    """A class to handle operations and events for a computational operator.
+
+    Attributes:
+        event_data (Dict): A dictionary storing event details for operators.
+    """
+
+    def __init__(self, name: str, id: str) -> None:
+        """Initialize the OperatorEvent with basic information.
+
+        Args:
+            name (str): The name of the operator.
+            id (str): The unique identifier for the operator.
+        """
         self.event_data = {
             "op_name": name,
             "id": id,
@@ -24,7 +41,15 @@ class OperatorEvent:
             "analysis": {"T1": [], "T2": [], "T3": [], "T4": [], "T5": []},
         }
 
-    def add_op_event(self, range_id, name, start, end):
+    def add_op_event(self, range_id: str, name: str, start: float, end: float) -> None:
+        """Add a new operation event to the operator.
+
+        Args:
+            range_id (str): The identifier for the range of the event.
+            name (str): The name of the event.
+            start (float): The start time of the event.
+            end (float): The end time of the event.
+        """
         if range_id not in self.event_data["ranges"]:
             self.event_data["ranges"][range_id] = {
                 "name": name,
@@ -36,15 +61,27 @@ class OperatorEvent:
 
     def add_cuda_kernel(
         self,
-        range_id,
-        correlation_id,
-        kernel_name,
-        kernel_start,
-        kernel_end,
-        runtime_name,
-        runtime_start,
-        runtime_end,
-    ):
+        range_id: str,
+        correlation_id: int,
+        kernel_name: str,
+        kernel_start: float,
+        kernel_end: float,
+        runtime_name: str,
+        runtime_start: float,
+        runtime_end: float,
+    ) -> None:
+        """Add CUDA kernel details to a specific operation event.
+
+        Args:
+            range_id (str): The identifier for the range of the event.
+            correlation_id (int): Correlation ID for the CUDA event.
+            kernel_name (str): Name of the CUDA kernel.
+            kernel_start (float): Start time of the CUDA kernel.
+            kernel_end (float): End time of the CUDA kernel.
+            runtime_name (str): Runtime environment name.
+            runtime_start (float): Start time of the runtime.
+            runtime_end (float): End time of the runtime.
+        """
         self.event_data["ranges"][range_id]["cuda_kernel"].append(
             (
                 correlation_id,
@@ -62,13 +99,17 @@ class OperatorEvent:
         )
 
     def add_cuda_sync(
-        self,
-        range_id,
-        correlation_id,
-        runtime_name,
-        runtime_start,
-        runtime_end,
-    ):
+        self, range_id: str, correlation_id: int, runtime_name: str, runtime_start: float, runtime_end: float
+    ) -> None:
+        """Add CUDA synchronization details to a specific operation event.
+
+        Args:
+            range_id (str): The identifier for the range of the event.
+            correlation_id (int): Correlation ID for the CUDA event.
+            runtime_name (str): Runtime environment name.
+            runtime_start (float): Start time of the runtime.
+            runtime_end (float): End time of the runtime.
+        """
         self.event_data["ranges"][range_id]["cuda_sync"].append(
             (
                 correlation_id,
@@ -80,94 +121,106 @@ class OperatorEvent:
             )
         )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return json.dumps(self.event_data)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self)
 
-    def to_json(self):
+    def to_json(self) -> Dict:
         return self.event_data
 
 
-def find_overlap_intervals(r1, r2):
+def find_overlap_intervals(r1: List[Tuple[float, float]], r2: List[Tuple[float, float]]) -> List[List[float]]:
+    """Find overlapping intervals between two lists of intervals.
+
+    Args:
+        r1 (List[Tuple[float, float]]): First list of intervals (start, end).
+        r2 (List[Tuple[float, float]]): Second list of intervals (start, end).
+
+    Returns:
+        List[List[float]]: List of overlapping intervals.
+    """
     overlaps = []
-    i = 0
-    j = 0
-    n = len(r1)
-    m = len(r2)
+    i, j = 0, 0
+    n, m = len(r1), len(r2)
     while i < n and j < m:
-        # find overlap
         left = max(r1[i][0], r2[j][0])
         right = min(r1[i][1], r2[j][1])
         if left < right:
             overlaps.append([left, right])
-
-        # go to next interval
         if r1[i][1] < r2[j][1]:
             i += 1
         else:
             j += 1
-
     return overlaps
 
 
 class CustomEncoder(json.JSONEncoder):
-    def default(self, o):
-        if "to_json" in dir(o):
+    """Custom JSON encoder for serializing OperatorEvent objects."""
+
+    def default(self, o: Any) -> Any:
+        """Serialize objects to JSON, using a custom method if available.
+
+        Args:
+            o (Any): Object to serialize.
+
+        Returns:
+            Any: The serialized object or a call to super's default method.
+        """
+        if hasattr(o, "to_json"):
             return o.to_json()
-        return json.JSONEncoder.default(self, o)
+        return super().default(o)
 
 
 queries: Dict[str, str] = {
     "cuda_kernel": """
     SELECT NVTX_EVENTS.rangeId,
-        NVTX_EVENTS.text,
-        NVTX_EVENTS.start,
-        NVTX_EVENTS.end,
-        CUPTI_ACTIVITY_KIND_RUNTIME.correlationId,
-        KERNEL_NAME.value,
-        CUPTI_ACTIVITY_KIND_KERNEL.start,
-        CUPTI_ACTIVITY_KIND_KERNEL.end,
-        RUNTIME_NAME.value,
-        CUPTI_ACTIVITY_KIND_RUNTIME.start,
-        CUPTI_ACTIVITY_KIND_RUNTIME.end
-        FROM NVTX_EVENTS
-        JOIN CUPTI_ACTIVITY_KIND_RUNTIME ON NVTX_EVENTS.eventType == 60 AND
-            NVTX_EVENTS.globalTid == CUPTI_ACTIVITY_KIND_RUNTIME.globalTid AND
-            NVTX_EVENTS.start <= CUPTI_ACTIVITY_KIND_RUNTIME.start AND
-            NVTX_EVENTS.end >= CUPTI_ACTIVITY_KIND_RUNTIME.end
-        JOIN CUPTI_ACTIVITY_KIND_KERNEL ON CUPTI_ACTIVITY_KIND_KERNEL.correlationId == CUPTI_ACTIVITY_KIND_RUNTIME.correlationId
-        JOIN StringIds AS KERNEL_NAME ON KERNEL_NAME.id = CUPTI_ACTIVITY_KIND_KERNEL.demangledName
-        JOIN StringIds AS RUNTIME_NAME ON RUNTIME_NAME.id = CUPTI_ACTIVITY_KIND_RUNTIME.nameId
-        WHERE
-            CUPTI_ACTIVITY_KIND_KERNEL.correlationId == CUPTI_ACTIVITY_KIND_RUNTIME.correlationId AND
-            NVTX_EVENTS.text <> "param_bench|measure" AND
-            NVTX_EVENTS.text <> "param_bench|warmup" AND
-            NVTX_EVENTS.text NOT LIKE "%|warmup|%"
-        ORDER BY CUPTI_ACTIVITY_KIND_KERNEL.start
+           NVTX_EVENTS.text,
+           NVTX_EVENTS.start,
+           NVTX_EVENTS.end,
+           CUPTI_ACTIVITY_KIND_RUNTIME.correlationId,
+           KERNEL_NAME.value,
+           CUPTI_ACTIVITY_KIND_KERNEL.start,
+           CUPTI_ACTIVITY_KIND_KERNEL.end,
+           RUNTIME_NAME.value,
+           CUPTI_ACTIVITY_KIND_RUNTIME.start,
+           CUPTI_ACTIVITY_KIND_RUNTIME.end
+    FROM NVTX_EVENTS
+    JOIN CUPTI_ACTIVITY_KIND_RUNTIME ON NVTX_EVENTS.eventType == 60 AND
+           NVTX_EVENTS.globalTid == CUPTI_ACTIVITY_KIND_RUNTIME.globalTid AND
+           NVTX_EVENTS.start <= CUPTI_ACTIVITY_KIND_RUNTIME.start AND
+           NVTX_EVENTS.end >= CUPTI_ACTIVITY_KIND_RUNTIME.end
+    JOIN CUPTI_ACTIVITY_KIND_KERNEL ON
+    CUPTI_ACTIVITY_KIND_KERNEL.correlationId ==
+    CUPTI_ACTIVITY_KIND_RUNTIME.correlationId
+    JOIN StringIds AS KERNEL_NAME ON KERNEL_NAME.id = CUPTI_ACTIVITY_KIND_KERNEL.demangledName
+    JOIN StringIds AS RUNTIME_NAME ON RUNTIME_NAME.id = CUPTI_ACTIVITY_KIND_RUNTIME.nameId
+    WHERE CUPTI_ACTIVITY_KIND_KERNEL.correlationId == CUPTI_ACTIVITY_KIND_RUNTIME.correlationId AND
+          NVTX_EVENTS.text <> "param_bench|measure" AND
+          NVTX_EVENTS.text <> "param_bench|warmup" AND
+          NVTX_EVENTS.text NOT LIKE "%|warmup|%"
+    ORDER BY CUPTI_ACTIVITY_KIND_KERNEL.start
     """,
     "cuda_sync": """
     SELECT NVTX_EVENTS.rangeId,
-       NVTX_EVENTS.text,
-       NVTX_EVENTS.start,
-       NVTX_EVENTS.end,
-       CUPTI_ACTIVITY_KIND_RUNTIME.correlationId,
-       RUNTIME_NAME.value,
-       CUPTI_ACTIVITY_KIND_RUNTIME.start,
-       CUPTI_ACTIVITY_KIND_RUNTIME.end
+           NVTX_EVENTS.text,
+           NVTX_EVENTS.start,
+           NVTX_EVENTS.end,
+           CUPTI_ACTIVITY_KIND_RUNTIME.correlationId,
+           RUNTIME_NAME.value,
+           CUPTI_ACTIVITY_KIND_RUNTIME.start,
+           CUPTI_ACTIVITY_KIND_RUNTIME.end
     FROM NVTX_EVENTS
-    JOIN CUPTI_ACTIVITY_KIND_RUNTIME ON
-        NVTX_EVENTS.eventType == 60 AND
-        NVTX_EVENTS.globalTid == CUPTI_ACTIVITY_KIND_RUNTIME.globalTid AND
-        NVTX_EVENTS.start <= CUPTI_ACTIVITY_KIND_RUNTIME.start AND
-        NVTX_EVENTS.end >= CUPTI_ACTIVITY_KIND_RUNTIME.end
-        JOIN StringIds AS RUNTIME_NAME ON CUPTI_ACTIVITY_KIND_RUNTIME.nameId=RUNTIME_NAME.id
-    WHERE
-        NVTX_EVENTS.text <> "param_bench|measure" AND
-        NVTX_EVENTS.text <> "param_bench|warmup" AND
-        NVTX_EVENTS.text NOT LIKE "%|warmup|%" AND
-        RUNTIME_NAME.value LIKE "%cudaDeviceSynchronize%"
+    JOIN CUPTI_ACTIVITY_KIND_RUNTIME ON NVTX_EVENTS.eventType == 60 AND
+           NVTX_EVENTS.globalTid == CUPTI_ACTIVITY_KIND_RUNTIME.globalTid AND
+           NVTX_EVENTS.start <= CUPTI_ACTIVITY_KIND_RUNTIME.start AND
+           NVTX_EVENTS.end >= CUPTI_ACTIVITY_KIND_RUNTIME.end
+    JOIN StringIds AS RUNTIME_NAME ON RUNTIME_NAME.id = CUPTI_ACTIVITY_KIND_RUNTIME.nameId
+    WHERE NVTX_EVENTS.text <> "param_bench|measure" AND
+          NVTX_EVENTS.text <> "param_bench|warmup" AND
+          NVTX_EVENTS.text NOT LIKE "%|warmup|%" AND
+          RUNTIME_NAME.value LIKE "%cudaDeviceSynchronize%"
     ORDER BY NVTX_EVENTS.start
     """,
 }
@@ -175,56 +228,65 @@ queries: Dict[str, str] = {
 
 def create_op_event_range(
     op_events: Dict[str, Dict[str, OperatorEvent]],
-    op_name,
-    id,
-    range_id,
-    pass_name,
-    start_time,
-    end_time,
-):
-    # check if op event is already created
+    op_name: str,
+    id: str,
+    range_id: str,
+    pass_name: str,
+    start_time: float,
+    end_time: float,
+) -> OperatorEvent:
+    """Ensure an operation event range is created or retrieved.
+
+    Args:
+        op_events (Dict[str, Dict[str, OperatorEvent]]): Dictionary of operation events.
+        op_name (str): Name of the operation.
+        id (str): Identifier of the operation.
+        range_id (str): Range identifier.
+        pass_name (str): Name of the pass.
+        start_time (float): Start time of the operation.
+        end_time (float): End time of the operation.
+
+    Returns:
+        OperatorEvent: The corresponding OperatorEvent object.
+    """
     try:
-        x = op_events[op_name][id].event_data["ranges"][range_id]
-        logger.debug(f"found key {op_name} {id}")
+        logger.debug(f"Found key {op_name} {id}")
     except KeyError:
-        logger.debug(f"creating key {op_name} {id}")
+        logger.debug(f"Creating key {op_name} {id}")
         op_events.setdefault(op_name, {})
         op_events[op_name].setdefault(id, OperatorEvent(op_name, id))
         op_events[op_name][id].add_op_event(range_id, pass_name, start_time, end_time)
     return op_events[op_name][id]
 
 
-def parse_kernel_events(
-    event_info: List[Tuple[Any]], op_events: Dict[str, Dict[str, OperatorEvent]]
-):
+def parse_kernel_events(event_info: List[Tuple[Any]], op_events: Dict[str, Dict[str, OperatorEvent]]) -> OperatorEvent:
+    """Parse kernel events from database and update operation events.
+
+    Args:
+        event_info (List[Tuple[Any]]): List of event information tuples.
+        op_events (Dict[str, Dict[str, OperatorEvent]]): Dictionary of operation events.
+
+    Returns:
+        OperatorEvent: The last modified OperatorEvent object.
+    """
     for event in event_info:
-        range_id = event[0]
-        nvtx_label = event[1]
+        range_id, nvtx_label = event[0], event[1]
         op_info = nvtx_label.split("|")
-        op_name = op_info[0]
-        stage = op_info[1]
+        op_name, stage = op_info[0], op_info[1]
         id = f"{op_info[2]}|{op_info[3]}|{op_info[4]}"
         pass_name = op_info[5]
-        logger.debug(
-            f"op_name: {op_name}, range_id: {range_id}, stage: {stage}, id: {id}, pass: {pass_name}"
-        )
-        logger.debug(f"  start: {event[2]}, end: {event[3]}, dur: {event[3]-event[2]}")
+        logger.debug(f"op_name: {op_name}, range_id: {range_id}, stage: {stage}, id: {id}, pass: {pass_name}")
+        logger.debug(f"  start: {event[2]}, end: {event[3]}, dur: {event[3] - event[2]}")
         correlation_id = event[4]
         logger.debug(f"    correlation_id: {correlation_id}")
         kernel_name = event[5]
         logger.debug(f"    kernel: {kernel_name}")
-        logger.debug(
-            f"      start: {event[6]}, end: {event[7]}, dur: {event[7]-event[6]}"
-        )
+        logger.debug(f"      start: {event[6]}, end: {event[7]}, dur: {event[7] - event[6]}")
         runtime_name = event[8]
         logger.debug(f"    runtime: {runtime_name}")
-        logger.debug(
-            f"      start: {event[9]}, end: {event[10]}, dur: {event[10]-event[9]}"
-        )
+        logger.debug(f"      start: {event[9]}, end: {event[10]}, dur: {event[10] - event[9]}")
 
-        op_event = create_op_event_range(
-            op_events, op_name, id, range_id, pass_name, event[2], event[3]
-        )
+        op_event = create_op_event_range(op_events, op_name, id, range_id, pass_name, event[2], event[3])
         logger.debug(op_event)
         op_event.add_cuda_kernel(
             range_id,
@@ -240,25 +302,26 @@ def parse_kernel_events(
     return op_event
 
 
-def parse_sync_events(
-    event_info: List[Tuple[Any]], op_events: Dict[str, Dict[str, OperatorEvent]]
-):
+def parse_sync_events(event_info: List[Tuple[Any]], op_events: Dict[str, Dict[str, OperatorEvent]]) -> OperatorEvent:
+    """Parse synchronization events from database and update operation events.
+
+    Args:
+        event_info (List[Tuple[Any]]): List of event information tuples.
+        op_events (Dict[str, Dict[str, OperatorEvent]]): Dictionary of operation events.
+
+    Returns:
+        OperatorEvent: The last modified OperatorEvent object.
+    """
     for event in event_info:
-        range_id = event[0]
-        nvtx_label = event[1]
+        range_id, nvtx_label = event[0], event[1]
         op_info = nvtx_label.split("|")
-        op_name = op_info[0]
-        stage = op_info[1]
+        op_name, stage = op_info[0], op_info[1]
         id = f"{op_info[2]}|{op_info[3]}|{op_info[4]}"
         pass_name = op_info[5]
-        logger.debug(
-            f"op_name: {op_name}, range_id: {range_id}, stage: {stage}, id: {id}, pass: {pass_name}"
-        )
+        logger.debug(f"op_name: {op_name}, range_id: {range_id}, stage: {stage}, id: {id}, pass: {pass_name}")
         correlation_id = event[4]
         runtime_name = event[5]
-        op_event = create_op_event_range(
-            op_events, op_name, id, range_id, pass_name, event[2], event[3]
-        )
+        op_event = create_op_event_range(op_events, op_name, id, range_id, pass_name, event[2], event[3])
         logger.debug(op_event)
         op_event.add_cuda_sync(
             range_id,
@@ -271,9 +334,14 @@ def parse_sync_events(
     return op_event
 
 
-def analyze_events(op_events):
+def analyze_events(op_events: Dict[str, Dict[str, OperatorEvent]]) -> None:
+    """Perform analysis on collected operation events.
+
+    Args:
+        op_events (Dict[str, Dict[str, OperatorEvent]]): Dictionary of operation events.
+    """
     for _name, run_info in op_events.items():
-        for id, op_event in run_info.items():
+        for _, op_event in run_info.items():
             T1 = op_event.event_data["analysis"]["T1"]  # total time
             T2 = op_event.event_data["analysis"]["T2"]  # op_start to first kernel_start
             T3 = op_event.event_data["analysis"]["T3"]  # total of kernel latencies
@@ -298,28 +366,18 @@ def analyze_events(op_events):
                 T3.append(total_kernel_time)
 
 
-def main():
+def main() -> None:
+    """Main function to handle the NSight system analysis."""
 
-    parser = argparse.ArgumentParser(
-        description="Microbenchmarks NSight System Analysis"
-    )
-    parser.add_argument(
-        "-f", "--file", type=str, default=None, help="The nsys sqlite file."
-    )
+    parser = argparse.ArgumentParser(description="Microbenchmarks NSight System Analysis")
+    parser.add_argument("-f", "--file", type=str, default=None, help="The nsys sqlite file.")
     parser.add_argument("-l", "--log_level", default="INFO", help="Log level")
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
-        default=None,
-        help="output file name",
-    )
+    parser.add_argument("-o", "--output", type=str, default=None, help="Output file name.")
     args = parser.parse_args()
 
     logger = init_logging(getattr(logging, args.log_level.upper(), logging.INFO))
 
     con = sqlite3.connect(args.file)
-
     cur = con.cursor()
     cuda_kernel_rows = list(cur.execute(queries["cuda_kernel"]))
     cuda_sync_rows = list(cur.execute(queries["cuda_sync"]))
@@ -329,14 +387,13 @@ def main():
     parse_kernel_events(cuda_kernel_rows, op_events)
     parse_sync_events(cuda_sync_rows, op_events)
     analyze_events(op_events)
-    if args.output:
-        out_file_name = args.output
-    else:
-        out_file_name = os.path.splitext(args.file)[0] + ".json"
+
+    out_file_name = args.output if args.output else os.path.splitext(args.file)[0] + ".json"
     with open(out_file_name, "w") as out_file:
-        for op, run_info in op_events.items():
+        for _, run_info in op_events.items():
             for _, op_range_info in run_info.items():
                 print(json.dumps(op_range_info, cls=CustomEncoder), file=out_file)
+
     logger.info(f"Output written to: {out_file_name}")
 
 
