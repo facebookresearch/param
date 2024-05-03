@@ -564,7 +564,7 @@ for node in sorted_nodes:
 
 compute_only = {compute_only}
 if not compute_only:
-    comms_env_params = comm_utils.read_comms_env_vars()
+    env_vars = comm_utils.read_env_vars()
     global traceBench
     traceBench = commsTraceReplay.commsTraceReplayBench()
 
@@ -574,12 +574,12 @@ if not compute_only:
     )
 
     args = traceBench.readArgs(parser)
-    traceBench.setTraceFile(args, comms_env_params)
+    traceBench.setTraceFile(args, env_vars)
     traceBench.checkArgs(args)
 
     time.sleep(1)
     bootstrap_info = comm_utils.bootstrap_info_holder(
-        args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
+        args.master_ip, args.master_port, args.num_tpu_cores, env_vars
     )
     global commsParams
     commsParams = comm_utils.commsParamsHolderBase(args)

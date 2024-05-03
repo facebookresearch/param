@@ -4,9 +4,87 @@ import json
 import logging
 import os
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from param.execution_trace import ExecutionTrace
+
+
+def env2int(env_list: List[str], default: int = -1) -> int:
+    """
+    Takes environment variables list and returns the first value found.
+
+    Args:
+        env_list: List of environment variables.
+        default: Default value to return if all environment variables are not set.
+    Returns:
+        val: Returns value located at one of the environment variables, or returns default value if none are set.
+    """
+    for e in env_list:
+        val = int(os.environ.get(e, -1))
+        if val >= 0:
+            return val
+    return default
+
+
+def read_env_vars() -> Dict[str, int]:
+    """
+    Reads environment variables and record them.
+
+    Args:
+        None
+    Returns:
+        env_vars: Dict containing env var name as key and int for that env var as value.
+    """
+    world_size = env2int(
+        [
+            "MV2_COMM_WORLD_SIZE",
+            "OMPI_COMM_WORLD_SIZE",
+            "PMI_SIZE",
+            "WORLD_SIZE",
+            "SLURM_NTASKS",
+        ],
+        -1,
+    )
+
+    local_size = env2int(
+        [
+            "LOCAL_SIZE",
+            "MPI_LOCALNRANKS",
+            "MV2_COMM_WORLD_LOCAL_SIZE",
+            "OMPI_COMM_WORLD_LOCAL_SIZE",
+            "SLURM_NTASKS_PER_NODE",
+        ],
+        -1,
+    )
+
+    global_rank = env2int(
+        [
+            "MV2_COMM_WORLD_RANK",
+            "OMPI_COMM_WORLD_RANK",
+            "PMI_RANK",
+            "RANK",
+            "SLURM_PROCID",
+        ],
+        -1,
+    )
+
+    local_rank = env2int(
+        [
+            "LOCAL_RANK",
+            "MPI_LOCALRANKID",
+            "MV2_COMM_WORLD_LOCAL_RANK",
+            "OMPI_COMM_WORLD_LOCAL_RANK",
+            "SLURM_LOCALID",
+        ],
+        -1,
+    )
+
+    env_vars = {}
+    env_vars["world_size"] = world_size
+    env_vars["local_size"] = local_size
+    env_vars["global_rank"] = global_rank
+    env_vars["local_rank"] = local_rank
+    return env_vars
 
 
 def get_tmp_trace_filename() -> str:

@@ -39,6 +39,7 @@ except ImportError:
 import numpy as np
 import torch
 from param.param_profile import ParamTimer
+from param.utility import read_env_vars
 from param.comm.backend.pytorch_utils import (
     backendFunctions,
     collectiveArgsHolder,
@@ -229,84 +230,6 @@ def get_rank_details(
     curHwDevice = backendFuncs.get_hw_device()
 
     return (local_rank, global_rank, world_size, group, curDevice, curHwDevice)
-
-
-def env2int(env_list: List[str], default: int = -1) -> int:
-    """
-    Takes environment variables list and returns the first value found.
-
-    Args:
-        env_list: List of environment variables.
-        default: Default value to return if all environment variables are not set.
-    Returns:
-        val: Returns value located at one of the environment variables, or returns default value if none are set.
-    """
-    for e in env_list:
-        val = int(os.environ.get(e, -1))
-        if val >= 0:
-            return val
-    return default
-
-
-def read_comms_env_vars() -> Dict[str, int]:
-    """
-    Reads environment variables and record them.
-
-    Args:
-        None
-    Returns:
-        comms_env_params: Dict containing env var name as key and int for that env var as value.
-    """
-    world_size = env2int(
-        [
-            "MV2_COMM_WORLD_SIZE",
-            "OMPI_COMM_WORLD_SIZE",
-            "PMI_SIZE",
-            "WORLD_SIZE",
-            "SLURM_NTASKS",
-        ],
-        -1,
-    )
-
-    local_size = env2int(
-        [
-            "LOCAL_SIZE",
-            "MPI_LOCALNRANKS",
-            "MV2_COMM_WORLD_LOCAL_SIZE",
-            "OMPI_COMM_WORLD_LOCAL_SIZE",
-            "SLURM_NTASKS_PER_NODE",
-        ],
-        -1,
-    )
-
-    global_rank = env2int(
-        [
-            "MV2_COMM_WORLD_RANK",
-            "OMPI_COMM_WORLD_RANK",
-            "PMI_RANK",
-            "RANK",
-            "SLURM_PROCID",
-        ],
-        -1,
-    )
-
-    local_rank = env2int(
-        [
-            "LOCAL_RANK",
-            "MPI_LOCALRANKID",
-            "MV2_COMM_WORLD_LOCAL_RANK",
-            "OMPI_COMM_WORLD_LOCAL_RANK",
-            "SLURM_LOCALID",
-        ],
-        -1,
-    )
-
-    comms_env_params = {}
-    comms_env_params["world_size"] = world_size
-    comms_env_params["local_size"] = local_size
-    comms_env_params["global_rank"] = global_rank
-    comms_env_params["local_rank"] = local_rank
-    return comms_env_params
 
 
 def commonUrlRead(remotePath: str) -> StringIO:
@@ -667,12 +590,12 @@ class bootstrap_info_holder:
         master_ip: str,
         master_port: str,
         num_tpu_cores: int,
-        comms_env_params: Dict[str, int],
+        env_vars: Dict[str, int],
     ) -> None:
-        self.global_rank = comms_env_params["global_rank"]
-        self.local_rank = comms_env_params["local_rank"]
-        self.local_size = comms_env_params["local_size"]
-        self.world_size = comms_env_params["world_size"]
+        self.global_rank = env_vars["global_rank"]
+        self.local_rank = env_vars["local_rank"]
+        self.local_size = env_vars["local_size"]
+        self.world_size = env_vars["world_size"]
 
         self.master_ip = master_ip
         self.master_port = master_port
@@ -1534,13 +1457,13 @@ class paramCommsBench(ABC):
         numeric_level = getattr(logging, args.log.upper(), None)
         if not isinstance(numeric_level, int):
             raise ValueError(f"Invalid log level: {args.log}")
-        comms_env_params = read_comms_env_vars()
+        env_vars = read_env_vars()
         if sys.version_info >= (3, 8):
             # overwrite existing logging config. Require Python 3.8+
             logging.basicConfig(
                 level=numeric_level,
                 format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
-                    comms_env_params["global_rank"]
+                    env_vars["global_rank"]
                 ),
                 force=True,
             )
@@ -1548,7 +1471,7 @@ class paramCommsBench(ABC):
             logging.basicConfig(
                 level=numeric_level,
                 format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
-                    comms_env_params["global_rank"]
+                    env_vars["global_rank"]
                 ),
             )
         # check master-ip and master-port with the following logic

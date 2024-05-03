@@ -13,7 +13,7 @@ from functools import reduce
 import numpy as np
 import torch
 from param.comm import commsTraceReplay
-from param.comm.comm_utils import read_comms_env_vars, bootstrap_info_holder, commsParamsHolderBase
+from param.comm.comm_utils import read_env_vars, bootstrap_info_holder, commsParamsHolderBase
 
 from param.comp import pytorch as lib_pytorch
 from param.comp.init_helper import load_modules
@@ -73,7 +73,7 @@ class ExgrReplayManager:
         self.dump_path = ""
         self.args = None
         # Comms env.
-        self.comms_env_params = read_comms_env_vars()
+        self.env_vars = read_env_vars()
         self.commsBench = None
         self.comms_world_info = None
         self.commsParams = None
@@ -234,9 +234,9 @@ class ExgrReplayManager:
             self.dump_path += "benchmark.py"
         # Multiple traces.
         else:
-            print(f"{os.getpid()} is rank{self.comms_env_params['global_rank']}")
-            self.cuda_id = self.comms_env_params["local_rank"]
-            self.cuda = f"cuda:{self.comms_env_params['local_rank']}"
+            print(f"{os.getpid()} is rank{self.env_vars['global_rank']}")
+            self.cuda_id = self.env_vars["local_rank"]
+            self.cuda = f"cuda:{self.env_vars['local_rank']}"
             # Different processes should read different traces based on global_rank_id.
             if "://" in self.args.trace_path:
                 try:
@@ -248,15 +248,15 @@ class ExgrReplayManager:
                     exit(1)
                 else:
                     et, self.trace_file = read_remote_trace(
-                        f"{self.args.trace_path}/rank-{self.comms_env_params['global_rank']}.json"
+                        f"{self.args.trace_path}/rank-{self.env_vars['global_rank']}.json"
                     )
                     self.et = ExecutionTrace(json.load(et))
             else:
-                self.trace_file = f"{self.args.trace_path}/rank{self.comms_env_params['global_rank']}.json"
+                self.trace_file = f"{self.args.trace_path}/rank{self.env_vars['global_rank']}.json"
                 with open(self.trace_file, "r") as f:
                     self.et = ExecutionTrace(json.load(f))
 
-            self.dump_path += f"benchmark_{self.comms_env_params['global_rank']}.py"
+            self.dump_path += f"benchmark_{self.env_vars['global_rank']}.py"
 
         # base_path is used to find the generated kernel files in the same directory of the trace file.
         base_path, file_name = os.path.split(self.trace_file)
@@ -1259,8 +1259,8 @@ class ExgrReplayManager:
             self.exec_time.append(after_execution - before_execution)
 
     def init_comms(self):
-        comms_env_params = read_comms_env_vars()
-        print(comms_env_params, self.cuda)
+        env_vars = read_env_vars()
+        print(env_vars, self.cuda)
 
         self.commsBench = commsTraceReplay.commsTraceReplayBench()
         self.commsBench.trace_file = self.trace_file
@@ -1277,7 +1277,7 @@ class ExgrReplayManager:
             comms_args.master_ip,
             comms_args.master_port,
             comms_args.num_tpu_cores,
-            comms_env_params,
+            env_vars,
         )
         self.commsParams = commsParamsHolderBase(comms_args)
 
@@ -1383,7 +1383,7 @@ class ExgrReplayManager:
                     export_trace_func,
                 )
 
-                rank = self.comms_env_params["local_rank"]
+                rank = self.env_vars["local_rank"]
                 on_trace_ready = export_trace_func(
                     "/tmp",
                     worker_name=f"rank-{rank}",

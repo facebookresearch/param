@@ -246,7 +246,7 @@ class TestReadCommEnvVars(unittest.TestCase):
         os.environ["LOCAL_SIZE"] = "8"
         os.environ["RANK"] = "4"
         os.environ["LOCAL_RANK"] = "0"
-        comm_env_vars = comm_utils.read_comms_env_vars()
+        comm_env_vars = comm_utils.read_env_vars()
         # We should only have read 4 env vars.
         self.assertEqual(4, len(comm_env_vars))
         # Check the values of the comm_env_vars.

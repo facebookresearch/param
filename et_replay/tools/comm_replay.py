@@ -1493,7 +1493,7 @@ class commsTraceReplayBench(paramCommsBench):
         if commsParams.bitwidth < 32:
             comm_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
 
-    def setTraceFile(self, args, comms_env_params):
+    def setTraceFile(self, args, env_vars):
         # TODO: file name may get changed later
         self.trace_file = args.trace_path
         self.trace_type = args.trace_type
@@ -1650,7 +1650,7 @@ def main() -> None:
     3) Read and analyze trace file.
     4) Run replay.
     """
-    comms_env_params = comm_utils.read_comms_env_vars()
+    env_vars = comm_utils.read_env_vars()
 
     traceBench = commsTraceReplayBench()
     parser = argparse.ArgumentParser(
@@ -1660,11 +1660,11 @@ def main() -> None:
     )
 
     args = traceBench.readArgs(parser)
-    traceBench.setTraceFile(args, comms_env_params)
+    traceBench.setTraceFile(args, env_vars)
     traceBench.checkArgs(args)
 
     bootstrap_info = bootstrap_info_holder(
-        args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
+        args.master_ip, args.master_port, args.num_tpu_cores, env_vars
     )
     commsParams = commsParamsHolderBase(args)
     # always initialize backend
