@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 
-from ...lib.operator import register_operator
-from ...lib.pytorch.operator_impl import BuildableOp
+from param.comp.operator import register_operator
+from param.comp.pytorch.operator_impl import BuildableOp
 
 
 class AlexNet(nn.Module):

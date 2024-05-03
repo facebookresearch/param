@@ -2,9 +2,8 @@ from typing import Dict
 
 import torch
 
-from ...lib.operator import OperatorInterface, register_operators
-from ...lib.pytorch.operator_impl import BuildableOp, CallableOp, UnaryOp
-
+from param.comp.operator import OperatorInterface, register_operators
+from param.comp.pytorch.operator_impl import BuildableOp, CallableOp, UnaryOp
 
 # Unary
 unary_ops: Dict[str, OperatorInterface] = {

@@ -1,5 +1,5 @@
+# ruff: noqa
 import copy
-import gc
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -16,16 +16,15 @@ from fbgemm_gpu.split_table_batched_embeddings_ops import (
     WeightDecayMode,
 )
 
-from ...lib.data import register_data_generator
-from ...lib.generator import full_range, IterableList, ListProduct, TableProduct
-from ...lib.init_helper import get_logger
-from ...lib.iterator import (
+from param.comp.data import register_data_generator
+from param.comp.generator import IterableList, ListProduct, TableProduct, full_range
+from param.comp.init_helper import get_logger
+from param.comp.iterator import (
     ConfigIterator,
-    genericList_to_list,
     register_config_iterator,
     remove_meta_attr,
 )
-from ...lib.operator import OperatorInterface, register_operator
+from param.comp.operator import OperatorInterface, register_operator
 
 logger = get_logger()
 
@@ -37,9 +36,7 @@ class SplitTableBatchedEmbeddingBagsCodegenInputIterator(ConfigIterator):
         key: str,
         device: str,
     ):
-        super(SplitTableBatchedEmbeddingBagsCodegenInputIterator, self).__init__(
-            configs, key, device
-        )
+        super(SplitTableBatchedEmbeddingBagsCodegenInputIterator, self).__init__(configs, key, device)
         logger.debug(f"build_input_config: {configs}")
         build_config = configs["build"]
         logger.debug(f"build_config: {build_config}")
@@ -130,9 +127,7 @@ def generate_requests(
         offsets = torch.tensor(offset_start + np.cumsum(lengths))
 
     # weights
-    weights_tensor = (
-        torch.randn(indices_size, dtype=torch.float32) if weighted else None
-    )
+    weights_tensor = torch.randn(indices_size, dtype=torch.float32) if weighted else None
 
     return (indices, offsets, weights_tensor)
 
@@ -167,9 +162,7 @@ class SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator:
         indices_file = None
         offsets_file = None
         weights_file = None
-        if ("indices_tensor" in config["args"][4]) and (
-            "offsets_tensor" in config["args"][4]
-        ):
+        if ("indices_tensor" in config["args"][4]) and ("offsets_tensor" in config["args"][4]):
             indices_file = config["args"][4]["indices_tensor"]
             offsets_file = config["args"][4]["offsets_tensor"]
             if weighted and "weights_tensor" in config["args"][4]:
@@ -186,9 +179,7 @@ class SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator:
             offsets_tensor = torch.load(offsets_file, map_location=target_device)
             per_sample_weights_tensor = None
             if weights_file:
-                per_sample_weights_tensor = torch.load(
-                    weights_file, map_location=target_device
-                )
+                per_sample_weights_tensor = torch.load(weights_file, map_location=target_device)
         else:
             for i in range(num_tables):
                 indices, offsets, per_sample_weights = generate_requests(
@@ -210,16 +201,12 @@ class SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator:
             offsets_tensor = torch.cat(offsets_list)
 
             # check for per sample weights
-            per_sample_weights_tensor = (
-                torch.cat(per_sample_weights_list) if weighted else None
-            )
+            per_sample_weights_tensor = torch.cat(per_sample_weights_list) if weighted else None
 
         logger.debug(f"indices: {indices_tensor.shape}")
         logger.debug(f"offsets: {offsets_tensor.shape}")
         if per_sample_weights_tensor is not None:
-            logger.debug(
-                f"per_sample_weights: {per_sample_weights_tensor.shape}, {per_sample_weights_tensor}"
-            )
+            logger.debug(f"per_sample_weights: {per_sample_weights_tensor.shape}, {per_sample_weights_tensor}")
 
         return (
             [
@@ -326,6 +313,4 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
             self.fwd_out.backward(self.grad_in)
 
 
-register_operator(
-    "SplitTableBatchedEmbeddingBagsCodegen", SplitTableBatchedEmbeddingBagsCodegenOp()
-)
+register_operator("SplitTableBatchedEmbeddingBagsCodegen", SplitTableBatchedEmbeddingBagsCodegenOp())
