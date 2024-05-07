@@ -9,7 +9,7 @@ from __future__ import (
 import gzip
 import json
 
-from .execution_trace import ExecutionTrace
+from param_bench.et_replay.lib.execution_trace import ExecutionTrace
 
 
 class TraceValidator:

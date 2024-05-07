@@ -997,8 +997,7 @@ def main():
         execution_data: TextIO
         execution_trace: ExecutionTrace = ExecutionTrace(json.load(execution_data))
         execution_trace.set_iterations(args.step_annotation)
-        # nocommit remove
-        execution_trace = execution_trace.clone_one_iteration(2)
+        # execution_trace = execution_trace.clone_one_iteration(2)
 
         if args.list_op:
             execution_trace.print_op_stats(args.detail, args.json)
