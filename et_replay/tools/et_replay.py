@@ -39,7 +39,7 @@ from ..lib.et_replay_utils import (
 from et_replay.lib.execution_trace import ExecutionTrace, NodeType
 
 from param_bench.et_replay.lib.utils import trace_handler
-from param_bench.train.comms.pt import comms_utils, commsTraceReplay
+from et_replay.comm import comms_utils, commsTraceReplay
 
 from param_bench.train.compute.python.lib import pytorch as lib_pytorch
 from param_bench.train.compute.python.lib.init_helper import load_modules

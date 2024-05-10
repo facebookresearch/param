@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 
 import torch
 
-from param_bench.train.comms.pt.param_profile import paramTimer
+from et_replay.comm.param_profile import paramTimer
 
 from torch.distributed import ProcessGroup
 

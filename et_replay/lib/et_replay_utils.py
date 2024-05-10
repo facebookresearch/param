@@ -469,10 +469,10 @@ import logging
 import os
 import time
 from datetime import datetime
-from param_bench.train.comms.pt import comms_utils
+from et_replay.comm import comms_utils
 
 import torch
-from param_bench.train.comms.pt import commsTraceReplay
+from et_replay.comm import commsTraceReplay
 from param_bench.et_replay.lib.et_replay_utils import (
     build_fbgemm_func,
     build_torchscript_func,
