@@ -11,5 +11,6 @@ version = "0.5.0"
 "et_replay.tools" = "tools"
 
 [project.scripts]
+comm_replay = "et_replay.tools.comm_replay:main"
 et_replay = "et_replay.tools.et_replay:main"
 validate_traces = "et_replay.tools.validate_traces:main"
