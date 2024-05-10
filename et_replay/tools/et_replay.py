@@ -12,7 +12,7 @@ from functools import reduce
 
 import numpy as np
 import torch
-from param_bench.et_replay.lib.et_replay_utils import (
+from ..lib.et_replay_utils import (
     build_fbgemm_func,
     build_torchscript_func,
     build_triton_func,
@@ -36,7 +36,7 @@ from param_bench.et_replay.lib.et_replay_utils import (
     TORCH_DTYPES_RNG_str,
 )
 
-from param_bench.et_replay.lib.execution_trace import ExecutionTrace, NodeType
+from et_replay.lib.execution_trace import ExecutionTrace, NodeType
 
 from param_bench.et_replay.lib.utils import trace_handler
 from param_bench.train.comms.pt import comms_utils, commsTraceReplay
