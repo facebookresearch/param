@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "et_replay"
+version = "0.5.0"
+
+[tool.setuptools.package-dir]
+"et_replay.lib" = "lib"
+"et_replay.tools" = "tools"
+
+[project.scripts]
+et_replay = "et_replay.tools.et_replay:main"
+validate_traces = "et_replay.tools.validate_traces:main"
