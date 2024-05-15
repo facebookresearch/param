@@ -5,11 +5,11 @@ import json
 
 from typing import List, Tuple
 
-from et_replay.comm import comms_utils
-from et_replay.comm.comms_utils import commsArgs
-from et_replay.comm.pytorch_backend_utils import supportedP2pOps
+from et_replay.lib.comm import comms_utils
+from et_replay.lib.comm.comms_utils import commsArgs
+from et_replay.lib.comm.pytorch_backend_utils import supportedP2pOps
 
-from param_bench.train.compute.python.tools.execution_trace import ExecutionTrace
+from et_replay.lib.execution_trace import ExecutionTrace
 
 tensorDtypeMap = {
     "Tensor(int)": "int",

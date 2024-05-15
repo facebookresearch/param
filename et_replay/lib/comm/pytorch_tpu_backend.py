@@ -4,9 +4,10 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
-import torch_xla.core.xla_model as xm
-import torch_xla.distributed.xla_multiprocessing as xmp
-from comms_utils import backendFunctions
+import torch_xla.core.xla_model as xm  # @manual
+import torch_xla.distributed.xla_multiprocessing as xmp  # @manual
+
+from .comms_utils import backendFunctions
 
 
 class PyTorchTPUBackend(backendFunctions):

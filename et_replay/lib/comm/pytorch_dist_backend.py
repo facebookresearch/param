@@ -13,8 +13,8 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from et_replay.comm.param_profile import paramProfile
-from et_replay.comm.pytorch_backend_utils import (
+from et_replay.lib.comm.param_profile import paramProfile
+from et_replay.lib.comm.pytorch_backend_utils import (
     backendFunctions,
     collectiveArgsHolder,
 )

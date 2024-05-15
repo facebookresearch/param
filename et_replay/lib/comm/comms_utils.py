@@ -38,15 +38,15 @@ except ImportError:
 
 import numpy as np
 import torch
-from et_replay.comm.param_profile import paramTimer
-from et_replay.comm.pytorch_backend_utils import (
+from et_replay.lib.comm.param_profile import paramTimer
+from et_replay.lib.comm.pytorch_backend_utils import (
     backendFunctions,
     collectiveArgsHolder,
     customized_backend,
     supportedC10dBackends,
     supportedDevices,
 )
-from torch._C._distributed_c10d import ProcessGroup
+from torch._C._distributed_c10d import ProcessGroup  # @manual
 
 random.seed()
 
