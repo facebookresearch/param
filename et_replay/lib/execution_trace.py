@@ -18,7 +18,6 @@ from typing import Any, Dict, Iterable, List, Optional, Set, TextIO, Tuple
 
 import pydot
 
-
 FORMAT = "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
 logging.basicConfig(format=FORMAT)
 logging.getLogger().setLevel(logging.INFO)
@@ -409,7 +408,7 @@ class ExecutionTrace:
                 attr_dict[opt_key] = None
 
         return tuple(
-            attr_dict[key] for key in cls.ATTR_TYPES.keys() if key in attr_dict.keys()
+            attr_dict[key] for key in cls.ATTR_TYPES.keys() if key in attr_dict
         )
 
     @staticmethod
@@ -431,7 +430,7 @@ class ExecutionTrace:
             x["outputs"],
             x["output_types"],
             x["output_shapes"],
-            x.get("rf_id", None),
+            x.get("rf_id"),
         )
 
     @staticmethod
