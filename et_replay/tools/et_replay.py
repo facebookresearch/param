@@ -15,8 +15,6 @@ import torch
 
 from et_replay.lib.comm import comms_utils
 
-# from et_replay.lib.comm import commsTraceReplay XXX FIXME
-
 from et_replay.lib.execution_trace import ExecutionTrace, NodeType
 
 from et_replay.lib.utils import trace_handler
@@ -1097,48 +1095,6 @@ class ExgrReplayManager:
     def run_op(self, node, iter):
         if node.name == "record_param_comms" and not self.compute_only:
             return
-            # XXX FIXME add commsTraceReplay
-            # opTensor = self.commsBench.replaySingle(
-            #     self.commsParams, node.id, self.regenerate_tensors
-            # )
-            # Wait, barrier has no output tensor.
-            # if "wait" in node.inputs or "barrier" in node.inputs:
-            #     if self.wait_delay != 0:
-            #         time.sleep(self.wait_delay / 1000.0)
-            #     return
-            # if self.args.separate:
-            #     return
-
-            # # # Total dimension of the output tensor should be the same as
-            # # # the original in et, reshape if different.
-            # # if type(opTensor) is list:
-            # #     for t in opTensor:
-            # #         print(t)
-
-            # original_shape = reduce(lambda x, y: x * y, node.output_shapes[0])
-            # op_tensor_shape = reduce(lambda x, y: x * y, list(opTensor.size()))
-            # if original_shape != op_tensor_shape:
-            #     print(
-            #         "Comms ops output tensor shape mismatch: ",
-            #         node.id,
-            #         original_shape,
-            #         op_tensor_shape,
-            #     )
-            #     exit(1)
-            # op_tensor = torch.reshape(opTensor, tuple(node.output_shapes[0]))
-            # t_id = tuple(node.outputs[0])
-            # if self.tensor_with_device:
-            #     t_id = tuple(list(t_id)[:5])
-            # if (
-            #     t_id in self.dependency_permanent
-            #     and self.tensors_mapping[(node.id, t_id, False)]
-            #     not in self.unchangeable_intermediate_tensors
-            # ):
-            #     if self.tensors_mapping[(node.id, t_id, False)] not in self.instantiate:
-            #         self.tensor_registry[
-            #             self.tensors_mapping[(node.id, t_id, False)]
-            #         ] = op_tensor
-            # return
 
         if self.debug and iter >= self.numWarmupIters:
             start_ns = time.time_ns()
@@ -1257,33 +1213,7 @@ class ExgrReplayManager:
             self.exec_time.append(after_execution - before_execution)
 
     def init_comms(self):
-        comms_env_params = comms_utils.read_comms_env_vars()
-        print(comms_env_params, self.cuda)
-        # # XXX FIXME
-        # self.commsBench = commsTraceReplay.commsTraceReplayBench()
-        # self.commsBench.trace_file = self.trace_file
-        # if "://" in self.trace_file:
-        #     self.commsBench.use_remote_trace = True
-
-        # parser = argparse.ArgumentParser(description="Execution Trace Comms Replay")
-        # comms_args = self.commsBench.readArgs(parser)
-
-        # self.commsBench.checkArgs(comms_args)
-
-        # time.sleep(1)
-        # self.bootstrap_info = comms_utils.bootstrap_info_holder(
-        #     comms_args.master_ip,
-        #     comms_args.master_port,
-        #     comms_args.num_tpu_cores,
-        #     comms_env_params,
-        # )
-        # self.commsParams = comms_utils.commsParamsHolderBase(comms_args)
-
-        # self.commsBench.trace_type = "et"
-
-        # self.commsBench.initBackend(self.bootstrap_info, self.commsParams)
-        # self.commsBench.initBench(self.commsParams, comms_args)
-        # self.commsBench.replayInit(self.commsParams)
+        pass
 
     def analyze_ops(self):
         fused_cnt = 0
