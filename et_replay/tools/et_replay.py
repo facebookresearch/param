@@ -1285,6 +1285,9 @@ class ExgrReplayManager:
             self.reset_registry()
 
     def benchTime(self):
+        # A dictionary to save the benchmark result.
+        benchmark_result = {"execution finished": False}
+
         start_time = datetime.now()
         self.preprocess_graph()
         if self.generator:
@@ -1368,6 +1371,7 @@ class ExgrReplayManager:
                     # Comment out this for now since it will introduce additional cudaMalloc.
                     # self.reset_registry()
                     prof.step()
+                benchmark_result["execution finished"] = True
                 print("Execution finished!")
         else:
             for iter in range(self.numWarmupIters + self.numIters):
@@ -1403,6 +1407,7 @@ class ExgrReplayManager:
                 if iter >= self.numWarmupIters:
                     total_time += event_1.elapsed_time(event_2)
                 # self.reset_registry()
+            benchmark_result["execution finished"] = True
             print("Execution finished!")
 
         if self.profile_memory:
@@ -1459,7 +1464,9 @@ class ExgrReplayManager:
                 )
             )
 
-    def readComputeArgs(self):
+        return benchmark_result
+
+    def readComputeArgs(self, check_args: bool = True):
         parser = argparse.ArgumentParser(description="Execution Trace Compute Replay")
         parser.add_argument(
             "--warmup-iter", type=int, default=5, help="Number of warm up iterations."
@@ -1600,7 +1607,7 @@ class ExgrReplayManager:
         self.args, _ = parser.parse_known_args()
 
         # Check if both 'input' and 'trace_path' are not provided
-        if self.args.input is None and self.args.trace_path is None:
+        if check_args and self.args.input is None and self.args.trace_path is None:
             parser.print_help(sys.stderr)
             sys.exit(1)
 
