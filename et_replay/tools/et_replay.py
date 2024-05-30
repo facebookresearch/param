@@ -178,7 +178,7 @@ class ExgrReplayManager:
         self.exec_time = []
         self.setup_time = []
 
-        self.operators_count = [0]
+        self.operators_count = []
 
         self.tf32 = False
 
@@ -366,7 +366,7 @@ class ExgrReplayManager:
                 self.operators_count.append(i)
         if len(self.operators_count) > 1:
             self.sorted_nodes = self.sorted_nodes[
-                self.operators_count[1] + 1 : self.operators_count[2]
+                self.operators_count[0] + 1 : self.operators_count[1]
             ]
         print("#Operators to execute: ", len(self.sorted_nodes))
         for node in self.sorted_nodes:
