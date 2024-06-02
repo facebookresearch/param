@@ -22,7 +22,8 @@ from et_replay.lib.utils import trace_handler
 from param_bench.train.compute.python.lib import pytorch as lib_pytorch
 from param_bench.train.compute.python.lib.init_helper import load_modules
 from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
-from torch._inductor.codecache import AsyncCompile, TritonFuture
+from torch._inductor.async_compile import AsyncCompile
+from torch._inductor.codecache import TritonFuture
 
 # grid and split_scan_grid are dynamically loaded
 from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid
