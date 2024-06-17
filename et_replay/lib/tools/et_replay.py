@@ -608,11 +608,11 @@ class ExgrReplayManager:
                             self.tensors_mapping[
                                 (node.id, tuple(node.inputs[2][:5]), True)
                             ]
-                        ][i] = i * nnz
+                        ][i] = (i * nnz)
                     else:
                         self.tensor_registry_permanent[
                             self.tensors_mapping[(node.id, tuple(node.inputs[2]), True)]
-                        ][i] = i * nnz
+                        ][i] = (i * nnz)
             ######
 
     def build_func(self, node):
@@ -1183,7 +1183,8 @@ class ExgrReplayManager:
                 not in self.unchangeable_intermediate_tensors
             ):
                 if (
-                    self.tensors_mapping[(node.id, t_id, False)] not in self.instantiate
+                    self.tensors_mapping[(node.id, t_id, False)]
+                    not in self.instantiate
                     # and self.tensors_mapping[(node.id, t_id, False)]
                     # not in self.tensor_registry
                 ):

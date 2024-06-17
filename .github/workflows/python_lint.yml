@@ -21,3 +21,8 @@ jobs:
 
     - name: Run Black
       run: black . --check
+
+    - name: Run tests
+      run:
+        python -m pip install et_replay
+        python et_replay/tests/test_execution_trace.py
