@@ -3,15 +3,15 @@ import json
 import os
 import unittest
 
-from param_bench.train.compute.python.tools.execution_trace import ExecutionTrace
-from param_bench.train.compute.python.tools.validate_trace import TraceValidator
+from et_replay import ExecutionTrace
+from et_replay.tools.validate_trace import TraceValidator
 
 CURR_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
 class TestTraceLoadAndValidate(unittest.TestCase):
     def setUp(self):
-        self.trace_base = os.path.join(CURR_DIR, "data")
+        self.trace_base = os.path.join(CURR_DIR, "inputs")
 
     def _test_and_validate_trace(self, trace_file):
         with (
