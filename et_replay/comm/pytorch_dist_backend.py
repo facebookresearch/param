@@ -14,8 +14,8 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from .param_profile import paramProfile
-from .pytorch_backend_utils import (
+from et_replay.comm.param_profile import paramProfile
+from et_replay.comm.pytorch_backend_utils import (
     backendFunctions,
     collectiveArgsHolder,
 )

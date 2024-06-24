@@ -7,8 +7,7 @@ name = "et_replay"
 version = "0.5.0"
 
 [tool.setuptools.package-dir]
-"et_replay" = "lib"
-"et_replay.tools" = "lib/tools"
+"et_replay" = "."
 
 [project.scripts]
 comm_replay = "et_replay.tools.comm_replay:main"
