@@ -464,8 +464,7 @@ def build_triton_func(n, resources_dir, async_compile, device):
         func = async_compile.triton(n.name, code, device_str=device)
     except Exception:
         func = async_compile.triton("triton_", code, device_str=device)
-    finally:
-        func = None
+
     return func, 0
 
 
