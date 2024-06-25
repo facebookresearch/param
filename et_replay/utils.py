@@ -6,7 +6,7 @@ import os
 import uuid
 from typing import Any, Dict
 
-from et_replay.execution_trace import ExecutionTrace
+from et_replay import ExecutionTrace
 
 
 def get_tmp_trace_filename() -> str:

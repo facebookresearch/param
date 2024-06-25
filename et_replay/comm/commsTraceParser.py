@@ -239,7 +239,9 @@ def _parseExecutionTrace(
                 ranks = pg["ranks"]
                 groupCnt = pg["group_count"]
                 pgRanksMap[pgId] = (
-                    ranks if len(ranks) > 0 else list(range(pg["group_size"]))
+                    ranks
+                    if len(ranks) > 0
+                    else list(range(pg["group_size"]))
                     # rank list is empty when all ranks are in a pg
                 )
                 if ET_BACKENDID:
