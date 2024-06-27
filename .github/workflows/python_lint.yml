@@ -25,7 +25,7 @@ jobs:
     - name: Run tests
       run: |
         python -m pip install -r requirements.txt
-        python -m pip install et_replay
+        python -m pip install et_replay/
         python et_replay/tests/test_execution_trace.py
 
     - name: Validate imports
