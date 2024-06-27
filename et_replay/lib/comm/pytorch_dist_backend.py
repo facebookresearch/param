@@ -13,8 +13,9 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from et_replay.lib.comm.param_profile import paramProfile
-from et_replay.lib.comm.pytorch_backend_utils import (
+
+from .param_profile import paramProfile
+from .pytorch_backend_utils import (
     backendFunctions,
     collectiveArgsHolder,
 )
@@ -634,7 +635,6 @@ class PyTorchDistBackend(backendFunctions):
             self.device_sync(collectiveArgs)
 
     def wait(self, collectiveArgs, retFlag=False):
-
         # for backwards compatibility, use old wait functionality.
         if len(collectiveArgs.waitObjIds) == 0:
             self.complete_single_op(collectiveArgs)
