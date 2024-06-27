@@ -40,8 +40,8 @@ import numpy as np
 import torch
 from torch._C._distributed_c10d import ProcessGroup  # @manual
 
-from .param_profile import paramTimer
-from .pytorch_backend_utils import (
+from et_replay.comm.param_profile import paramTimer
+from et_replay.comm.pytorch_backend_utils import (
     backendFunctions,
     collectiveArgsHolder,
     customized_backend,
@@ -790,9 +790,7 @@ class commsParamsHolderBase:
         self.quant_a2a_embedding_dim = args.quant_a2a_embedding_dim
         self.quant_threshold = args.quant_threshold
         self.dcheck = args.c
-        self.groupRanks = (
-            {}
-        )  # record what ranks each process group will work on {pg_id, ranks}
+        self.groupRanks = {}  # record what ranks each process group will work on {pg_id, ranks}
         self.use_ext_dist = args.use_ext_dist
         self.size_from_trace = False
         self.init_method = args.init_method

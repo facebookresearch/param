@@ -4,10 +4,10 @@ from __future__ import annotations
 import json
 from typing import List, Tuple
 
-from .. import ExecutionTrace
-from . import comms_utils
-from .comms_utils import commsArgs
-from .pytorch_backend_utils import supportedP2pOps
+from et_replay import ExecutionTrace
+from et_replay.comm import comms_utils
+from et_replay.comm.comms_utils import commsArgs
+from et_replay.comm.pytorch_backend_utils import supportedP2pOps
 
 tensorDtypeMap = {
     "Tensor(int)": "int",
@@ -239,9 +239,7 @@ def _parseExecutionTrace(
                 ranks = pg["ranks"]
                 groupCnt = pg["group_count"]
                 pgRanksMap[pgId] = (
-                    ranks
-                    if len(ranks) > 0
-                    else list(range(pg["group_size"]))
+                    ranks if len(ranks) > 0 else list(range(pg["group_size"]))
                     # rank list is empty when all ranks are in a pg
                 )
                 if ET_BACKENDID:

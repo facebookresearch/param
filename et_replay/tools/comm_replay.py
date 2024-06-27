@@ -18,8 +18,8 @@ from typing import Dict, List, Set
 import numpy as np
 import torch
 
-from ..comm import comms_utils
-from ..comm.comms_utils import (
+from et_replay.comm import comms_utils
+from et_replay.comm.comms_utils import (
     bootstrap_info_holder,
     commsArgs,
     commsParamsHolderBase,
@@ -27,8 +27,8 @@ from ..comm.comms_utils import (
     paramStreamGuard,
     paramToCommName,
 )
-from ..comm.param_profile import paramProfile, paramTimer
-from ..comm.pytorch_backend_utils import supportedP2pOps
+from et_replay.comm.param_profile import paramProfile, paramTimer
+from et_replay.comm.pytorch_backend_utils import supportedP2pOps
 
 try:
     from trainer_iteration_wrapper import setTrainingIteration  # @manual

@@ -9,7 +9,7 @@ from param_bench.train.compute.python.workloads.pytorch.split_table_batched_embe
     SplitTableBatchedEmbeddingBagsCodegenOp,
 )
 
-from .execution_trace import NodeType
+from et_replay.execution_trace import NodeType
 
 # TODO: Add all torch dtypes to here
 TORCH_DTYPES_RNG = {
