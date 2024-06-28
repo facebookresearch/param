@@ -877,6 +877,7 @@ class commsCollBench(paramCommsBench):
         # Update world_size with the number of ranks in the group.
         myGroup = groups[self.collectiveArgs.pgId]
         world_size = self.backendFuncs.get_group_size(myGroup)
+        myGroupRanks = commsParams.groupRanks[self.collectiveArgs.pgId]
 
         self.global_rank = global_rank
         self.report = (
@@ -914,7 +915,8 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.collective = commsParams.collective
         op = self.backendFuncs.get_reduce_op("sum")
         self.collectiveArgs.op = op
-        self.collectiveArgs.srcOrDst = commsParams.srcOrDst
+        # Update root rank for current PG, as torch.dist requires the global rank
+        self.collectiveArgs.srcOrDst = myGroupRanks[commsParams.srcOrDst]
         self.collectiveArgs.src_ranks = commsParams.src_ranks
         self.collectiveArgs.dst_ranks = commsParams.dst_ranks
         self.collectiveArgs.pair = commsParams.pair
@@ -1708,9 +1710,9 @@ class commsCollBench(paramCommsBench):
     def genMultiCommGroups(self, commsParams: commsParamsHolderBase):
         self.collectiveArgs.pgId = 0  # default group id
         global_rank = self.backendFuncs.get_global_rank()
+        world_size = self.backendFuncs.get_world_size()
         commsParams.groupRanks = {}
         if commsParams.multi_comms > 1:
-            world_size = self.backendFuncs.get_world_size()
             local_size = self.backendFuncs.get_local_size()
             local_rank = self.backendFuncs.get_local_rank()
             nnode = world_size // local_size
@@ -1741,7 +1743,6 @@ class commsCollBench(paramCommsBench):
         elif commsParams.pair and commsParams.overlap_pair_pgs:
             # create two communicators each including all ranks
             commsParams.num_pgs = 2
-            world_size = self.backendFuncs.get_world_size()
             for pgId in range(0, commsParams.num_pgs):
                 commsParams.groupRanks[pgId] = []
                 for rank in range(0, world_size):
@@ -1751,6 +1752,14 @@ class commsCollBench(paramCommsBench):
                 )
             self.backendFuncs.commsParams.groupRanks = commsParams.groupRanks
             self.backendFuncs.initialize_groups(commsParams.backend)
+
+        else:
+            # default is single group including all ranks.
+            # create the same groupRanks argument for simple
+            # query in later logic no matter the group splitting
+            commsParams.groupRanks[0] = []
+            for rank in range(0, world_size):
+                commsParams.groupRanks[0].append(rank)
 
     def initBackend(
         self, bootstrap_info: bootstrap_info_holder, commsParams: commsParamsHolderBase
