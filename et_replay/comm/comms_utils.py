@@ -38,15 +38,16 @@ except ImportError:
 
 import numpy as np
 import torch
-from et_replay.lib.comm.param_profile import paramTimer
-from et_replay.lib.comm.pytorch_backend_utils import (
+from torch._C._distributed_c10d import ProcessGroup  # @manual
+
+from et_replay.comm.param_profile import paramTimer
+from et_replay.comm.pytorch_backend_utils import (
     backendFunctions,
     collectiveArgsHolder,
     customized_backend,
     supportedC10dBackends,
     supportedDevices,
 )
-from torch._C._distributed_c10d import ProcessGroup  # @manual
 
 random.seed()
 
@@ -1072,7 +1073,6 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-
         ipTensor = None
         opTensor = None
         if allocate:
@@ -1193,7 +1193,6 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-
         opTensor = []
         if not commsParams.size_from_trace:
             numElementsOut = numElementsIn
@@ -1257,7 +1256,6 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-
         ipTensor = []
         opTensor = []
         if not commsParams.size_from_trace:
@@ -1304,7 +1302,6 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-
         ipTensor = []
         opTensor = []
         if not commsParams.size_from_trace:
@@ -1727,7 +1724,6 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
     try:
         # fbgemm_gpu can be downloaded from https://github.com/pytorch/FBGEMM/tree/main/fbgemm_gpu
         from fbgemm_gpu.split_embedding_utils import generate_requests
-
         from fbgemm_gpu.split_table_batched_embeddings_ops import (
             ComputeDevice,
             EmbeddingLocation,

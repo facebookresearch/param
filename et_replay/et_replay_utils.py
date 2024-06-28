@@ -2,16 +2,14 @@ import os
 import re
 
 import torch
-from et_replay.lib.execution_trace import NodeType
 from fbgemm_gpu.split_table_batched_embeddings_ops import PoolingMode, WeightDecayMode
-
 from param_bench.train.compute.python.lib.pytorch.config_util import create_op_args
-
 from param_bench.train.compute.python.workloads.pytorch.split_table_batched_embeddings_ops import (
     SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator,
     SplitTableBatchedEmbeddingBagsCodegenOp,
 )
 
+from et_replay.execution_trace import NodeType
 
 # TODO: Add all torch dtypes to here
 TORCH_DTYPES_RNG = {

@@ -1,7 +1,6 @@
 import argparse
 import gc
 import json
-
 import logging
 import os
 import sys
@@ -12,13 +11,6 @@ from functools import reduce
 
 import numpy as np
 import torch
-
-from et_replay.lib.comm import comms_utils
-
-from et_replay.lib.execution_trace import ExecutionTrace, NodeType
-
-from et_replay.lib.utils import trace_handler
-
 from param_bench.train.compute.python.lib import pytorch as lib_pytorch
 from param_bench.train.compute.python.lib.init_helper import load_modules
 from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
@@ -29,7 +21,11 @@ from torch._inductor.codecache import TritonFuture
 from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid
 from torch.profiler import ExecutionTraceObserver
 
-from ..lib.et_replay_utils import (
+from et_replay.comm import comms_utils
+from et_replay.et_replay_utils import (
+    TORCH_DTYPES_BYTES,
+    TORCH_DTYPES_RNG,
+    TORCH_DTYPES_RNG_str,
     build_fbgemm_func,
     build_torchscript_func,
     build_triton_func,
@@ -48,10 +44,9 @@ from ..lib.et_replay_utils import (
     is_tensor,
     is_tensor_list,
     skip_op,
-    TORCH_DTYPES_BYTES,
-    TORCH_DTYPES_RNG,
-    TORCH_DTYPES_RNG_str,
 )
+from et_replay.execution_trace import ExecutionTrace, NodeType
+from et_replay.utils import trace_handler
 
 
 class ExgrReplayManager:
