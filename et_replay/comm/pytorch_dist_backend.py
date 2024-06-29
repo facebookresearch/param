@@ -1030,17 +1030,6 @@ class PyTorchDistBackend(backendFunctions):
             tensorList = [t.cpu().detach().numpy() for t in tensorList]
         return np.array(tensorList)
 
-    def initialize_tcpstore(self, master_ip, master_port):
-        global_rank = self.bootstrap_info.global_rank
-        world_size = self.bootstrap_info.world_size
-        self.tcp_store = dist.TCPStore(
-            master_ip,
-            int(master_port),
-            world_size,
-            is_master=(global_rank == 0),
-            use_libuv=True,
-        )
-
     def initialize_backend(
         self, master_ip, master_port, backend="gloo", eager_mode=False
     ):
@@ -1064,7 +1053,7 @@ class PyTorchDistBackend(backendFunctions):
 
         if self.tcp_store is None:
             # TCP store initializaiton for generic CPU data
-            self.initialize_tcpstore(master_ip, master_port)
+            self.tcp_store = dist.TCPStore(master_ip, int(master_port), world_size, is_master=(global_rank == 0), use_libuv=True)
 
         if not dist.is_initialized():
             # init default process group if not yet initialized or extend_distributed failed or is disabled
