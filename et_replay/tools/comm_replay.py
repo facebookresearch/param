@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # sleep for 20ms to wait for next collective
 LOOP_TIMER_S = 0.02
 
-VALID_TRACE_TYPES = ["basic", "et", "kineto"]
+VALID_TRACE_TYPES = ["et"]
 
 
 def writeCommDetails(commsTracePerf: List, rank: int, folder: str = "./") -> None:
