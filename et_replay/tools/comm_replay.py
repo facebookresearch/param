@@ -112,7 +112,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.max_msg_cnt = 0  # 0 means no limit
         self.num_msg = 0
         self.is_blocking = True
-        self.do_warm_up = True
+        self.do_warm_up = False
         self.reuse_tensors = False
 
         self.allowList = ""
@@ -214,7 +214,7 @@ class commsTraceReplayBench(paramCommsBench):
             "--do-warm-up",
             action="store_true",
             default=self.do_warm_up,
-            help="Toggle to disable performing extra replaying for warm-up",
+            help="Toggle to enable performing extra replaying for warm-up",
         )
         parser.add_argument(
             "--reuse-tensors",
