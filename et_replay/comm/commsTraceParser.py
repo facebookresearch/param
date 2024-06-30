@@ -126,9 +126,12 @@ def _parseExecutionTrace(
     # Parse comms nodes
     for node in in_trace.nodes.values():
         if node.name == "record_param_comms":
-            shift = (
-                0 if len(node.inputs) == 8 or len(node.inputs) == 10 else 1
-            )  # wait/barrier ops do not have an input tensor (len=7), shift index one over
+            # wait/barrier ops do not have an input tensor which is the 1st element in other ops
+            # 1 - shift: req
+            # 2 - shift: pgId
+            # 3 - shift: local_src/dst_rank
+            # 4 - shift: comm
+            shift = 1 if any(k in node.inputs[0:5] for k in ["wait", "barrier"]) else 0
             newComm = commsArgs()
             newComm.id = node.id
             newComm.comms = comms_utils.paramToCommName(
