@@ -26,7 +26,7 @@ tensorDtypeMap = {
 
 
 def parseTrace(
-    in_trace: List, trace_type: str, target_rank: int, total_ranks: int
+    in_trace: List, trace_type: str, trace_file_path: str, target_rank: int, total_ranks: int
 ) -> List:
     """
     Parse trace files to be compatible with PARAM replay-mode.
@@ -35,18 +35,20 @@ def parseTrace(
     Args:
         in_trace: Trace file to be parsed.
         trace_type: Trace type to be parsed with
+        trace_file_path: Path of input trace file being loaded.
         target_rank: The current rank of the device.
         total_ranks: Total number of ranks.
     Returns:
         parsed_trace: Parsed trace that is compatible with PARAM replay-mode.
     """
 
-    if trace_type == "et":  # Execution Trace (e.g. PyTorch ET, Chakra)
+    if trace_type == "et":  # Execution Trace (e.g. Chakra host execution trace)
         parsed_trace = _parseExecutionTrace(
             ExecutionTrace(in_trace), target_rank, total_ranks
         )
     else:
-        raise ValueError("Unrecognized trace format.")
+        raise ValueError(f"Specified trace type {trace_type} to {trace_file_path} is not supported. \
+Please check supported types with '--help'")
 
     return parsed_trace
 
