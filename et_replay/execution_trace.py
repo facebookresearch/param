@@ -82,6 +82,8 @@ ways in the PyTorch computation graph.
 
 
 class TensorNode:
+    # one example of id is (8, 9, 0, 64, 4, 'cuda:0') representing
+    # (tensor id, storage id, offset, element number, element size, device)
     def __init__(self, id: tuple, dtype: str):
         self.id: tuple = id
         self.dtype = dtype

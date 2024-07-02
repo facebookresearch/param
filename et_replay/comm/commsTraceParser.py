@@ -30,7 +30,7 @@ def parseTrace(
 ) -> List:
     """
     Parse trace files to be compatible with PARAM replay-mode.
-    Currently supports: PyTorch ET trace.
+    Currently supports: Chakra host execution trace.
 
     Args:
         in_trace: Trace file to be parsed.
@@ -84,7 +84,6 @@ def _parseExecutionTrace(
 ) -> List:
     """
     Convert the Execution Trace comms metadata to the common trace format for replay.
-
     """
     # Execution Trace PG_ID types availability
     ET_PG_NAME_TUPLE = in_trace.schema_pytorch() >= (1, 0, 3)
