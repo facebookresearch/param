@@ -15,9 +15,9 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from et_replay.comm.param_profile import paramProfile
-from et_replay.comm.pytorch_backend_utils import (
-    backendFunctions,
+from ..param_profile import paramProfile
+from .base_backend import (
+    BaseBackend,
     collectiveArgsHolder,
 )
 
@@ -71,7 +71,7 @@ def _dequantize(obj):
             return resultTensor
 
 
-class PyTorchDistBackend(backendFunctions):
+class PyTorchDistBackend(BaseBackend):
     def get_collective_group(self, collectiveArgs):
         if self.use_ext_dist:
             return collectiveArgs.group.my_pg

@@ -7,10 +7,10 @@ import torch.nn as nn
 import torch_xla.core.xla_model as xm  # @manual
 import torch_xla.distributed.xla_multiprocessing as xmp  # @manual
 
-from et_replay.comm.comms_utils import backendFunctions
+from .base_backend import BaseBackend
 
 
-class PyTorchTPUBackend(backendFunctions):
+class PyTorchTPUBackend(BaseBackend):
     def sayHello(self):
         myhost = os.uname()[1]
         device = self.get_device()
