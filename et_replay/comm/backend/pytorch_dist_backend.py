@@ -998,18 +998,12 @@ class PyTorchDistBackend(BaseBackend):
             if isinstance(self.commsParams, dict)
             else self.commsParams.backend
         )
-        # Import ucc plugin
-        if backend == "ucc":
-            # try OSS/setup.py
+        # Import Fairring
+        if backend == "fairring":
             try:
-                import torch_ucc  # noqa
+                import fairring  # noqa
             except ImportError:
-                try:
-                    from ucc_plugin import initialize_ucc_plugin
-                except ImportError:
-                    raise RuntimeError("Unable to import initialize_ucc_plugin")
-                else:
-                    initialize_ucc_plugin(backend)
+                raise RuntimeError("Unable to import Fairring")
 
     def get_new_pg(self, group_ranks, backend):
         if self.use_ext_dist:
