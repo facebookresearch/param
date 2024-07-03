@@ -999,18 +999,6 @@ class PyTorchDistBackend(BaseBackend):
             if isinstance(self.commsParams, dict)
             else self.commsParams.backend
         )
-        # Import ucc plugin
-        if backend == "ucc":
-            # try OSS/setup.py
-            try:
-                import torch_ucc  # noqa
-            except ImportError:
-                try:
-                    from ucc_plugin import initialize_ucc_plugin
-                except ImportError:
-                    raise RuntimeError("Unable to import initialize_ucc_plugin")
-                else:
-                    initialize_ucc_plugin(backend)
         # Import Fairring
         if backend == "fairring":
             try:
