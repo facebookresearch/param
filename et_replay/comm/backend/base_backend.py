@@ -125,7 +125,7 @@ class collectiveArgsHolder:
         self.use_ext_dist = False
 
 
-class backendFunctions(ABC):
+class BaseBackend(ABC):
     """Abstract base class, provides common abstraction for all the backends."""
 
     def __init__(self) -> None:
@@ -357,12 +357,12 @@ class backendFunctions(ABC):
         pass
 
 
-customized_backend: Dict[str, backendFunctions] = {}
+customized_backend: Dict[str, BaseBackend] = {}
 
 
 def register_customized_backend(
     name: str,
-    func: backendFunctions,
+    func: BaseBackend,
     device: Optional[str] = None,
 ) -> None:
     global customized_backend
