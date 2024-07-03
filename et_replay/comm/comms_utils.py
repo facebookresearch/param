@@ -799,39 +799,7 @@ class commsParamsHolderBase:
         self.enable_local_report = args.enable_local_report
         self.enable_profiler = args.enable_profiler
         self.use_perf_logger = args.use_perf_logger
-        self.ibv_devices = args.ibv_devices
         self.init_only = args.init_only
-
-
-class commsDlrmParamsHolder(commsParamsHolderBase):
-    """Class holding object for the input parameters of DLRM benchmark."""
-
-    def __init__(
-        self,
-        args,
-        mpi_env_params: Dict[str, int],
-    ) -> None:
-        super().__init__(args)
-
-        # extra DLRM parameters
-        self.numDevices = mpi_env_params["world_size"]
-        self.numBatches = args.num_batches + args.warmup_batches
-        # NOTE: Should ensure that dataSize = int(N) * numDevices * batchSize
-        self.numBatchesPerEpoch = args.mini_batch_size
-        self.dataSize = (
-            mpi_env_params["world_size"] * self.numBatches * self.numBatchesPerEpoch
-        )
-        self.embedLayers = []  # scaledEmbedLayers
-        self.mini_batch_size = args.mini_batch_size
-        self.arch_sparse_feature_size = args.arch_sparse_feature_size
-        self.nw_stack = args.nw_stack
-        self.warmup_batches = args.warmup_batches
-        self.device = args.device
-        self.backend = args.backend
-
-        # additional parameters used in runBench()
-        self.perf_debug = args.perf_debug
-        self.print_comms = args.print_comms
 
 
 class commsParamsHolder(commsParamsHolderBase):
@@ -1627,12 +1595,6 @@ class paramCommsBench(ABC):
             default=None,
             help="add name of custom performer loggers to use them in additional to text output, user is responsible to implement and register the custom performance logger",
         )  # use custom performer logger
-        parser.add_argument(
-            "--ibv-devices",
-            type=str,
-            default="",
-            help="list of ib devices to use for distributed communication",
-        )  # experimental feature
         parser.add_argument(
             "--init-only",
             action="store_true",
