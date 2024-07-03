@@ -73,49 +73,6 @@ def gracefulExit(args: Any = 0) -> None:
     sys.exit(args)
 
 
-def parsesize(ipValue: str) -> int:
-    """
-    nccl-tests compatible input-size parsing.
-
-    Args:
-        ipValue: Contains size of input.
-    Returns:
-        size: Returns the size of input.
-    """
-    units = 0
-    size = 0.0
-
-    value = ""
-
-    # This function would be invoked in a loop - once for each data-type. For  first iteration, ipValue is of type string but after that,
-    # the type of ipValue equals the returntype of prior iteration ie; int. Hence, type check is moved up as first condition.
-    if isinstance(ipValue, int) or ipValue.isnumeric():
-        units = 1
-        value = ipValue
-
-    elif ipValue.find("G") != -1:
-        units = 1024 * 1024 * 1024
-        unitIdx = ipValue.find("G")
-        value = ipValue[0:unitIdx]
-
-    elif ipValue.find("M") != -1:
-        units = 1024 * 1024
-        unitIdx = ipValue.find("M")
-        value = ipValue[0:unitIdx]
-
-    elif ipValue.find("K") != -1:
-        units = 1024
-        unitIdx = ipValue.find("K")
-        value = ipValue[0:unitIdx]
-
-    else:
-        logger.error(f"Could not parse input size {ipValue}")
-        gracefulExit()
-
-    size = int(value) * units
-    return int(size)
-
-
 def parseRankList(ipStr: str) -> List[int]:
     """
     Parses a string into a rank list.
@@ -140,56 +97,6 @@ def parseRankList(ipStr: str) -> List[int]:
             pos = list(map(int, [r.strip() for r in ipStr.split(":")]))
             rankList = [*range(pos[0], pos[1] + 1)]
     return rankList
-
-
-def getAlgBW(elapsedTimeNS: float, dataSize: int, numIters: int) -> Tuple[float, float]:
-    """
-    Similar to how algorithmic bandwidth is computed in nccl-tests.
-
-    Args:
-        elapsedTimeNS: Total elapsed time for run in ns.
-        dataSize: Size in bytes of the data being ran.
-        numIters: Number of iterations for run.
-    Returns:
-        (avgIterNs, algBW): Returns the average amount of time in ns per iteration, and the algBW (GBps) calculated.
-    """
-    avgIterNS = 0.0
-    if numIters != 0:
-        avgIterNS = elapsedTimeNS / numIters
-
-    algBW = 0.0
-    if avgIterNS != 0:
-        algBW = (dataSize) / (avgIterNS)  # dataSize dividied by ns gives us GBps
-    return (avgIterNS, algBW)
-
-
-def getSizes(
-    beginSize: int, endSize: int, stepFactor: int, stepBytes: int
-) -> List[int]:
-    """
-    Gets the sizes of each iteration.
-
-    Args:
-        beginSize: Size of first iteration.
-        endSize: Size of last iteration.
-        stepFactor: Factor that each iteration increases by.
-    Returns:
-        allSizes: List that contains size of each iteration up to endSize.
-    """
-    curSize = beginSize
-    numIters = 0
-    maxIters = 100
-    allSizes = []
-    while curSize <= endSize:
-        allSizes.append(curSize)
-        curSize = curSize * stepFactor if stepBytes == 0 else curSize + stepBytes
-        numIters = numIters + 1
-        if numIters > 100:
-            logger.error(
-                f"For finding allSizes numIters: {numIters} is greater than maxIters: {maxIters}"
-            )
-            break
-    return allSizes
 
 
 def fixBeginSize(commsParams: commsParamsHolder, world_size: int) -> None:
