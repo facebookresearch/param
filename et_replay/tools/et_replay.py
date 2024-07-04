@@ -22,6 +22,7 @@ from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid
 from torch.profiler import ExecutionTraceObserver
 
 from et_replay.comm import comms_utils
+from et_replay.comm.comms_utils import bootstrap_info_holder, commsParamsHolderBase
 from et_replay.et_replay_utils import (
     TORCH_DTYPES_BYTES,
     TORCH_DTYPES_RNG,
@@ -45,9 +46,21 @@ from et_replay.et_replay_utils import (
     is_tensor_list,
     skip_op,
 )
-from et_replay.execution_trace import ExecutionTrace, NodeType
+from et_replay.execution_trace import ExecutionTrace, NodeType, Node
 from et_replay.utils import trace_handler
 
+from et_replay.tools.comm_replay import commsTraceReplayBench
+from et_replay.comm.comms_utils import (
+    bootstrap_info_holder,
+    commsParamsHolderBase,
+    paramToCommName,
+    commsArgs
+)
+from et_replay.comm.pytorch_backend_utils import supportedP2pOps
+
+from collections import namedtuple
+
+logger = logging.getLogger(__name__)
 
 class ExgrReplayManager:
     def __init__(self):
@@ -1607,8 +1620,194 @@ class ExgrReplayManager:
             parser.print_help(sys.stderr)
             sys.exit(1)
 
+class ReplayEngine(commsTraceReplayBench):
+    def __init__(self):
+        super().__init__()
 
-def main():
+        self.comp_replay_manager: ExgrReplayManager = None
+
+        self.comp_op_start_events = []
+        self.comp_op_end_events = []
+
+    def replayTrace(
+        self,
+        commsParams: commsParamsHolderBase,
+        warmup: bool = False,
+    ) -> None:
+        """
+        Replay comms trace.
+
+        Args:
+            commsParams: Run-time parameters for replay.
+            warmup: Indicating whether this round is for warmup.
+        Returns:
+            None
+        """
+
+        if warmup:
+            logLable = "[Warm-up]"
+        else:
+            logLable = f"[Replay {self.replayIter}]"
+
+        all_nodes = self.comp_replay_manager.sorted_nodes + self.comms_trace[: self.max_msg_cnt]
+        all_nodes.sort(key=lambda x: x.id)
+
+        coll_in_batch_num = 0
+        startTime = time.monotonic_ns()
+        for cnt, node in enumerate(all_nodes):
+            if isinstance(node, Node):
+                if warmup:
+                    self.comp_replay_manager.run_op(node, 0)
+                else:
+                    start_event = torch.cuda.Event(enable_timing=True)
+                    end_event = torch.cuda.Event(enable_timing=True)
+
+                    start_event.record()
+                    self.comp_replay_manager.run_op(node, 0)
+                    end_event.record()
+
+                    self.comp_op_start_events.append(start_event)
+                    self.comp_op_end_events.append(end_event)
+            elif isinstance(node, commsArgs):
+                curComm = node
+                curBlocks = curComm.markerStack if curComm.markerStack is not None else []
+                curBlockStack = (
+                    " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
+                )
+
+                # Replay compute
+                if curComm.compute is not None:
+                    # Prepare to run the compute function
+                    computeFunc = self.prepComputeReplay(commsParams, curComm)
+
+                    # Running the kernel
+                    logger.info(
+                        f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {curComm.compute}"
+                    )
+
+                    # Run the kernel and report the total time
+                    (latency, global_latency) = self.runCompute(
+                        func=computeFunc, curBlockStack=curBlockStack
+                    )
+                    recordName = curComm.compute
+
+                # Replay comm
+                else:
+                    if warmup:
+                        self.commRebalance(curComm)
+
+                    # Get the name of the collective from the comm object
+                    collName = paramToCommName(curComm.comms)
+                    (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
+                    # Skip comm if the local process doesn't belong to the PG or encounter an unexpected collective
+                    if (
+                        collName not in self.allowList
+                        or groupRank == -1
+                        or (
+                            collName in ("send", "isend")
+                            and curComm.src_rank != self.backendFuncs.get_global_rank()
+                        )
+                        or (
+                            collName in ("recv", "irecv")
+                            and curComm.dst_rank != self.backendFuncs.get_global_rank()
+                        )
+                    ):
+                        continue
+
+                    if groupRank >= 0:
+                        commDesc = f"{str(curComm.comms)}: NumElemsIn={curComm.inMsgSize}, NumElemsOut={curComm.outMsgSize}, Dtype={curComm.dtype}"
+                        if curComm.comms == "all_to_allv":
+                            commDesc += (
+                                f", InSplit={curComm.inSplit}, OutSplit={curComm.outSplit}"
+                            )
+                        if curComm.comms in supportedP2pOps:
+                            commDesc += f", Src_Rank={curComm.src_rank}, Dst_Rank={curComm.dst_rank}"
+                        logger.info(
+                            f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc}"
+                        )
+
+                    # read fields and prepare the tensors
+                    (
+                        self.collectiveArgs.ipTensor,
+                        self.collectiveArgs.opTensor,
+                    ) = self.prepComms(curComm, commsParams, not self.reuse_tensors)
+
+                    if not warmup and self.colls_per_batch > 0 and coll_in_batch_num == 0:
+                        batch_begin = time.monotonic()
+
+                    # wait for collective timestamp if enabled.
+                    if not warmup and self.use_timestamp:
+                        self.waitForTimestamp(curComm, startTime)
+
+                    # send comm request to pytorch backend
+                    (latency, global_latency) = self.runComms(
+                        collName, curComm, curBlockStack
+                    )
+
+                    # perform data validation check on the final opTensor
+                    if (
+                        self.is_blocking
+                        and commsParams.dcheck == 1
+                        and collName not in ("wait", "barrier")
+                    ):
+                        commsParams.collective = collName
+                        commsParams.srcOrDst = (
+                            curComm.root if curComm.root is not None else 0
+                        )
+                        self.dcheck(
+                            commsParams, curComm.outMsgSize, self.collectiveArgs.opTensor
+                        )
+
+                    # calculating batch latency (batch defined by --colls-per-batch)
+                    if not warmup and collName == "wait" and self.colls_per_batch > 0:
+                        coll_in_batch_num += 1
+                        if coll_in_batch_num == self.colls_per_batch:
+                            batch_latency = (
+                                time.monotonic() - batch_begin
+                            ) * 1e3  # make it millisecond
+                            coll_in_batch_num = 0
+                            self.batchLat.append(batch_latency)
+
+                    recordName = collName
+
+                if not warmup:
+                    # record performance metrics
+                    self.recordCommReplay(
+                        commsParams,
+                        curComm,
+                        recordName,
+                        latency,
+                        curBlockStack,
+                        global_latency,
+                        curBlocks,
+                    )
+
+                if self.backendFuncs.get_global_rank() == 0:
+                    logger.info(
+                        f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} in block [{curBlockStack}]... {global_latency:.2f} us"
+                    )
+
+        torch.cuda.synchronize(self.comp_replay_manager.device)
+
+    def reportBenchTime(self):
+        super().reportBenchTime()
+        
+        comp_total_time = sum(start.elapsed_time(end) for start, end in zip(self.comp_op_start_events, self.comp_op_end_events))
+
+        print()
+
+        print("Comp replay time per iteration: {:.2f} ms".format(comp_total_time / self.num_replays))
+
+        print(
+            "Comp operator coverage: {} / {} = {}".format(
+                len(self.comp_replay_manager.sorted_nodes),
+                len(self.comp_replay_manager.sorted_nodes) + self.comp_replay_manager.actual_skip_nodes_cnt,
+                len(self.comp_replay_manager.sorted_nodes)
+                / (len(self.comp_replay_manager.sorted_nodes) + self.comp_replay_manager.actual_skip_nodes_cnt),
+            )
+        )
+
+def _main():
     # Load PyTorch implementations for data generator and operators.
     load_modules(lib_pytorch)
 
@@ -1620,6 +1819,85 @@ def main():
     replay_manager.initBench()
     replay_manager.benchTime()
 
+def main():
+    # Load PyTorch implementations for data generator and operators.
+    load_modules(lib_pytorch)
+
+    # Load PyTorch operator workloads.
+    load_modules(workloads_pytorch)
+
+    replay_engine = ReplayEngine()
+
+    comms_env_params = comms_utils.read_comms_env_vars()
+
+    parser = argparse.ArgumentParser(
+        description="ET Replay",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        allow_abbrev=False,
+    )
+
+    args = replay_engine.readArgs(parser)
+    replay_engine.setTraceFile(args, comms_env_params)
+    replay_engine.checkArgs(args)
+
+    bootstrap_info = bootstrap_info_holder(
+        args.master_ip, args.master_port, args.num_tpu_cores, comms_env_params
+    )
+    comms_params = commsParamsHolderBase(args)
+    # always initialize backend
+    replay_engine.initBackend(bootstrap_info, comms_params)
+    replay_engine.initBench(comms_params, args)
+
+    comp_replay_manager = ExgrReplayManager()
+
+    CompReplayArgs = namedtuple("CompReplayArgs", [
+        "trace_path",
+        "warmup_iter",
+        "iter",
+        "profile_replay",
+        "profile_memory",
+        "et",
+        "batch_size",
+        "cuda",
+        "debug",
+        "compute",
+        "generator",
+        "dump",
+        "dump_path",
+        "delay",
+        "cpu",
+        "tf32",
+        "subgraph",
+        "separate"
+    ])
+
+    comp_replay_manager.args = CompReplayArgs(
+        trace_path=args.trace_path,
+        warmup_iter=5,
+        iter=10,
+        profile_replay=False,
+        profile_memory=False,
+        et=False,
+        batch_size=1,
+        cuda=-1,
+        debug=False,
+        compute=False,
+        generator=False,
+        dump=False,
+        dump_path="./",
+        delay=0,
+        cpu=False,
+        tf32=False,
+        subgraph="",
+        separate=True
+    )
+
+    comp_replay_manager.initBench()
+    comp_replay_manager.preprocess_graph()
+
+    replay_engine.comp_replay_manager = comp_replay_manager
+
+    replay_engine.runBench(comms_params)
 
 if __name__ == "__main__":
     main()
