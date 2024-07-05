@@ -97,7 +97,7 @@ def _parseExecutionTrace(
     return comms_op_list
 
 def _parse_proc_group_info(in_trace: ExecutionTrace):
-    pg_ranks_map = {}
+    pg_ranks_map = {} # {node_id : {process_group_id : [ranks] } }
     for node in in_trace.nodes.values():
         if "process_group:init" in node.name:
             # info of this node is dumped using torch.distributed.distributed_c10d._world.pg_config_info
@@ -107,14 +107,15 @@ def _parse_proc_group_info(in_trace: ExecutionTrace):
                 pg_objs = json.loads(node.inputs[0])
             except json.decoder.JSONDecodeError:  # skip if pg_config_info is truncated
                 break
-
+            
+            pg_ranks_map[node.id] = {}
             for pg in pg_objs:
                 if not pg["pg_name"].isdecimal():
                     # TODO support local synchronization pg
                     raise ValueError(f"Process group name is {pg['pg_name']} in node {node['id']}, which is not supported.")
                 (pg_id, ranks, group_size, group_count) = [pg[k] for k in ["pg_name", "ranks", "group_size", "group_count"]]
                 pg_id = int(pg_id)
-                pg_ranks_map[pg_id] = (
+                pg_ranks_map[node.id][pg_id] = (
                     ranks
                     if len(ranks) > 0
                     else list(range(group_size))
@@ -126,10 +127,15 @@ def _parse_proc_group_info(in_trace: ExecutionTrace):
 def _parse_comms_op_node(in_trace: ExecutionTrace, pg_ranks_map: dict, target_rank: int, total_ranks: int):
     comms_op_list = []
 
-    for pg_id, ranks in pg_ranks_map.items():
-        comm_args = _create_pg_init_node(pg_id, ranks, len(ranks))
-        comms_op_list.append(comm_args)
+    for node_id in pg_ranks_map:
+        for pg_id, ranks in pg_ranks_map[node_id].items():
+            comm_args = _create_pg_init_node(node_id, pg_id, ranks, len(ranks))
+            comms_op_list.append(comm_args)
 
+    pg_ranks_map_flatten = {}
+    for k,v in pg_ranks_map.items():
+        pg_ranks_map_flatten.update(v)
+    
     for node in in_trace.nodes.values():
         if node.name == "record_param_comms":
             # according to macro RECORD_PARAM_COMMS and RECORD_PARAM_COMMS_DATA in torch/csrc/distributed/c10d/ParamCommsUtils.hpp
@@ -146,7 +152,7 @@ def _parse_comms_op_node(in_trace: ExecutionTrace, pg_ranks_map: dict, target_ra
 
             if pg_id_pair[0].isdecimal():
                 comm_args.pgId = int(pg_id_pair[0])
-                comm_args.groupRanks = pg_ranks_map[comm_args.pgId]
+                comm_args.groupRanks = pg_ranks_map_flatten[comm_args.pgId]
                 comm_args.worldSize = len(comm_args.groupRanks)
 
             if comm_args.comms not in ("wait", "barrier"):
@@ -186,8 +192,9 @@ def _parse_comms_op_node(in_trace: ExecutionTrace, pg_ranks_map: dict, target_ra
     
     return comms_op_list
 
-def _create_pg_init_node(pg_id: int, ranks: List[int], world_size: int):
+def _create_pg_init_node(node_id: int, pg_id: int, ranks: List[int], world_size: int):
     comm_args = commsArgs()
+    comm_args.id = node_id
     comm_args.comms = "init"
     comm_args.pgId = pg_id
     comm_args.req = -1
