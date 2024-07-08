@@ -82,8 +82,10 @@ ways in the PyTorch computation graph.
 
 
 class TensorNode:
-    def __init__(self, id: int, dtype: str):
-        self.id: int = id
+    # one example of id is (8, 9, 0, 64, 4, 'cuda:0') representing
+    # (tensor id, storage id, offset, element number, element size, device)
+    def __init__(self, id: tuple, dtype: str):
+        self.id: tuple = id
         self.dtype = dtype
         self.sources: Set = set()
         self.sinks: Set = set()
@@ -279,12 +281,12 @@ class Node:
 
     def get_tensors(self, param_list: Iterable) -> List[tuple]:
         tensors = []
-        for type, input, shape in param_list:
+        for type, input, shape in param_list: # TBR: avoid using python key words
             if type.startswith("Tensor"):
                 tensors.append((type, tuple(input), shape))
             # GenericList could have tensor elements
             if type.startswith("GenericList"):
-                elem_type = type[12:-1].split(",")
+                elem_type = type[len("GenericList["):-1].split(",")
                 tensors.extend(self.get_tensors(zip(elem_type, input, shape)))
         return tensors
 
@@ -301,14 +303,14 @@ class Node:
 class ExecutionTrace:
     def __init__(self, json):
         self.nodes = {}
-        self.clean_nodes = {}  # w/o DataLoader ops
+        self.clean_nodes = {}  # from this node to root, no DataLoader ops in path
         self.tensors = {}
         self.proc_group = {}
         # list of node ids that start an iteration
         self.iteration_ids = []
         self.schema: str = json["schema"]
         pid = json["pid"]
-        self.proc_group = {pid: {}}
+        self.proc_group[pid] = {}
         nodes_list = json["nodes"]
 
         # Depending on schema, call the right method
@@ -345,7 +347,7 @@ class ExecutionTrace:
                 if type(t_id) != tuple:
                     t_id = tuple(t_id)
                 if t_id not in self.tensors:
-                    dtype = t_type[7:-1]
+                    dtype = t_type[len("Tensor("):-1]
                     self.tensors[t_id] = TensorNode(t_id, dtype)
                 self.tensors[t_id].add_sink(id)
                 self.tensors[t_id].add_shape(shape)
@@ -354,7 +356,7 @@ class ExecutionTrace:
                 if type(t_id) != tuple:
                     t_id = tuple(t_id)
                 if t_id not in self.tensors:
-                    dtype = t_type[7:-1]
+                    dtype = t_type[len("Tensor("):-1]
                     self.tensors[t_id] = TensorNode(t_id, dtype)
                 self.tensors[t_id].add_source(id)
                 self.tensors[t_id].add_shape(shape)
@@ -395,7 +397,6 @@ class ExecutionTrace:
         "kernel_backend": str,
         "kernel_file": str,
     }
-    OPTIONAL_ATTR = ["kernel_backend", "kernel_file"]
 
     @classmethod
     def _read_attrs(cls, node: Dict[str, Any]) -> Tuple:
@@ -404,13 +405,8 @@ class ExecutionTrace:
             for attr in node["attrs"]
             if attr["name"] in cls.ATTR_TYPES.keys()
         }
-        for opt_key in cls.OPTIONAL_ATTR:
-            if opt_key not in attr_dict:
-                attr_dict[opt_key] = None
 
-        return tuple(
-            attr_dict[key] for key in cls.ATTR_TYPES.keys() if key in attr_dict.keys()
-        )
+        return tuple(attr_dict.get(key, None) for key in cls.ATTR_TYPES.keys())
 
     @staticmethod
     def _create_node_v1_0_1(pid, x: Dict[str, Any]) -> Node:
@@ -436,6 +432,7 @@ class ExecutionTrace:
 
     @staticmethod
     def _create_node_v1_0_2_chakra_0_0_4(pid, x: Dict[str, Any]) -> Node:
+        # TBR: guarantee matching with returned value manually. Easy to incurs bug.
         (
             fw_parent,
             seq_id,
@@ -712,6 +709,7 @@ class ExecutionTrace:
 
         if len(self.clean_nodes.keys()) == 0:  # clean_nodes is empty
             for id, node in self.nodes.items():
+                # TBR: always search from this node to root, incursing repeated searching path, to be optimized
                 if not check_parent(node):  # if the op is not under dataloader
                     self.clean_nodes[id] = node
 

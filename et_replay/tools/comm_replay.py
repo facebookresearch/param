@@ -40,7 +40,8 @@ logger = logging.getLogger(__name__)
 # sleep for 20ms to wait for next collective
 LOOP_TIMER_S = 0.02
 
-VALID_TRACE_TYPES = ["basic", "et", "kineto"]
+# index 0 is default value of trace type
+VALID_TRACE_TYPES = ["et"]
 
 
 def writeCommDetails(commsTracePerf: List, rank: int, folder: str = "./") -> None:
@@ -111,7 +112,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.max_msg_cnt = 0  # 0 means no limit
         self.num_msg = 0
         self.is_blocking = True
-        self.do_warm_up = True
+        self.do_warm_up = False
         self.reuse_tensors = False
 
         self.allowList = ""
@@ -173,8 +174,10 @@ class commsTraceReplayBench(paramCommsBench):
         parser.add_argument(
             "--trace-type",
             type=str,
-            default="basic",
-            help=f"Trace type used for replay. Supported trace types: {str(VALID_TRACE_TYPES)}. By default use basic trace.",
+            choices=VALID_TRACE_TYPES,
+            default=VALID_TRACE_TYPES[0],
+            help=f"Select trace type used for replay. Supported trace types: {VALID_TRACE_TYPES}. \
+                   'et' represents Chakra host execution trace.",
         )
         parser.add_argument(
             "--use-one-trace",
@@ -211,7 +214,7 @@ class commsTraceReplayBench(paramCommsBench):
             "--do-warm-up",
             action="store_true",
             default=self.do_warm_up,
-            help="Toggle to disable performing extra replaying for warm-up",
+            help="Toggle to enable performing extra replaying for warm-up",
         )
         parser.add_argument(
             "--reuse-tensors",
@@ -616,7 +619,7 @@ class commsTraceReplayBench(paramCommsBench):
         Args:
             curComm: The current communication that we are preparing the correct tensor for.
             commsParams: Holds the comms param arguments that will determine tensor attributes.
-            regenerateTensors: when an id is being replayed multiple times, setting this to false will use temsors from previous runs
+            regenerateTensors: when an id is being replayed multiple times, setting this to false will use tensors from previous runs
         Returns:
             (ipTensor, opTensor) if the current communication requires tensors, None otherwise.
         """
@@ -798,8 +801,8 @@ class commsTraceReplayBench(paramCommsBench):
                         self.collectiveArgs.collective = collName
                         self.backendFuncs.P2POp(self.collectiveArgs, retFlag=True)
 
-                if collName in ["broadcast"]:
-                    self.collectiveArgs.srcOrDst = curComm.srcOrDst
+                if collName in ["reduce", "broadcast", "gather", "scatter"]:
+                    self.collectiveArgs.srcOrDst = curComm.root
 
                 retObj = self.backendFuncs.collectiveFunc[collName](
                     self.collectiveArgs, retFlag=True
@@ -1539,7 +1542,7 @@ class commsTraceReplayBench(paramCommsBench):
             # Check if self.trace_file is a directory or a single file
             if os.path.isdir(self.trace_file):
                 # Directory mode: construct the path to the rank-specific file
-                trace_file_path = f"{self.trace_file}/{rank}.json"
+                trace_file_path = f"{self.trace_file}/rank{rank}.json"
             else:
                 # Single file mode: use self.trace_file as is
                 trace_file_path = self.trace_file
@@ -1589,6 +1592,7 @@ class commsTraceReplayBench(paramCommsBench):
             self.comms_trace = commsTraceParser.parseTrace(
                 self.comms_trace,
                 self.trace_type,
+                (self.trace_file if not os.path.isdir(self.trace_file) else f"{self.trace_file}/rank{rank}.json"),
                 rank,
                 self.backendFuncs.get_world_size(),
             )
