@@ -623,7 +623,7 @@ class commsTraceReplayBench(paramCommsBench):
         Args:
             curComm: The current communication that we are preparing the correct tensor for.
             commsParams: Holds the comms param arguments that will determine tensor attributes.
-            regenerateTensors: when an id is being replayed multiple times, setting this to false will use temsors from previous runs
+            regenerateTensors: when an id is being replayed multiple times, setting this to false will use tensors from previous runs
         Returns:
             (ipTensor, opTensor) if the current communication requires tensors, None otherwise.
         """
