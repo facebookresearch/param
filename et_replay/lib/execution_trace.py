@@ -152,6 +152,8 @@ class Node:
         kernel_backend: Optional[str] = None,
         kernel_file: Optional[str] = None,
         comm_args: Optional[_CommArgs] = None,
+        input_strides: Optional[List[Any]] = None,
+        output_strides: Optional[List[Any]] = None,
     ):
         self.name: str = name
         self.parent_id: int = parent_id
@@ -173,10 +175,12 @@ class Node:
         self.inputs: List[Any] = inputs
         self.input_types: List[str] = input_types
         self.input_shapes: List[Any] = input_shapes
+        self.input_strides: Optional[List[Any]] = input_strides
         # self.outputs: List[Any] = [tuple(o) if isinstance(o, list) else o for o in outputs]
         self.outputs: List[Any] = outputs
         self.output_types: List[str] = output_types
         self.output_shapes: List[Any] = output_shapes
+        self.output_strides: Optional[List[Any]] = output_strides
         self.commArgs: Optional[_CommArgs] = comm_args
 
     def get_inputs(self) -> Iterable:
@@ -321,6 +325,8 @@ class ExecutionTrace:
             "1.0.4-chakra.0.0.4": ExecutionTrace._create_node_v1_0_2_chakra_0_0_4,
             # 1.1.0 includes new comm args in record_param_comms
             "1.1.0-chakra.0.0.4": ExecutionTrace._create_node_v1_0_2_chakra_0_0_4,
+            # 1.1.1 includes tensor strides
+            "1.1.1-chakra.0.0.4": ExecutionTrace._create_node_v1_1_1_chakra_0_0_4,
             # Add future versions here
         }
         create_node = node_creation_func.get(self.schema, None)
@@ -468,6 +474,44 @@ class ExecutionTrace:
             rf_id,
             kernel_backend,
             kernel_file,
+        )
+
+    @staticmethod
+    def _create_node_v1_1_1_chakra_0_0_4(pid, x: Dict[str, Any]) -> Node:
+        (
+            fw_parent,
+            seq_id,
+            fw_tid,
+            op_schema,
+            rf_id,
+            scope,
+            tid,
+            kernel_backend,
+            kernel_file,
+        ) = ExecutionTrace._read_attrs(x)
+
+        return Node(
+            x["name"],
+            x["id"],
+            x["ctrl_deps"],
+            fw_parent,
+            seq_id,
+            pid,
+            tid,
+            fw_tid,
+            op_schema,
+            scope,
+            x["inputs"]["values"],
+            x["inputs"]["types"],
+            x["inputs"]["shapes"],
+            x["outputs"]["values"],
+            x["outputs"]["types"],
+            x["outputs"]["shapes"],
+            rf_id,
+            kernel_backend,
+            kernel_file,
+            x["inputs"]["strides"],
+            x["outputs"]["strides"],
         )
 
     def get_nodes(self, clean: bool = False):
