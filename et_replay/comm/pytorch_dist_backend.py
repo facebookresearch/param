@@ -8,6 +8,7 @@ import os
 from itertools import cycle
 from time import sleep
 from typing import List, Optional
+import pickle
 
 import numpy as np
 import torch
@@ -1023,7 +1024,9 @@ class PyTorchDistBackend(backendFunctions):
                 ranks=group_ranks, backend=backend
             )
         else:
-            return dist.new_group(ranks=group_ranks, backend=backend)
+            pg = dist.new_group(ranks=group_ranks, backend=backend)
+            torch.distributed.barrier(pg)
+            return pg
 
     def tensor_list_to_numpy(self, tensorList):
         if isinstance(tensorList, list):
@@ -1079,9 +1082,20 @@ class PyTorchDistBackend(backendFunctions):
     def initialize_groups(self, backend="gloo"):
         groups = {}
         world_size = self.get_world_size()
-
+        global_rank = self.get_global_rank()
         # create additional groups
-        for pg_id, group_ranks in self.commsParams.groupRanks.items():
+        # sync pgs
+        sync_store = dist.PrefixStore("param_sync", self.tcp_store)
+        sync_store.set(str(global_rank), pickle.dumps(self.commsParams.groupRanks))
+        torch.distributed.barrier()
+        group_ranks_sync = self.commsParams.groupRanks.copy()
+        for i in range(self.get_world_size()):
+            if i == global_rank:
+                continue
+            bytes = sync_store.get(str(i))
+            group_ranks_sync.update(pickle.loads(bytes))
+        # for pg_id, group_ranks in self.commsParams.groupRanks.items():
+        for pg_id, group_ranks in dict(sorted(group_ranks_sync.items())).items():
             if (
                 len(group_ranks) > world_size
             ):  # this means that --auto-shrink is enabled, only use default pg
@@ -1092,12 +1106,15 @@ class PyTorchDistBackend(backendFunctions):
             ):  # this is the default group, it has already been created
                 pg = self.get_default_group()
             else:
-                pg = self.get_new_pg(group_ranks=group_ranks, backend=backend)
-                global_rank = self.get_global_rank()
+
+                logger.info(
+                        f"initialize_groups: Rank {global_rank} creates new group pg_id {pg_id} {pg} with {group_ranks}"
+                    )
                 if global_rank in group_ranks:
                     logger.info(
                         f"initialize_groups: Rank {global_rank} creates new group pg_id {pg_id} {pg} with {group_ranks}"
                     )
+                pg = self.get_new_pg(group_ranks=group_ranks, backend=backend)
             groups[pg_id] = pg
 
         # if additional groups are created, overwrite the default groups list
