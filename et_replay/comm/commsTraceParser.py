@@ -160,14 +160,16 @@ def _parse_comms_op_node(in_trace: ExecutionTrace, pg_ranks_map: dict, target_ra
                 (comm_args.outMsgSize, _) = _getTensorInfoFromPyTorchETEntry(node.outputs, node.output_types[0])
                 comm_args.dtype = tensorDtypeMap[in_msg_type]  # 1st value of input_types is the data type for the tensors
 
+            # the recorded rank id in execution trace is local rank id in the process group
+            # we need to convert it to global rank for replay, check the function broadcast() of pytorch below:
+            # https://github.com/pytorch/pytorch/blob/6c4efd4e959017fc758fcc5dc32d8cc6a4b9164d/torch/distributed/distributed_c10d.py#L2404
             if comm_args.comms in supportedP2pOps:
                 if "send" in comm_args.comms:
-                    (comm_args.src_rank, comm_args.dst_rank) = (target_rank, recorded_rank)
+                    (comm_args.src_rank, comm_args.dst_rank) = (target_rank, comm_args.groupRanks[recorded_rank])
                 elif "recv" in comm_args.comms:
-                    (comm_args.src_rank, comm_args.dst_rank) = (recorded_rank, target_rank)
-
-            if comm_args.comms in ["reduce", "broadcast", "gather", "scatter"]:
-                comm_args.root = recorded_rank
+                    (comm_args.src_rank, comm_args.dst_rank) = (comm_args.groupRanks[recorded_rank], target_rank)
+            elif comm_args.comms in ["reduce", "broadcast", "gather", "scatter"]:
+                comm_args.root = comm_args.groupRanks[recorded_rank]
                 comm_args.groupRanks = comm_args.groupRanks
 
             if comm_args.comms == "all_to_allv":
