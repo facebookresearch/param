@@ -89,7 +89,7 @@ def _parseExecutionTrace(
     """
     ET_PG_NAME_TUPLE = in_trace.schema_pytorch() >= (1, 0, 3)
     if (in_trace.schema_pytorch() < (1, 0, 3)):
-        raise ValueError(f"Only support trace version >1.0.3, but current trace version is {in_trace.schema.split("-")[0]}")
+        raise ValueError(f"Only support trace version >1.0.3, but current trace version is {in_trace.schema.split('-')[0]}")
 
     pg_ranks_map = _parse_proc_group_info(in_trace) # key is pg id, value is global ranks in this pg
     comms_op_list = _parse_comms_op_node(in_trace, pg_ranks_map, target_rank, total_ranks)
