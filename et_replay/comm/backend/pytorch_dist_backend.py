@@ -16,8 +16,8 @@ import torch.distributed as dist
 import torch.nn as nn
 
 from et_replay.comm.param_profile import paramProfile
-from et_replay.comm.pytorch_backend_utils import (
-    backendFunctions,
+from et_replay.comm.backend.base_backend import (
+    BaseBackend,
     collectiveArgsHolder,
 )
 
@@ -71,7 +71,7 @@ def _dequantize(obj):
             return resultTensor
 
 
-class PyTorchDistBackend(backendFunctions):
+class PyTorchDistBackend(BaseBackend):
     def get_collective_group(self, collectiveArgs):
         if self.use_ext_dist:
             return collectiveArgs.group.my_pg
@@ -999,18 +999,6 @@ class PyTorchDistBackend(backendFunctions):
             if isinstance(self.commsParams, dict)
             else self.commsParams.backend
         )
-        # Import ucc plugin
-        if backend == "ucc":
-            # try OSS/setup.py
-            try:
-                import torch_ucc  # noqa
-            except ImportError:
-                try:
-                    from ucc_plugin import initialize_ucc_plugin
-                except ImportError:
-                    raise RuntimeError("Unable to import initialize_ucc_plugin")
-                else:
-                    initialize_ucc_plugin(backend)
         # Import Fairring
         if backend == "fairring":
             try:
