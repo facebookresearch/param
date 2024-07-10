@@ -1025,7 +1025,6 @@ class PyTorchDistBackend(backendFunctions):
             )
         else:
             pg = dist.new_group(ranks=group_ranks, backend=backend)
-            torch.distributed.barrier(pg)
             return pg
 
     def tensor_list_to_numpy(self, tensorList):
@@ -1083,9 +1082,8 @@ class PyTorchDistBackend(backendFunctions):
         groups = {}
         world_size = self.get_world_size()
         global_rank = self.get_global_rank()
-        # create additional groups
-        # sync pgs
-        sync_store = dist.PrefixStore("param_sync", self.tcp_store)
+        # sync pgs across ranks, we assume that pg_name is unique and consistent for all ranks
+        sync_store = dist.PrefixStore("pg_sync_r", self.tcp_store)
         sync_store.set(str(global_rank), pickle.dumps(self.commsParams.groupRanks))
         torch.distributed.barrier()
         group_ranks_sync = self.commsParams.groupRanks.copy()
@@ -1094,7 +1092,7 @@ class PyTorchDistBackend(backendFunctions):
                 continue
             bytes = sync_store.get(str(i))
             group_ranks_sync.update(pickle.loads(bytes))
-        # for pg_id, group_ranks in self.commsParams.groupRanks.items():
+        # create additional groups
         for pg_id, group_ranks in dict(sorted(group_ranks_sync.items())).items():
             if (
                 len(group_ranks) > world_size
@@ -1106,15 +1104,10 @@ class PyTorchDistBackend(backendFunctions):
             ):  # this is the default group, it has already been created
                 pg = self.get_default_group()
             else:
-
-                logger.info(
-                        f"initialize_groups: Rank {global_rank} creates new group pg_id {pg_id} {pg} with {group_ranks}"
-                    )
-                if global_rank in group_ranks:
-                    logger.info(
-                        f"initialize_groups: Rank {global_rank} creates new group pg_id {pg_id} {pg} with {group_ranks}"
-                    )
                 pg = self.get_new_pg(group_ranks=group_ranks, backend=backend)
+                logger.info(
+                        f"initialized_group: create new group pg_id {pg_id} {pg} with {group_ranks}"
+                    )
             groups[pg_id] = pg
 
         # if additional groups are created, overwrite the default groups list
