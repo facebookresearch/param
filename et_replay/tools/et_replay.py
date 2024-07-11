@@ -56,9 +56,10 @@ from et_replay.comm.comms_utils import (
     paramToCommName,
     commsArgs
 )
-from et_replay.comm.pytorch_backend_utils import supportedP2pOps
+from et_replay.comm.backend.base_backend import supportedP2pOps
 
 from collections import namedtuple
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -1624,11 +1625,11 @@ class ReplayEngine(commsTraceReplayBench):
     def __init__(self):
         super().__init__()
 
-        self.comp_replay_manager: ExgrReplayManager = None
+        self.comp_replay_manager: Optional[ExgrReplayManager] = None
 
         self.comp_op_start_events = []
         self.comp_op_end_events = []
-
+    
     def replayTrace(
         self,
         commsParams: commsParamsHolderBase,
@@ -1643,7 +1644,6 @@ class ReplayEngine(commsTraceReplayBench):
         Returns:
             None
         """
-
         if warmup:
             logLable = "[Warm-up]"
         else:
@@ -1786,8 +1786,9 @@ class ReplayEngine(commsTraceReplayBench):
                     logger.info(
                         f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} in block [{curBlockStack}]... {global_latency:.2f} us"
                     )
-
+        
         torch.cuda.synchronize(self.comp_replay_manager.device)
+
 
     def reportBenchTime(self):
         super().reportBenchTime()
