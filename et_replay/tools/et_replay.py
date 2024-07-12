@@ -1128,13 +1128,8 @@ class ExgrReplayManager:
             outputs = []
             if output_count == 0:
                 if node.kernel_backend == "triton":
-                    # remove the last comma
-                    grid_info = inputs[-2]
-                    index = grid_info.rfind(",")
-                    if index >= 0:
-                        grid_info = grid_info[:index] + grid_info[index + 1 :]
                     exec(
-                        f"func.run(*inputs[:-2], grid={grid_info}, stream={inputs[-1]})"
+                        f"func.run(*inputs[:-2], grid={inputs[-2]}, stream={inputs[-1]})"
                     )
                 else:
                     func(*inputs)
