@@ -58,7 +58,7 @@ from et_replay.comm.comms_utils import (
 )
 from et_replay.comm.backend.base_backend import supportedP2pOps
 
-from collections import namedtuple
+from collections import namedtuple, Counter
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -201,6 +201,7 @@ class ExgrReplayManager:
 
         self.tensor_instances = {}
         self.tensor_storage_sizes = {}
+        self.tensor_ref_cnts = {}
 
     def initBench(self):
         self.numWarmupIters = self.args.warmup_iter
@@ -297,57 +298,33 @@ class ExgrReplayManager:
 
     def reset_registry(self):
         if self.tensor_with_device:
-            for k, v in self.tensor_registry_permanent.items():
-                if isinstance(v, tuple) and v[0] == "allocated":
-                    v = v[1]()
-
-                    if self.tensor_device[k] == "cpu" or self.cpu:
-                        _v = v
-                    else:
-                        _v = v.cuda(self.device)
-                    self.tensor_registry_permanent[k] = _v
+            self.tensor_registry = {
+                k: (
+                    None
+                    if v is None
+                    else (
+                        v
+                        if self.tensor_device[k] == "cpu" or self.cpu or (isinstance(v, tuple) and v[0] == "lazy_alloc")
+                        else v.cuda(self.device)
+                    )
+                )
+                for k, v in self.tensor_registry_permanent.items()
+            }
         else:
-            for k, v in self.tensor_registry_permanent.items():
-                if isinstance(v, tuple) and v[0] == "allocated":
-                    v = v[1]()
-
-                    if k in self.cpu_tensor or self.cpu:
-                        _v = v
-                    else:
-                        _v = v.cuda(self.device)
-                    self.tensor_registry_permanent[k] = _v
-
-        if self.tensor_with_device:
-            for k, v in self.tensor_registry_permanent.items():
-                _v = None
-                if v is None:
-                    _v = None
-                else:
-                    if isinstance(v, tuple) and v[0] == "strided":
-                        v = v[1]()
-
-                    if self.tensor_device[k] == "cpu" or self.cpu:
-                        _v = v
-                    else:
-                        _v = v.cuda(self.device)
-                self.tensor_registry[k] = _v
-        else:
-            for k, v in self.tensor_registry_permanent.items():
-                _v = None
-                if v is None:
-                    _v = None
-                else:
-                    if isinstance(v, tuple) and v[0] == "strided":
-                        v = v[1]()
-
-                    if k in self.cpu_tensor or self.cpu:
-                        _v = v
-                    else:
-                        _v = v.cuda(self.device)
-                self.tensor_registry[k] = _v
-
+            self.tensor_registry = {
+                k: (
+                    None
+                    if v is None
+                    else (
+                        v if k in self.cpu_tensor or self.cpu or (isinstance(v, tuple) and v[0] == "lazy_alloc")
+                        else v.cuda(self.device)
+                    )
+                )
+                for k, v in self.tensor_registry_permanent.items()
+            }
         gc.collect()
         torch.cuda.empty_cache()
+
 
     def extract_subgraph(self, root):
         """
@@ -648,31 +625,28 @@ class ExgrReplayManager:
                                 self.tensor_storage_sizes[storage_id] = []
                             self.tensor_storage_sizes[storage_id].append(storage_offset + tensor_size(shape))
 
-                            def get_strided_tensor(storage_id, shape, storage_offset):
-                                return torch.as_strided(self.tensor_instances[storage_id], shape, shape_to_stride(shape), storage_offset)
+                            if storage_id not in self.tensor_ref_cnts:
+                                self.tensor_ref_cnts[storage_id] = Counter()
+                            self.tensor_ref_cnts[storage_id][node.id] += 1
 
-                            def get_allocated_tensor(storage_id, rng, shape, dtype):
-                                tensor = rng([max(self.tensor_storage_sizes[storage_id])]).to(dtype)
-
-                                self.tensor_instances[storage_id] = torch.as_strided(
-                                    tensor, shape, shape_to_stride(shape), 0
-                                )
+                            def get_allocated_tensor(storage_id, rng, dtype, device):
+                                if storage_id not in self.tensor_instances:
+                                    self.tensor_instances[storage_id] = rng([max(self.tensor_storage_sizes[storage_id])], device=device).to(dtype)
                                 return self.tensor_instances[storage_id]
 
-                            if storage_id not in self.tensor_instances and storage_offset == 0:
-                                self.tensor_registry_permanent[replay_t_id] = ("allocated",
-                                    partial(get_allocated_tensor, storage_id, rng, shape, dtype)
-                                )
-                            else:
-                                self.tensor_registry_permanent[replay_t_id] = ("strided", 
-                                    partial(get_strided_tensor, storage_id, shape, storage_offset)
-                                )
+                            def get_strided_tensor(node_id, storage_id, rng, dtype, shape, storage_offset, device):
+                                source_tensor = get_allocated_tensor(storage_id, rng, dtype, device)
+                                return torch.as_strided(source_tensor, shape, shape_to_stride(shape), storage_offset)
+
+                            self.tensor_registry_permanent[replay_t_id] = ("lazy_alloc", storage_id,
+                                partial(get_strided_tensor, storage_id=storage_id, rng=rng, dtype=dtype, shape=shape, storage_offset=storage_offset, device=device_str)
+                            )
 
                             if node.name == "aten::embedding_bag":
                                 self.unchangeable_intermediate_tensors.add(replay_t_id)
                             if node.name == "aten::pin_memory" and idx == 0:
                                 self.cpu_tensor.add(replay_t_id)
-                    except KeyError:
+                    except NotImplementedError:#KeyError:
                         if data_type != "Tensor(nullptr (uninitialized))":
                             print("KeyError: ", node.id, t_id, data_type)
                         self.tensor_registry_permanent[replay_t_id] = None
@@ -1181,6 +1155,18 @@ class ExgrReplayManager:
         if not func:
             return
         inputs = self.get_inputs(node)
+        
+        # lazy allocate tensors
+        referenced_tensor_storage_ids = set()
+        for i in range(len(inputs)):
+            if isinstance(inputs[i], tuple) and inputs[i][0] == "lazy_alloc":
+                referenced_tensor_storage_ids.add(inputs[i][1])
+                inputs[i] = inputs[i][2](node.id)
+            elif isinstance(inputs[i], list):
+                for j in range(len(inputs[i])):
+                    if isinstance(inputs[i][j], tuple) and inputs[i][j][0] == "lazy_alloc":
+                        referenced_tensor_storage_ids.add(inputs[i][j][1])
+                        inputs[i][j] = inputs[i][j][2](node.id)
 
         # Workaround to eliminate the "strides() called on undefined Tensor" error.
         if node.name == "aten::convolution_backward":
@@ -1289,6 +1275,14 @@ class ExgrReplayManager:
                 time.time_ns() - start_ns - (after_execution - before_execution)
             )
             self.exec_time.append(after_execution - before_execution)
+
+        # dec ref and recycle tensors
+        for storage_id in referenced_tensor_storage_ids:
+            self.tensor_ref_cnts[storage_id][node.id] -= 1
+            if not any(self.tensor_ref_cnts[storage_id].values()):
+                del self.tensor_instances[storage_id]
+                gc.collect()
+                torch.cuda.empty_cache()
 
     def init_comms(self):
         pass
