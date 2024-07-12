@@ -7,7 +7,7 @@ import sys
 import time
 from collections import defaultdict
 from datetime import datetime
-from functools import reduce
+from functools import reduce, partial
 
 import numpy as np
 import torch
@@ -199,6 +199,9 @@ class ExgrReplayManager:
         # Replay on CPU.
         self.cpu = False
 
+        self.tensor_instances = {}
+        self.tensor_storage_sizes = {}
+
     def initBench(self):
         self.numWarmupIters = self.args.warmup_iter
         self.numIters = self.args.iter
@@ -294,29 +297,55 @@ class ExgrReplayManager:
 
     def reset_registry(self):
         if self.tensor_with_device:
-            self.tensor_registry = {
-                k: (
-                    None
-                    if v is None
-                    else (
-                        v
-                        if self.tensor_device[k] == "cpu" or self.cpu
-                        else v.cuda(self.device)
-                    )
-                )
-                for k, v in self.tensor_registry_permanent.items()
-            }
+            for k, v in self.tensor_registry_permanent.items():
+                if isinstance(v, tuple) and v[0] == "allocated":
+                    v = v[1]()
+
+                    if self.tensor_device[k] == "cpu" or self.cpu:
+                        _v = v
+                    else:
+                        _v = v.cuda(self.device)
+                    self.tensor_registry_permanent[k] = _v
         else:
-            self.tensor_registry = {
-                k: (
-                    None
-                    if v is None
-                    else (
-                        v if k in self.cpu_tensor or self.cpu else v.cuda(self.device)
-                    )
-                )
-                for k, v in self.tensor_registry_permanent.items()
-            }
+            for k, v in self.tensor_registry_permanent.items():
+                if isinstance(v, tuple) and v[0] == "allocated":
+                    v = v[1]()
+
+                    if k in self.cpu_tensor or self.cpu:
+                        _v = v
+                    else:
+                        _v = v.cuda(self.device)
+                    self.tensor_registry_permanent[k] = _v
+
+        if self.tensor_with_device:
+            for k, v in self.tensor_registry_permanent.items():
+                _v = None
+                if v is None:
+                    _v = None
+                else:
+                    if isinstance(v, tuple) and v[0] == "strided":
+                        v = v[1]()
+
+                    if self.tensor_device[k] == "cpu" or self.cpu:
+                        _v = v
+                    else:
+                        _v = v.cuda(self.device)
+                self.tensor_registry[k] = _v
+        else:
+            for k, v in self.tensor_registry_permanent.items():
+                _v = None
+                if v is None:
+                    _v = None
+                else:
+                    if isinstance(v, tuple) and v[0] == "strided":
+                        v = v[1]()
+
+                    if k in self.cpu_tensor or self.cpu:
+                        _v = v
+                    else:
+                        _v = v.cuda(self.device)
+                self.tensor_registry[k] = _v
+
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -571,9 +600,13 @@ class ExgrReplayManager:
                         self.args.alpha,
                     )
             for idx, (data_type, t_id, shape) in enumerate(get_input_tensors(node)):
+
+                tensor_id, storage_id, storage_offset, element_num, item_size, device_str = t_id
+
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
                 replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
+                
                 if (
                     t_id in self.dependency_permanent
                     and replay_t_id not in self.tensor_registry_permanent.keys()
@@ -597,9 +630,44 @@ class ExgrReplayManager:
                                 dtype, rng = TORCH_DTYPES_RNG[
                                     data_type.lstrip("Tensor(").rstrip(")")
                                 ]
-                            self.tensor_registry_permanent[replay_t_id] = rng(shape).to(
-                                dtype
-                            )
+
+                            def tensor_size(shape):
+                                size = 1
+                                for dim in shape:
+                                    size *= dim
+                                return size
+
+                            def shape_to_stride(shape):
+                                ndim = len(shape)
+                                stride = [1] * ndim
+                                for i in range(ndim - 2, -1, -1):
+                                    stride[i] = stride[i + 1] * shape[i + 1]
+                                return tuple(stride)
+
+                            if storage_id not in self.tensor_storage_sizes:
+                                self.tensor_storage_sizes[storage_id] = []
+                            self.tensor_storage_sizes[storage_id].append(storage_offset + tensor_size(shape))
+
+                            def get_strided_tensor(storage_id, shape, storage_offset):
+                                return torch.as_strided(self.tensor_instances[storage_id], shape, shape_to_stride(shape), storage_offset)
+
+                            def get_allocated_tensor(storage_id, rng, shape, dtype):
+                                tensor = rng([max(self.tensor_storage_sizes[storage_id])]).to(dtype)
+
+                                self.tensor_instances[storage_id] = torch.as_strided(
+                                    tensor, shape, shape_to_stride(shape), 0
+                                )
+                                return self.tensor_instances[storage_id]
+
+                            if storage_id not in self.tensor_instances and storage_offset == 0:
+                                self.tensor_registry_permanent[replay_t_id] = ("allocated",
+                                    partial(get_allocated_tensor, storage_id, rng, shape, dtype)
+                                )
+                            else:
+                                self.tensor_registry_permanent[replay_t_id] = ("strided", 
+                                    partial(get_strided_tensor, storage_id, shape, storage_offset)
+                                )
+
                             if node.name == "aten::embedding_bag":
                                 self.unchangeable_intermediate_tensors.add(replay_t_id)
                             if node.name == "aten::pin_memory" and idx == 0:
