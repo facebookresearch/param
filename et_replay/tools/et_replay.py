@@ -646,7 +646,7 @@ class ExgrReplayManager:
                                 self.unchangeable_intermediate_tensors.add(replay_t_id)
                             if node.name == "aten::pin_memory" and idx == 0:
                                 self.cpu_tensor.add(replay_t_id)
-                    except NotImplementedError:#KeyError:
+                    except KeyError:
                         if data_type != "Tensor(nullptr (uninitialized))":
                             print("KeyError: ", node.id, t_id, data_type)
                         self.tensor_registry_permanent[replay_t_id] = None
