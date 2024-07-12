@@ -10,7 +10,6 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import argparse
 import logging
 import time
-from inspect import signature
 
 import numpy as np
 
@@ -1798,20 +1797,12 @@ class commsCollBench(paramCommsBench):
                 comms_utils.gracefulExit()
 
         self.backendFuncs = backendObj
-        sig = signature(self.backendFuncs.initialize_backend)
-        if "eager_mode" in sig.parameters:
-            self.backendFuncs.initialize_backend(
-                bootstrap_info.master_ip,
-                bootstrap_info.master_port,
-                backend=commsParams.backend,
-                eager_mode=commsParams.init_only,
-            )
-        else:
-            self.backendFuncs.initialize_backend(
-                bootstrap_info.master_ip,
-                bootstrap_info.master_port,
-                backend=commsParams.backend,
-            )
+        self.backendFuncs.initialize_backend(
+            bootstrap_info.master_ip,
+            bootstrap_info.master_port,
+            backend=commsParams.backend,
+            eager_mode=(commsParams.init_only or commsParams.eager_init),
+        )
         self.backendFuncs.sayHello()  # Informs us where each process is running.
 
     def runBench(self, commsParams):

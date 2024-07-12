@@ -171,7 +171,9 @@ class PyTorchTPUBackend(backendFunctions):
         self.bootstrap_info = bootstrap_info
         self.commsParams = commsParams
 
-    def initialize_backend(self, master_ip, master_port, backend="gloo"):
+    def initialize_backend(
+        self, master_ip, master_port, backend="gloo", eager_mode=False
+    ):
         pass
 
     def benchmark_comms(self, benchTime, commsParams):

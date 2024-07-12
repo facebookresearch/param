@@ -800,6 +800,7 @@ class commsParamsHolderBase:
         self.use_perf_logger = args.use_perf_logger
         self.ibv_devices = args.ibv_devices
         self.init_only = args.init_only
+        self.eager_init = args.eager_init
 
 
 class commsDlrmParamsHolder(commsParamsHolderBase):
@@ -917,7 +918,7 @@ class paramCommsBench(ABC):
             "char": torch.int8,
         }
         self.supportedDtype = list(self.dtypeMap.keys())
-        self.backendFuncs: backendFunctions
+        self.backendFuncs: backendFunctions = None
 
         self.collectiveArgs = collectiveArgsHolder()
         self.comm_size = 1
@@ -1641,6 +1642,12 @@ class paramCommsBench(ABC):
             action="store_true",
             default=False,
             help="Toggle to skip running collectives and only do initalization",
+        )
+        parser.add_argument(
+            "--eager-init",
+            action="store_true",
+            default=False,
+            help="Toggle to initialize progress group immediately during init_process_group call by passing device_id, see https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group",
         )
         pass
 

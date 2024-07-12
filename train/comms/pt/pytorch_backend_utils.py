@@ -349,7 +349,11 @@ class backendFunctions(ABC):
     # Init functions
     @abstractmethod
     def initialize_backend(
-        self, master_ip: str, master_port: str, backend: str = "gloo"
+        self,
+        master_ip: str,
+        master_port: str,
+        backend: str = "gloo",
+        eager_mode: bool = False,
     ) -> None:
         pass
 
