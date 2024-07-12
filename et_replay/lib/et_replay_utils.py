@@ -457,6 +457,7 @@ def build_triton_func(n, resources_dir, async_compile, device):
     with open(os.path.join(resources_dir, n.kernel_file), "r") as f:
         code = f.read()
 
+    func = None
     # TORCHINDUCTOR_UNIQUE_KERNEL_NAMES controls whether each triton
     # kernel is given a unique name or not, if it is not, then the
     # kernel name will be "triton_" for all triton kernels.
@@ -464,8 +465,7 @@ def build_triton_func(n, resources_dir, async_compile, device):
         func = async_compile.triton(n.name, code, device_str=device)
     except Exception:
         func = async_compile.triton("triton_", code, device_str=device)
-    finally:
-        func = None
+
     return func, 0
 
 
