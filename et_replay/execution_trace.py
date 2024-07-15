@@ -112,7 +112,15 @@ class _CommArgs:
 
     collective_name: str
     dtype: str
-    # .. TODO add more see https://github.com/pytorch/pytorch/issues/124674
+    in_msg_nelems: int
+    out_msg_nelems: int
+    in_split_size: str
+    out_split_size: str
+    global_rank_start: int
+    global_rank_stride: int
+    pg_name: str
+    pg_desc: str
+    pg_size: int
 
 
 """
@@ -435,6 +443,32 @@ class ExecutionTrace:
 
         return tuple(attr_dict.get(key, None) for key in cls.ATTR_TYPES.keys())
 
+    # MUST keep the order the same as members of _CommArgs
+    COMM_ATTR_TYPES = {
+        "collective_name": str,
+        "dtype": str,
+        "in_msg_nelems": int,
+        "out_msg_nelems": int,
+        "in_split_size": str,
+        "out_split_size": str,
+        "global_rank_start": int,
+        "global_rank_stride": int,
+        "pg_name": str,
+        "pg_desc": str,
+        "pg_size": int,
+    }
+
+    @classmethod
+    def _read_comm_attrs(cls, node: Dict[str, Any]) -> _CommArgs:
+        attr_dict = {
+            attr["name"]: cls.COMM_ATTR_TYPES[attr["name"]](attr["value"])
+            for attr in node["attrs"]
+            if attr["name"] in cls.COMM_ATTR_TYPES.keys()
+        }
+
+        params_dict = {k:attr_dict.get(k, None) for k in cls.COMM_ATTR_TYPES.keys()}
+        return _CommArgs(**params_dict)
+
     @staticmethod
     def _create_node_v1_0_1(pid, x: Dict[str, Any]) -> Node:
         return Node(
@@ -472,6 +506,8 @@ class ExecutionTrace:
             kernel_file,
         ) = ExecutionTrace._read_attrs(x)
 
+        comm_attrs = ExecutionTrace._read_comm_attrs(x) if x['name'] == "record_param_comms" else None
+
         return Node(
             x["name"],
             x["id"],
@@ -492,6 +528,7 @@ class ExecutionTrace:
             rf_id,
             kernel_backend,
             kernel_file,
+            comm_attrs
         )
 
     @staticmethod
