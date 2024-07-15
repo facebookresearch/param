@@ -98,30 +98,30 @@ def _parseExecutionTrace(
 
 def _parse_proc_group_info(in_trace: ExecutionTrace):
     pg_ranks_map = {} # {node_id : {process_group_id : [ranks] } }
-    for node in in_trace.nodes.values():
-        if "process_group:init" in node.name:
-            # info of this node is dumped using torch.distributed.distributed_c10d._world.pg_config_info
-            # at the start of profiling, but not not callback to torch.distributed.init_process_group()
-            # Pre-Assumption: all process groups has been created before profiling start.
-            try:
-                pg_objs = json.loads(node.inputs[0])
-            except json.decoder.JSONDecodeError:  # skip if pg_config_info is truncated
-                break
+    pg_init_nodes = (node for node in in_trace.nodes.values() if "process_group:init" in node.name)
+    for node in pg_init_nodes:
+        # info of this node is dumped using torch.distributed.distributed_c10d._world.pg_config_info
+        # at the start of profiling, but not not callback to torch.distributed.init_process_group()
+        # Pre-Assumption: all process groups has been created before profiling start.
+        try:
+            pg_objs = json.loads(node.inputs[0])
+        except json.decoder.JSONDecodeError:  # skip if pg_config_info is truncated
+            break
 
-            pg_ranks_map[node.id] = {}
-            for pg in pg_objs:
-                if not pg["pg_name"].isdecimal():
-                    # TODO support local synchronization pg
-                    raise ValueError(f"Process group name is {pg['pg_name']} in node {node['id']}, which is not supported.")
-                (pg_id, ranks, group_size, group_count) = [pg[k] for k in ["pg_name", "ranks", "group_size", "group_count"]]
-                pg_id = int(pg_id)
-                pg_ranks_map[node.id][pg_id] = (
-                    ranks
-                    if len(ranks) > 0
-                    else list(range(group_size))
-                    # rank list is empty when all ranks are in a pg
-                )
-            break  # only one process_group init node per trace
+        pg_ranks_map[node.id] = {}
+        for pg in pg_objs:
+            if not pg["pg_name"].isdecimal():
+                # TODO support local synchronization pg
+                raise ValueError(f"Process group name is {pg['pg_name']} in node {node['id']}, which is not supported.")
+            (pg_id, ranks, group_size, group_count) = [pg[k] for k in ["pg_name", "ranks", "group_size", "group_count"]]
+            pg_id = int(pg_id)
+            pg_ranks_map[node.id][pg_id] = (
+                ranks
+                if len(ranks) > 0
+                else list(range(group_size))
+                # rank list is empty when all ranks are in a pg
+            )
+        break  # only one process_group init node per trace
     return pg_ranks_map
 
 def _parse_comms_op_node(in_trace: ExecutionTrace, pg_ranks_map: dict, target_rank: int, total_ranks: int):
