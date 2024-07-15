@@ -1070,7 +1070,11 @@ class PyTorchDistBackend(BaseBackend):
         groups = {}
         world_size = self.get_world_size()
         global_rank = self.get_global_rank()
-        # sync pgs across ranks, we assume that pg_name is unique and consistent for all ranks
+
+        # sync pgs across ranks to fix hang with multiple comm groups
+        # because new_group() functions requires that all processes in the main group enter,
+        # even if they are not going to be members of the group. 
+        # Assumption: pg_name is unique and consistent for all ranks
         sync_store = dist.PrefixStore("pg_sync_r", self.tcp_store)
         sync_store.set(str(global_rank), pickle.dumps(self.commsParams.groupRanks))
         torch.distributed.barrier()
@@ -1080,6 +1084,7 @@ class PyTorchDistBackend(BaseBackend):
                 continue
             bytes = sync_store.get(str(i))
             group_ranks_sync.update(pickle.loads(bytes))
+        
         # create additional groups
         for pg_id, group_ranks in dict(sorted(group_ranks_sync.items())).items():
             if (
