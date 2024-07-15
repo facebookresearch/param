@@ -136,61 +136,59 @@ def _parse_comms_op_node(in_trace: ExecutionTrace, pg_ranks_map: dict, target_ra
     for k,v in pg_ranks_map.items():
         pg_ranks_map_flatten.update(v)
     
-    for node in in_trace.nodes.values():
-        if node.name == "record_param_comms":
-            # according to macro RECORD_PARAM_COMMS and RECORD_PARAM_COMMS_DATA in torch/csrc/distributed/c10d/ParamCommsUtils.hpp
-            # ["wait", "barrier", "init"] record 1st element as seq, others record starting from input tensor
-            index_base = 0 if isinstance(node.inputs[0], int) else 1
-            (req_id, pg_id_pair, recorded_rank, comm_name) = [node.inputs[index_base + i] for i in range(4)]
-            comm_args = commsArgs()
-            comm_args.id = node.id
-            comm_args.comms = comms_utils.paramToCommName(comm_name.lower())
-            if comm_args.comms == "init":
-                # init node has been built
-                continue
-            comm_args.req = req_id
+    comm_nodes = (node for node in in_trace.nodes.values() if node.name == "record_param_comms")
+    for node in comm_nodes:
+        # according to macro RECORD_PARAM_COMMS and RECORD_PARAM_COMMS_DATA in torch/csrc/distributed/c10d/ParamCommsUtils.hpp
+        # ["wait", "barrier", "init"] record 1st element as seq, others record starting from input tensor
+        index_base = 0 if isinstance(node.inputs[0], int) else 1
+        req_id = node.inputs[index_base]
+        recorded_rank = node.inputs[index_base + 2]
 
-            if pg_id_pair[0].isdecimal():
-                comm_args.pgId = int(pg_id_pair[0])
-                comm_args.groupRanks = pg_ranks_map_flatten[comm_args.pgId]
-                comm_args.worldSize = len(comm_args.groupRanks)
+        comm_args = commsArgs()
+        comm_args.id = node.id
+        comm_args.comms = comms_utils.paramToCommName(node.commArgs.collective_name.lower())
+        if comm_args.comms == "init":
+            # init node has been built
+            continue
+        comm_args.req = req_id
 
-            if comm_args.comms not in ("wait", "barrier"):
-                (comm_args.inMsgSize, in_msg_type) = _getTensorInfoFromPyTorchETEntry(node.inputs, node.input_types[0])
-                (comm_args.outMsgSize, _) = _getTensorInfoFromPyTorchETEntry(node.outputs, node.output_types[0])
-                comm_args.dtype = tensorDtypeMap[in_msg_type]  # 1st value of input_types is the data type for the tensors
+        if (node.commArgs.pg_name and node.commArgs.pg_name.isdecimal()):
+            comm_args.pgId = int(node.commArgs.pg_name)
+            comm_args.groupRanks = pg_ranks_map_flatten[comm_args.pgId]
+            comm_args.worldSize = len(comm_args.groupRanks)
 
-            # the recorded rank id in execution trace is local rank id in the process group
-            # we need to convert it to global rank for replay, check the function broadcast() of pytorch below:
-            # https://github.com/pytorch/pytorch/blob/6c4efd4e959017fc758fcc5dc32d8cc6a4b9164d/torch/distributed/distributed_c10d.py#L2404
-            if comm_args.comms in supportedP2pOps:
-                if "send" in comm_args.comms:
-                    (comm_args.src_rank, comm_args.dst_rank) = (target_rank, comm_args.groupRanks[recorded_rank])
-                elif "recv" in comm_args.comms:
-                    (comm_args.src_rank, comm_args.dst_rank) = (comm_args.groupRanks[recorded_rank], target_rank)
-            elif comm_args.comms in ["reduce", "broadcast", "gather", "scatter"]:
-                comm_args.root = comm_args.groupRanks[recorded_rank]
-                comm_args.groupRanks = comm_args.groupRanks
+        if comm_args.comms not in ("wait", "barrier"):
+            comm_args.inMsgSize = node.commArgs.in_msg_nelems
+            comm_args.outMsgSize = node.commArgs.out_msg_nelems
+            comm_args.dtype = node.commArgs.dtype.lower()
 
-            if comm_args.comms == "all_to_allv":
-                # 6th value of inputs is in_split, split evenly if not provided
-                if not comm_args.worldSize:
-                    # if no pg info provided, use total ranks as world size
-                    comm_args.worldSize = total_ranks
-                comm_args.inSplit = (
-                    node.inputs[5]
-                    if node.inputs[5]
-                    else [int(comm_args.inMsgSize / comm_args.worldSize)]
-                    * comm_args.worldSize
-                )
-                # 7th value of inputs is out_split, split evenly if not provided
-                comm_args.outSplit = (
-                    node.inputs[6]
-                    if node.inputs[6]
-                    else [int(comm_args.outMsgSize / comm_args.worldSize)]
-                    * comm_args.worldSize
-                )
-            comms_op_list.append(comm_args)
+        # the recorded rank id in execution trace is local rank id in the process group
+        # we need to convert it to global rank for replay, check the function broadcast() of pytorch below:
+        # https://github.com/pytorch/pytorch/blob/6c4efd4e959017fc758fcc5dc32d8cc6a4b9164d/torch/distributed/distributed_c10d.py#L2404
+        if comm_args.comms in supportedP2pOps:
+            if "send" in comm_args.comms:
+                (comm_args.src_rank, comm_args.dst_rank) = (target_rank, comm_args.groupRanks[recorded_rank])
+            elif "recv" in comm_args.comms:
+                (comm_args.src_rank, comm_args.dst_rank) = (comm_args.groupRanks[recorded_rank], target_rank)
+        elif comm_args.comms in ["reduce", "broadcast", "gather", "scatter"]:
+            comm_args.root = comm_args.groupRanks[recorded_rank]
+            comm_args.groupRanks = comm_args.groupRanks
+
+        if comm_args.comms == "all_to_allv":
+            if not comm_args.worldSize:
+                # if no pg info provided, use total ranks as world size
+                comm_args.worldSize = total_ranks
+            comm_args.inSplit = (
+                json.loads(node.commArgs.in_split_size)
+                if json.loads(node.commArgs.in_split_size)
+                else [int(comm_args.inMsgSize / comm_args.worldSize)] * comm_args.worldSize
+            )
+            comm_args.outSplit = (
+                json.loads(node.commArgs.out_split_size)
+                if json.loads(node.commArgs.out_split_size)
+                else [int(comm_args.outMsgSize / comm_args.worldSize)] * comm_args.worldSize
+            )
+        comms_op_list.append(comm_args)
     
     return comms_op_list
 
