@@ -21,3 +21,17 @@ jobs:
 
     - name: Run Black
       run: black . --check
+
+    - name: Run tests
+      run: |
+        python -m pip install -r requirements.txt
+        python -m pip install et_replay/
+        python et_replay/tests/test_execution_trace.py
+
+    - name: Validate imports
+      run: |
+        python -m pip install fbgemm-gpu
+        python -c 'from et_replay import ExecutionTrace'
+        python -c 'from et_replay.comm import comms_utils'
+        python -c 'from et_replay.tools.validate_trace import TraceValidator'
+        python -c 'from et_replay.utils import trace_handler'

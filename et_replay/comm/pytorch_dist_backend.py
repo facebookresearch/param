@@ -13,11 +13,10 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from et_replay.lib.comm.param_profile import paramProfile
-from et_replay.lib.comm.pytorch_backend_utils import (
-    backendFunctions,
-    collectiveArgsHolder,
-)
+
+from et_replay.comm.param_profile import paramProfile
+from et_replay.comm.pytorch_backend_utils import backendFunctions, collectiveArgsHolder
+
 
 try:
     from param_bench.train.comms.pt.fb.internals import (
@@ -55,7 +54,7 @@ def _dequantize(obj):
     if obj is None:
         # invoked in a irrelevant rank
         return None
-    elif type(obj) == torch.Tensor:
+    elif isinstance(obj, torch.Tensor):
         # only call to() if it is not a float32 tensor
         if obj.dtype != torch.float32:
             return obj.to(torch.float32)
@@ -634,7 +633,6 @@ class PyTorchDistBackend(backendFunctions):
             self.device_sync(collectiveArgs)
 
     def wait(self, collectiveArgs, retFlag=False):
-
         # for backwards compatibility, use old wait functionality.
         if len(collectiveArgs.waitObjIds) == 0:
             self.complete_single_op(collectiveArgs)

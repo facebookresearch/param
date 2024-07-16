@@ -7,9 +7,7 @@ name = "et_replay"
 version = "0.5.0"
 
 [tool.setuptools.package-dir]
-"et_replay.lib" = "lib"
-"et_replay.lib.comm" = "lib/comm"
-"et_replay.tools" = "tools"
+"et_replay" = "."
 "param_bench" = ".."
 
 [project.scripts]

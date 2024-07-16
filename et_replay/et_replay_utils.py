@@ -2,11 +2,10 @@ import os
 import re
 
 import torch
-from et_replay.lib.execution_trace import NodeType
+
+from et_replay.execution_trace import NodeType
 from fbgemm_gpu.split_table_batched_embeddings_ops import PoolingMode, WeightDecayMode
-
 from param_bench.train.compute.python.lib.pytorch.config_util import create_op_args
-
 from param_bench.train.compute.python.workloads.pytorch.split_table_batched_embeddings_ops import (
     SplitTableBatchedEmbeddingBagsCodegenInputDataGenerator,
     SplitTableBatchedEmbeddingBagsCodegenOp,
@@ -477,11 +476,11 @@ import logging
 import os
 import time
 from datetime import datetime
-from et_replay.lib.comm import comms_utils
+from et_replay.comm import comms_utils
 
 import torch
-from et_replay.lib.comm import commsTraceReplay
-from et_replay.lib.et_replay_utils import (
+from et_replay.comm import commsTraceReplay
+from et_replay.et_replay_utils import (
     build_fbgemm_func,
     build_torchscript_func,
     generate_fbgemm_tensors,
@@ -490,8 +489,8 @@ from et_replay.lib.et_replay_utils import (
     is_qualified,
 )
 
-from et_replay.lib.execution_trace import ExecutionTrace
-from et_replay.lib.utils import trace_handler
+from et_replay.execution_trace import ExecutionTrace
+from et_replay.utils import trace_handler
 
 
 print("PyTorch version: ", torch.__version__)

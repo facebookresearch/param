@@ -17,6 +17,7 @@ from typing import Dict, List, Set
 
 import numpy as np
 import torch
+
 from et_replay.comm import comms_utils
 from et_replay.comm.comms_utils import (
     bootstrap_info_holder,
@@ -294,7 +295,6 @@ class commsTraceReplayBench(paramCommsBench):
             and not os.path.isfile(self.trace_file)
             and not os.path.isdir(self.trace_file)
         ):
-
             raise ValueError(
                 f"The specified trace path '{self.trace_file}' is neither a "
                 "file nor a directory. Please provide a valid path."
@@ -637,7 +637,6 @@ class commsTraceReplayBench(paramCommsBench):
         # for all_to_allv, we can shrink the size if running on smaller scale
         # this is for sanity test or debug purpose only since we don't always get to run very large scale
         if self.shrink:
-
             cur_world_size = self.collectiveArgs.world_size
             real_world_size = cur_world_size
 

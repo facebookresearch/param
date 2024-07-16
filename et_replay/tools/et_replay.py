@@ -1,7 +1,6 @@
 import argparse
 import gc
 import json
-
 import logging
 import os
 import sys
@@ -13,23 +12,8 @@ from functools import reduce
 import numpy as np
 import torch
 
-from et_replay.lib.comm import comms_utils
-
-from et_replay.lib.execution_trace import ExecutionTrace, NodeType
-
-from et_replay.lib.utils import trace_handler
-
-from param_bench.train.compute.python.lib import pytorch as lib_pytorch
-from param_bench.train.compute.python.lib.init_helper import load_modules
-from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
-from torch._inductor.async_compile import AsyncCompile
-from torch._inductor.codecache import TritonFuture
-
-# grid and split_scan_grid are dynamically loaded
-from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid
-from torch.profiler import ExecutionTraceObserver
-
-from ..lib.et_replay_utils import (
+from et_replay.comm import comms_utils
+from et_replay.et_replay_utils import (
     build_fbgemm_func,
     build_torchscript_func,
     build_triton_func,
@@ -52,6 +36,17 @@ from ..lib.et_replay_utils import (
     TORCH_DTYPES_RNG,
     TORCH_DTYPES_RNG_str,
 )
+from et_replay.execution_trace import ExecutionTrace, NodeType
+from et_replay.utils import trace_handler
+from param_bench.train.compute.python.lib import pytorch as lib_pytorch
+from param_bench.train.compute.python.lib.init_helper import load_modules
+from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
+from torch._inductor.async_compile import AsyncCompile
+from torch._inductor.codecache import TritonFuture
+
+# grid and split_scan_grid are dynamically loaded
+from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid
+from torch.profiler import ExecutionTraceObserver
 
 
 class ExgrReplayManager:
@@ -129,7 +124,7 @@ class ExgrReplayManager:
         self.label = ""
 
         try:
-            from param_bench.et_replay.lib.fb.internals import (
+            from param_bench.et_replay.fb.internals import (
                 add_internal_label,
                 add_internal_parallel_nodes_parents,
                 add_internal_skip_nodes,
@@ -212,7 +207,7 @@ class ExgrReplayManager:
             # Input et trace should be explicitly specified after --input.
             if "://" in self.args.input:
                 try:
-                    from param_bench.et_replay.lib.fb.internals import read_remote_trace
+                    from param_bench.et_replay.fb.internals import read_remote_trace
                 except ImportError:
                     logging.info("FB internals not present")
                     exit(1)
@@ -237,7 +232,7 @@ class ExgrReplayManager:
             # Different processes should read different traces based on global_rank_id.
             if "://" in self.args.trace_path:
                 try:
-                    from param_bench.et_replay.lib.fb.internals import read_remote_trace
+                    from param_bench.et_replay.fb.internals import read_remote_trace
                 except ImportError:
                     logging.info("FB internals not present")
                     exit(1)
@@ -1437,7 +1432,7 @@ class ExgrReplayManager:
         end_time = datetime.now()
 
         try:
-            from param_bench.et_replay.lib.fb.internals import generate_query_url
+            from param_bench.et_replay.fb.internals import generate_query_url
         except ImportError:
             logging.info("FB internals not present")
         else:
