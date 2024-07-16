@@ -55,6 +55,7 @@ class commsCollBench(paramCommsBench):
     def __init__(self):
         super().__init__(supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu"])
         self.tag = ""
+        self.backendFuncs = None
 
     # def readCollArgs(self, parser):
     def readArgs(self, parser):
@@ -161,9 +162,13 @@ class commsCollBench(paramCommsBench):
             "--mm-dim",
             "--comp-dim",
             type=int,
-            default=100,
-            help="dimension size for GEMM or other compute kernels except emb_lookup",
-        )  # Matrix multiplication dim n, A[n,n] * B [n,n]
+            nargs="*",
+            default=[100],
+            help="dimension size of matrices for GEMM or other compute kernels except emb_lookup, "
+            "For gemm, '--mm-dim m n p' uses two input tensors A[m,n] * B[n,p]"
+            "For add or sub, '--mm-dim m n' uses the dimension of input annd output tensors are (m x n)"
+            "If only one value is provided, it uses the dimension of input and output tensors are (n x n), i.e., square tensors",
+        )  # Matrix multiplication dim n, A[m,n] * B [n,p]
         # For emb lookup
         parser.add_argument(
             "--emb-dim",
@@ -438,6 +443,19 @@ class commsCollBench(paramCommsBench):
                 comms_utils.gracefulExit()
         if args.multi_comms > 1 and args.overlap_pair_pgs:
             logger.error("--overlap-pair-pgs is not supported with --multi-comms > 1")
+            comms_utils.gracefulExit()
+
+        if args.mode in ("compute", "comms-compute") and (
+            len(args.mm_dim) > 3
+            or len(args.mm_dim) == 0
+            or (args.kernel == "gemm" and len(args.mm_dim) == 2)
+            or (args.kernel in ("add", "sub") and len(args.mm_dim) == 3)
+        ):
+            logger.error(
+                "mm_dim should have either 1 input argument, "
+                "or 3 input arguments for gemm, or 2 input arguments for add/sub, "
+                f"but got {len(args.mm_dim)} for {args.kernel}"
+            )
             comms_utils.gracefulExit()
 
     def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None, dcheck=False):
@@ -938,13 +956,27 @@ class commsCollBench(paramCommsBench):
         ):  # Compute mode related initialization if not in comms-only mode
             self.collectiveArgs.compute_stream = self.backendFuncs.get_new_stream()
             if commsParams.kernel == "gemm":
-                computeFunc = self.backendFuncs.gemm
+                if len(commsParams.mm_dim) == 1:
+                    # duplicate dim to make them square tensors
+                    commsParams.mm_dim = [
+                        commsParams.mm_dim[0],
+                        commsParams.mm_dim[0],
+                        commsParams.mm_dim[0],
+                    ]
 
+                computeFunc = self.backendFuncs.gemm
                 (
                     self.collectiveArgs.MMout,
                     self.collectiveArgs.MMin1,
                     self.collectiveArgs.MMin2,
-                ) = self.prepGemm(commsParams.mm_dim, commsParams.dtype, curDevice)
+                ) = self.prepGemmNotSquare(
+                    commsParams.mm_dim[0],
+                    commsParams.mm_dim[1],
+                    commsParams.mm_dim[1],
+                    commsParams.mm_dim[2],
+                    commsParams.dtype,
+                    curDevice,
+                )
 
                 if self.report:
                     print(
@@ -961,12 +993,16 @@ class commsCollBench(paramCommsBench):
                         f"emb_dim {commsParams.emb_dim}, num_embs {commsParams.num_embs}, batch_size {commsParams.batch_size}"
                     )
             elif commsParams.kernel in ["add", "sub", "add_num", "sub_num", "copy"]:
+                if len(commsParams.mm_dim) == 2:
+                    # make the third element be 1 to calculate BW correctly for add/sub
+                    commsParams.mm_dim.append(1)
                 (
                     self.collectiveArgs.compOut,
                     self.collectiveArgs.compIn1,
                     self.collectiveArgs.compIn2,
                 ) = self.prepComp(
-                    commsParams.mm_dim,
+                    commsParams.mm_dim[0],
+                    commsParams.mm_dim[1],
                     commsParams.dtype,
                     curDevice,
                     commsParams.kernel,
@@ -1285,8 +1321,8 @@ class commsCollBench(paramCommsBench):
             % (commRanks, latencyAcrossCommRanks)
         )
 
-        m = commsParams.mm_dim
-        tflop = (2 * m * m * m) * 1e-12
+        nm = commsParams.mm_dim[0] * commsParams.mm_dim[1] * commsParams.mm_dim[2]
+        tflop = (2 * nm) * 1e-12
         secs = results["timeUS"] * 1e-6
         # use compute-only time to compute tflops in comms-compute mode
         compute_p50 = 0.0

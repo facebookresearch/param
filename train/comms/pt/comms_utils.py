@@ -1390,13 +1390,26 @@ class paramCommsBench(ABC):
 
     # Prepare generic compute operations that uses 1 or 2 input tensors, and 1 output tensor
     def prepComp(
-        self, mm_dim: int, dtype: str, curDevice: str, kernel: str
+        self,
+        mm_dim0: int,
+        mm_dim1: int,
+        dtype: str,
+        curDevice: str,
+        kernel: str,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        compIn1 = self.backendFuncs.alloc_random([mm_dim, mm_dim], curDevice, dtype)
-        compOut = self.backendFuncs.alloc_empty([mm_dim, mm_dim], dtype, curDevice)
+        compIn1 = self.backendFuncs.alloc_random([mm_dim0, mm_dim1], curDevice, dtype)
         compIn2 = None
         if kernel in ["add", "sub"]:
-            compIn2 = self.backendFuncs.alloc_random([mm_dim, mm_dim], curDevice, dtype)
+            compIn2 = self.backendFuncs.alloc_random(
+                [mm_dim0, mm_dim1], curDevice, dtype
+            )
+            compOut = self.backendFuncs.alloc_empty(
+                [mm_dim0, mm_dim1], dtype, curDevice
+            )
+        else:
+            compOut = self.backendFuncs.alloc_empty(
+                [mm_dim0, mm_dim1], dtype, curDevice
+            )
         return (compOut, compIn1, compIn2)
 
     def prepGemm(
