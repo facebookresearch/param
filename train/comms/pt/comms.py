@@ -1712,29 +1712,17 @@ class commsCollBench(paramCommsBench):
         world_size = self.backendFuncs.get_world_size()
         commsParams.groupRanks = {}
         if commsParams.multi_comms > 1:
-            local_size = self.backendFuncs.get_local_size()
-            local_rank = self.backendFuncs.get_local_rank()
-            nnode = world_size // local_size
-            group_local_size = local_size // commsParams.multi_comms
-
-            self.collectiveArgs.pgId = local_rank // group_local_size
-
-            # create multi_comms number of groups
-            for pgId in range(0, commsParams.multi_comms):
+            self.collectiveArgs.pgId = global_rank % commsParams.multi_comms
+            for pgId in range(commsParams.multi_comms):
                 commsParams.groupRanks[pgId] = []
-
-                # feed subset of global ranks for each group
-                for node in range(0, nnode):
-                    for group_local_rank in range(0, group_local_size):
-                        commsParams.groupRanks[pgId].append(
-                            node * local_size
-                            + pgId * group_local_size
-                            + group_local_rank
-                        )
-
+            for rank in range(world_size):
+                pgId = rank % commsParams.multi_comms
+                commsParams.groupRanks[pgId].append(rank)
+            for pgId in range(commsParams.multi_comms):
                 logger.info(
                     f"PARAM COMMS Rank {global_rank} created group {pgId} with ranks {commsParams.groupRanks[pgId]}"
                 )
+
             # FIXME: how to proper generate groupRanks before initializing backend?
             self.backendFuncs.commsParams.groupRanks = commsParams.groupRanks
             self.backendFuncs.initialize_groups(commsParams.backend)
