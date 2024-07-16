@@ -9,8 +9,7 @@ from typing import Dict, List, Optional
 
 import torch
 
-from et_replay.lib.comm.param_profile import paramTimer
-
+from et_replay.comm.param_profile import paramTimer
 from torch.distributed import ProcessGroup
 
 logger = logging.getLogger(__name__)

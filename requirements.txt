@@ -1,3 +1,4 @@
 torch
 future
 numpy
+pydot
