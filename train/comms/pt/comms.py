@@ -1321,7 +1321,10 @@ class commsCollBench(paramCommsBench):
             % (commRanks, latencyAcrossCommRanks)
         )
 
-        nm = commsParams.mm_dim[0] * commsParams.mm_dim[1] * commsParams.mm_dim[2]
+        nm = 0
+        if commsParams.mode != "comms":
+            nm = commsParams.mm_dim[0] * commsParams.mm_dim[1] * commsParams.mm_dim[2]
+
         tflop = (2 * nm) * 1e-12
         secs = results["timeUS"] * 1e-6
         # use compute-only time to compute tflops in comms-compute mode
