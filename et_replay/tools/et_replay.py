@@ -6,6 +6,7 @@ import os
 import sys
 import time
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import datetime
 from functools import reduce, partial
 
@@ -58,8 +59,8 @@ from et_replay.comm.comms_utils import (
 )
 from et_replay.comm.backend.base_backend import supportedP2pOps
 
-from collections import namedtuple, Counter
-from typing import Optional
+from collections import namedtuple, Counter, defaultdict
+from typing import Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -200,8 +201,8 @@ class ExgrReplayManager:
         self.cpu = False
 
         self.tensor_instances = {}
-        self.tensor_storage_sizes = {}
-        self.tensor_ref_cnts = {}
+        self.tensor_storage_sizes = defaultdict(list)
+        self.tensor_ref_cnts = defaultdict(Counter)
 
     def initBench(self):
         self.numWarmupIters = self.args.warmup_iter
@@ -350,6 +351,16 @@ class ExgrReplayManager:
                 ):
                     continue
                 self.dependency_permanent.add(t_id)
+
+            # output tensors from comm nodes also needs to be allocated
+            if not (self.compute_only or self.args.separate):
+                for _, t_id, _ in get_output_tensors(node):
+                    if self.tensor_with_device:
+                        t_id = tuple(list(t_id)[:5])
+                    if node.name != "record_param_comms":
+                        continue
+                    self.dependency_permanent.add(t_id)
+
             func, output_count = self.build_func(node)
             self.funcs[node.id] = (func, output_count)
 
@@ -366,6 +377,7 @@ class ExgrReplayManager:
 
                     if is_qualified(child):
                         self.sorted_nodes.append(child)
+                        dfs_traverse(child) # maybe we need to dfs traverse all nodes?
                     else:
                         if skip_op(child):
                             self.actual_skip_nodes.append(child.name)
@@ -524,12 +536,13 @@ class ExgrReplayManager:
                     device = list(t_id)[5]
                     t_id = tuple(list(t_id)[:5])
                     if t_id in self.dependency_permanent:
+                        # fake comm nodes output tensor as input
                         add_unique_tensor(
-                            node.name, node.id, t_id, shape, input=False, device=device
+                            node.name, node.id, t_id, shape, input=(node.name == "record_param_comms"), device=device
                         )
                 else:
                     if t_id in self.dependency_permanent:
-                        add_unique_tensor(node.name, node.id, t_id, shape, input=False)
+                        add_unique_tensor(node.name, node.id, t_id, shape, input=(node.name == "record_param_comms"))
 
         # Simulate the execution progress and record the output tensors we have seen so far.
         output_set = set()
@@ -551,13 +564,88 @@ class ExgrReplayManager:
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
                 if t_id in self.dependency_permanent:
-                    output_set.add(self.tensors_mapping[(node.id, t_id, False)])
+                    if node.name == "record_param_comms": # comm op needs alloc output tensors
+                        self.instantiate.add(self.tensors_mapping[(node.id, t_id, True)])
+                    else:
+                        output_set.add(self.tensors_mapping[(node.id, t_id, False)])
+
+    @staticmethod
+    def tensor_size(shape):
+        size = 1
+        for dim in shape:
+            size *= dim
+        return size
+
+    @staticmethod
+    def shape_to_stride(shape):
+        ndim = len(shape)
+        stride = [1] * ndim
+        for i in range(ndim - 2, -1, -1):
+            stride[i] = stride[i + 1] * shape[i + 1]
+        return tuple(stride)
+
+    def get_allocated_tensor(self, storage_id, rng, dtype, device):
+        if storage_id not in self.tensor_instances:
+            self.tensor_instances[storage_id] = rng([max(self.tensor_storage_sizes[storage_id])], device=self.device).to(dtype)
+        return self.tensor_instances[storage_id]
+
+    def get_strided_tensor(self, node_id, storage_id, rng, dtype, shape, storage_offset, device):
+        source_tensor = self.get_allocated_tensor(storage_id, rng, dtype, device)
+        return torch.as_strided(source_tensor, shape, ExgrReplayManager.shape_to_stride(shape), storage_offset).to(dtype)
+
+    def add_tensor_registry_permanent(self, data_type, storage_id, storage_offset, device_str, shape, node, replay_t_id):
+        if data_type == "Tensor(signed char)":
+            dtype, rng = TORCH_DTYPES_RNG["signed char"]
+        else:
+            dtype, rng = TORCH_DTYPES_RNG[
+                data_type.lstrip("Tensor(").rstrip(")")
+            ]
+
+        self.tensor_storage_sizes[storage_id].append(storage_offset + ExgrReplayManager.tensor_size(shape))
+        self.tensor_ref_cnts[storage_id][node.id] += 1
+
+        self.tensor_registry_permanent[replay_t_id] = ("lazy_alloc", storage_id,
+            partial(self.get_strided_tensor, storage_id=storage_id, rng=rng, dtype=dtype, shape=shape, storage_offset=storage_offset, device=device_str)
+        )
 
     def allocate_tensors(self):
-        for node in self.sorted_nodes:
-            if node.name == "record_param_comms" and (
-                self.compute_only or self.args.separate
+        if not (self.compute_only or self.args.separate):
+            self.allocate_comm_tensors()
+        self.allocate_comp_tensors()
+
+    def allocate_comm_tensors(self):
+        def add_tensor_registry(data_type, t_id, shape):
+            tensor_id, storage_id, storage_offset, element_num, item_size, device_str = t_id
+
+            if self.tensor_with_device:
+                t_id = tuple(list(t_id)[:5])
+            replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
+            
+            if (
+                t_id in self.dependency_permanent
+                and replay_t_id not in self.tensor_registry_permanent.keys()
+                and replay_t_id in self.instantiate
             ):
+                try:
+                    self.add_tensor_registry_permanent(data_type, storage_id, storage_offset, device_str, shape, node, replay_t_id)
+                except KeyError:
+                    if data_type != "Tensor(nullptr (uninitialized))":
+                        print("KeyError: ", node.id, t_id, data_type)
+                    self.tensor_registry_permanent[replay_t_id] = None
+
+        for node in self.sorted_nodes:
+            if node.name != "record_param_comms":
+                continue
+
+            for data_type, t_id, shape in get_input_tensors(node):
+                add_tensor_registry(data_type, t_id, shape)
+
+            for data_type, t_id, shape in get_output_tensors(node):
+                add_tensor_registry(data_type, t_id, shape)
+
+    def allocate_comp_tensors(self):
+        for node in self.sorted_nodes:
+            if node.name == "record_param_comms":
                 continue
             if is_fbgemm_forward(node):
                 if self.cpu:
@@ -601,46 +689,7 @@ class ExgrReplayManager:
                             if "fbgemm::split_embedding_codegen_lookup" in node.name:
                                 self.unchangeable_intermediate_tensors.add(replay_t_id)
                         else:
-                            if data_type == "Tensor(signed char)":
-                                dtype, rng = TORCH_DTYPES_RNG["signed char"]
-                            else:
-                                dtype, rng = TORCH_DTYPES_RNG[
-                                    data_type.lstrip("Tensor(").rstrip(")")
-                                ]
-
-                            def tensor_size(shape):
-                                size = 1
-                                for dim in shape:
-                                    size *= dim
-                                return size
-
-                            def shape_to_stride(shape):
-                                ndim = len(shape)
-                                stride = [1] * ndim
-                                for i in range(ndim - 2, -1, -1):
-                                    stride[i] = stride[i + 1] * shape[i + 1]
-                                return tuple(stride)
-
-                            if storage_id not in self.tensor_storage_sizes:
-                                self.tensor_storage_sizes[storage_id] = []
-                            self.tensor_storage_sizes[storage_id].append(storage_offset + tensor_size(shape))
-
-                            if storage_id not in self.tensor_ref_cnts:
-                                self.tensor_ref_cnts[storage_id] = Counter()
-                            self.tensor_ref_cnts[storage_id][node.id] += 1
-
-                            def get_allocated_tensor(storage_id, rng, dtype, device):
-                                if storage_id not in self.tensor_instances:
-                                    self.tensor_instances[storage_id] = rng([max(self.tensor_storage_sizes[storage_id])], device=device).to(dtype)
-                                return self.tensor_instances[storage_id]
-
-                            def get_strided_tensor(node_id, storage_id, rng, dtype, shape, storage_offset, device):
-                                source_tensor = get_allocated_tensor(storage_id, rng, dtype, device)
-                                return torch.as_strided(source_tensor, shape, shape_to_stride(shape), storage_offset)
-
-                            self.tensor_registry_permanent[replay_t_id] = ("lazy_alloc", storage_id,
-                                partial(get_strided_tensor, storage_id=storage_id, rng=rng, dtype=dtype, shape=shape, storage_offset=storage_offset, device=device_str)
-                            )
+                            self.add_tensor_registry_permanent(data_type, storage_id, storage_offset, device_str, shape, node, replay_t_id)
 
                             if node.name == "aten::embedding_bag":
                                 self.unchangeable_intermediate_tensors.add(replay_t_id)
@@ -1144,8 +1193,82 @@ class ExgrReplayManager:
         except Exception as e:
             print(f"Inputs error: {e} at node: {node.id}")
 
+    def get_comm_outputs(self, node):
+        try:
+            outputs = []
+            for idx, item in enumerate(node.outputs):
+                if is_tensor(node, idx):
+                    self.lookup_cnt += 1
+                    if self.tensor_with_device:
+                        item = tuple(item[:5])
+                    outputs.append(
+                        self.tensor_registry[
+                            self.tensors_mapping[(node.id, tuple(item), True)]
+                        ]
+                    )
+                elif is_tensor_list(node, idx):
+                    self.lookup_cnt += len(item)
+                    if self.tensor_with_device:
+                        outputs.append(
+                            [
+                                self.tensor_registry[
+                                    self.tensors_mapping[
+                                        (node.id, tuple(t_id[:5]), True)
+                                    ]
+                                ]
+                                for t_id in item
+                            ]
+                        )
+                    else:
+                        outputs.append(
+                            [
+                                self.tensor_registry[
+                                    self.tensors_mapping[
+                                        (node.id, tuple(t_id), True)
+                                    ]
+                                ]
+                                for t_id in item
+                            ]
+                        )
+                elif item == "<None>" or item == "<Generator>":
+                    outputs.append(None)
+                elif item == "inf" or item == "-inf":
+                    outputs.append(float(item))
+                elif node.input_types[idx] == "Device" and "cuda" in item:
+                    if self.cpu:
+                        outputs.append("cpu")
+                    else:
+                        outputs.append(self.cuda)
+                else:
+                    outputs.append(item)
+            return outputs
+        except Exception as e:
+            print(f"Outputs error: {e} at node: {node.id}")
+
+    def lazy_alloc_tensors(self, inputs, node_id):
+        referenced_tensor_storage_ids = set()
+        for i in range(len(inputs)):
+            if isinstance(inputs[i], tuple) and inputs[i][0] == "lazy_alloc":
+                referenced_tensor_storage_ids.add(inputs[i][1])
+                inputs[i] = inputs[i][2](node_id)
+            elif isinstance(inputs[i], list):
+                for j in range(len(inputs[i])):
+                    if isinstance(inputs[i][j], tuple) and inputs[i][j][0] == "lazy_alloc":
+                        referenced_tensor_storage_ids.add(inputs[i][j][1])
+                        inputs[i][j] = inputs[i][j][2](node_id)
+
+        return referenced_tensor_storage_ids
+
+    def recycle_tensors(self, referenced_tensor_storage_ids, node_id):
+        for storage_id in referenced_tensor_storage_ids:
+            self.tensor_ref_cnts[storage_id][node_id] -= 1
+            if not any(self.tensor_ref_cnts[storage_id].values()):
+                del self.tensor_instances[storage_id]
+                gc.collect()
+                torch.cuda.empty_cache()
+
     def run_op(self, node, iter):
-        if node.name == "record_param_comms" and not self.compute_only:
+        if node.name == "record_param_comms":
             return
 
         if self.debug and iter >= self.numWarmupIters:
@@ -1157,16 +1280,7 @@ class ExgrReplayManager:
         inputs = self.get_inputs(node)
         
         # lazy allocate tensors
-        referenced_tensor_storage_ids = set()
-        for i in range(len(inputs)):
-            if isinstance(inputs[i], tuple) and inputs[i][0] == "lazy_alloc":
-                referenced_tensor_storage_ids.add(inputs[i][1])
-                inputs[i] = inputs[i][2](node.id)
-            elif isinstance(inputs[i], list):
-                for j in range(len(inputs[i])):
-                    if isinstance(inputs[i][j], tuple) and inputs[i][j][0] == "lazy_alloc":
-                        referenced_tensor_storage_ids.add(inputs[i][j][1])
-                        inputs[i][j] = inputs[i][j][2](node.id)
+        referenced_tensor_storage_ids = self.lazy_alloc_tensors(inputs, node.id)
 
         # Workaround to eliminate the "strides() called on undefined Tensor" error.
         if node.name == "aten::convolution_backward":
@@ -1277,12 +1391,7 @@ class ExgrReplayManager:
             self.exec_time.append(after_execution - before_execution)
 
         # dec ref and recycle tensors
-        for storage_id in referenced_tensor_storage_ids:
-            self.tensor_ref_cnts[storage_id][node.id] -= 1
-            if not any(self.tensor_ref_cnts[storage_id].values()):
-                del self.tensor_instances[storage_id]
-                gc.collect()
-                torch.cuda.empty_cache()
+        self.recycle_tensors(referenced_tensor_storage_ids, node.id)
 
     def init_comms(self):
         pass
@@ -1318,6 +1427,7 @@ class ExgrReplayManager:
             self.init_comms()
 
         nodes = self.et.get_nodes(clean=True)
+
         assert isinstance(self.args.subgraph, str)
         if self.args.subgraph != "":
             find_subgraph = False
@@ -1691,6 +1801,88 @@ class ReplayEngine(commsTraceReplayBench):
 
         self.comp_op_start_events = []
         self.comp_op_end_events = []
+
+        self.comm_node_referenced_tensor_storage_ids = defaultdict(set)
+
+    def generate_io_tensors(
+        self, 
+        curComm: commsArgs, 
+        commsParams: commsParamsHolderBase, 
+        regenerateTensors: bool
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        node = self.comp_replay_manager.et.nodes[curComm.id]
+
+        # input and output tensors are all hacked into node inputs, so use get inputs to get
+        # lazy alloc operations of input and output tensors of comm node
+        node_inputs = self.comp_replay_manager.get_inputs(node)
+        node_outputs = self.comp_replay_manager.get_comm_outputs(node)
+
+        def alloc_io_tensors(raw_list):
+            tensor_list = []
+            if isinstance(raw_list, Iterable):
+                for element in raw_list:
+                    if isinstance(element, torch.Tensor) or (isinstance(element, tuple) and element[0] == "lazy_alloc"):
+                        tensor_list.append(element)
+                    elif isinstance(element, list):
+                        is_tensor_list = False
+                    
+                        for list_element in element:
+                            if isinstance(list_element, torch.Tensor) or (isinstance(list_element, tuple) and list_element[0] == "lazy_alloc"):
+                                is_tensor_list = True
+                            else:
+                                is_tensor_list = False
+                                break
+
+                        if is_tensor_list:
+                            tensor_list.append(element)
+            return tensor_list
+
+        input_tensors = alloc_io_tensors(node_inputs)
+        output_tensors = alloc_io_tensors(node_outputs)
+
+        assert len(input_tensors) <= 1
+        assert len(output_tensors) <= 1
+
+        ip_tensor = None
+        op_tensor = None
+
+        # a hack to see if the ip/op tensor is a GenericList, if so, get the first element, 
+        # @see _getTensorInfoFromPyTorchETEntry from commsTraceParser.py
+        def extract_tensor_from_list(tensor_list):
+            if isinstance(tensor_list, list):
+                tensor = tensor_list[0]
+                return extract_tensor_from_list(tensor)
+            else:
+                return tensor_list
+
+        if len(input_tensors) > 0:
+            self.comm_node_referenced_tensor_storage_ids[node.id] |= self.comp_replay_manager.lazy_alloc_tensors(input_tensors, node.id)
+            ip_tensor = extract_tensor_from_list(input_tensors[0])
+
+        if len(output_tensors) > 0:
+            self.comm_node_referenced_tensor_storage_ids[node.id] |= self.comp_replay_manager.lazy_alloc_tensors(output_tensors, node.id)
+            op_tensor = extract_tensor_from_list(output_tensors[0])
+
+        return (ip_tensor, op_tensor)
+
+    def run_comp_op(self, node, warmup: bool):
+        if warmup:
+            self.comp_replay_manager.run_op(node, 0)
+        else:
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+
+            start_event.record()
+            self.comp_replay_manager.run_op(node, 0)
+            end_event.record()
+
+            self.comp_op_start_events.append(start_event)
+            self.comp_op_end_events.append(end_event)
+
+    def run_comm_op(self, curComm: commsArgs, commsParams: commsParamsHolderBase, cnt: int, logLable: str, warmup: bool, startTime: int, coll_in_batch_num: int):
+        super().run_comm_op(curComm, commsParams, cnt, logLable, warmup, startTime, coll_in_batch_num)
+        self.comp_replay_manager.recycle_tensors(self.comm_node_referenced_tensor_storage_ids[curComm.id], curComm.id)
+        self.comm_node_referenced_tensor_storage_ids[curComm.id].clear()
     
     def replayTrace(
         self,
@@ -1718,136 +1910,9 @@ class ReplayEngine(commsTraceReplayBench):
         startTime = time.monotonic_ns()
         for cnt, node in enumerate(all_nodes):
             if isinstance(node, Node):
-                if warmup:
-                    self.comp_replay_manager.run_op(node, 0)
-                else:
-                    start_event = torch.cuda.Event(enable_timing=True)
-                    end_event = torch.cuda.Event(enable_timing=True)
-
-                    start_event.record()
-                    self.comp_replay_manager.run_op(node, 0)
-                    end_event.record()
-
-                    self.comp_op_start_events.append(start_event)
-                    self.comp_op_end_events.append(end_event)
+                self.run_comp_op(node, warmup)
             elif isinstance(node, commsArgs):
-                curComm = node
-                curBlocks = curComm.markerStack if curComm.markerStack is not None else []
-                curBlockStack = (
-                    " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
-                )
-
-                # Replay compute
-                if curComm.compute is not None:
-                    # Prepare to run the compute function
-                    computeFunc = self.prepComputeReplay(commsParams, curComm)
-
-                    # Running the kernel
-                    logger.info(
-                        f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {curComm.compute}"
-                    )
-
-                    # Run the kernel and report the total time
-                    (latency, global_latency) = self.runCompute(
-                        func=computeFunc, curBlockStack=curBlockStack
-                    )
-                    recordName = curComm.compute
-
-                # Replay comm
-                else:
-                    if warmup:
-                        self.commRebalance(curComm)
-
-                    # Get the name of the collective from the comm object
-                    collName = paramToCommName(curComm.comms)
-                    (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
-                    # Skip comm if the local process doesn't belong to the PG or encounter an unexpected collective
-                    if (
-                        collName not in self.allowList
-                        or groupRank == -1
-                        or (
-                            collName in ("send", "isend")
-                            and curComm.src_rank != self.backendFuncs.get_global_rank()
-                        )
-                        or (
-                            collName in ("recv", "irecv")
-                            and curComm.dst_rank != self.backendFuncs.get_global_rank()
-                        )
-                    ):
-                        continue
-
-                    if groupRank >= 0:
-                        commDesc = f"{str(curComm.comms)}: NumElemsIn={curComm.inMsgSize}, NumElemsOut={curComm.outMsgSize}, Dtype={curComm.dtype}"
-                        if curComm.comms == "all_to_allv":
-                            commDesc += (
-                                f", InSplit={curComm.inSplit}, OutSplit={curComm.outSplit}"
-                            )
-                        if curComm.comms in supportedP2pOps:
-                            commDesc += f", Src_Rank={curComm.src_rank}, Dst_Rank={curComm.dst_rank}"
-                        logger.info(
-                            f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc}"
-                        )
-
-                    # read fields and prepare the tensors
-                    (
-                        self.collectiveArgs.ipTensor,
-                        self.collectiveArgs.opTensor,
-                    ) = self.prepComms(curComm, commsParams, not self.reuse_tensors)
-
-                    if not warmup and self.colls_per_batch > 0 and coll_in_batch_num == 0:
-                        batch_begin = time.monotonic()
-
-                    # wait for collective timestamp if enabled.
-                    if not warmup and self.use_timestamp:
-                        self.waitForTimestamp(curComm, startTime)
-
-                    # send comm request to pytorch backend
-                    (latency, global_latency) = self.runComms(
-                        collName, curComm, curBlockStack
-                    )
-
-                    # perform data validation check on the final opTensor
-                    if (
-                        self.is_blocking
-                        and commsParams.dcheck == 1
-                        and collName not in ("wait", "barrier")
-                    ):
-                        commsParams.collective = collName
-                        commsParams.srcOrDst = (
-                            curComm.root if curComm.root is not None else 0
-                        )
-                        self.dcheck(
-                            commsParams, curComm.outMsgSize, self.collectiveArgs.opTensor
-                        )
-
-                    # calculating batch latency (batch defined by --colls-per-batch)
-                    if not warmup and collName == "wait" and self.colls_per_batch > 0:
-                        coll_in_batch_num += 1
-                        if coll_in_batch_num == self.colls_per_batch:
-                            batch_latency = (
-                                time.monotonic() - batch_begin
-                            ) * 1e3  # make it millisecond
-                            coll_in_batch_num = 0
-                            self.batchLat.append(batch_latency)
-
-                    recordName = collName
-
-                if not warmup:
-                    # record performance metrics
-                    self.recordCommReplay(
-                        commsParams,
-                        curComm,
-                        recordName,
-                        latency,
-                        curBlockStack,
-                        global_latency,
-                        curBlocks,
-                    )
-
-                if self.backendFuncs.get_global_rank() == 0:
-                    logger.info(
-                        f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} in block [{curBlockStack}]... {global_latency:.2f} us"
-                    )
+                self.run_comm_op(node, commsParams, cnt, logLable, warmup, startTime, coll_in_batch_num)
         
         torch.cuda.synchronize(self.comp_replay_manager.device)
 
@@ -1857,9 +1922,7 @@ class ReplayEngine(commsTraceReplayBench):
         
         comp_total_time = sum(start.elapsed_time(end) for start, end in zip(self.comp_op_start_events, self.comp_op_end_events))
 
-        print()
-
-        print("Comp replay time per iteration: {:.2f} ms".format(comp_total_time / self.num_replays))
+        print("\nComp replay time per iteration: {:.2f} ms".format(comp_total_time / self.num_replays), flush=True)
 
         print(
             "Comp operator coverage: {} / {} = {}".format(
@@ -1867,7 +1930,7 @@ class ReplayEngine(commsTraceReplayBench):
                 len(self.comp_replay_manager.sorted_nodes) + self.comp_replay_manager.actual_skip_nodes_cnt,
                 len(self.comp_replay_manager.sorted_nodes)
                 / (len(self.comp_replay_manager.sorted_nodes) + self.comp_replay_manager.actual_skip_nodes_cnt),
-            )
+            ), flush=True
         )
 
 def _main():
@@ -1952,7 +2015,7 @@ def main():
         cpu=False,
         tf32=False,
         subgraph="",
-        separate=True
+        separate=False
     )
 
     comp_replay_manager.initBench()
