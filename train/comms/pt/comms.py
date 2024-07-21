@@ -169,6 +169,13 @@ class commsCollBench(paramCommsBench):
             "For add or sub, '--mm-dim m n' uses the dimension of input annd output tensors are (m x n)"
             "If only one value is provided, it uses the dimension of input and output tensors are (n x n), i.e., square tensors",
         )  # Matrix multiplication dim n, A[m,n] * B [n,p]
+        parser.add_argument(
+            "--comp-data-type",
+            type=str,
+            default="float32",
+            help="datatype for GEMM or other compute kernels except emb_lookup"
+            + str(self.supportedDtype),
+        )
         # For emb lookup
         parser.add_argument(
             "--emb-dim",
@@ -361,6 +368,13 @@ class commsCollBench(paramCommsBench):
 
         args.collective = self._checkPt2Pt(args)
         args.device = self._check_device_type(args)
+
+        if args.comp_data_type not in self.supportedDtype:
+            logger.error(
+                f"Specified comp datatype: {args.comp_data_type} is not one of the supported commstyle: {str(self.supportedDtype)}"
+            )
+            comms_utils.gracefulExit()
+        args.comp_data_type = self.dtypeMap[args.comp_data_type]
 
         if args.size_start_profiler:
             args.size_start_profiler = comms_utils.parsesize(args.size_start_profiler)
@@ -974,13 +988,13 @@ class commsCollBench(paramCommsBench):
                     commsParams.mm_dim[1],
                     commsParams.mm_dim[1],
                     commsParams.mm_dim[2],
-                    commsParams.dtype,
+                    commsParams.comp_data_type,
                     curDevice,
                 )
 
                 if self.report:
                     print(
-                        f"[Rank {global_rank:>3}] mode: {commsParams.mode}, num_coll: {commsParams.num_coll}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {commsParams.mm_dim}"
+                        f"[Rank {global_rank:>3}] mode: {commsParams.mode}, num_coll: {commsParams.num_coll}, collectives datatype: {commsParams.data_type}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, mm_dim {commsParams.mm_dim}, comp_datatype {self.collectiveArgs.MMout.dtype} "
                     )
             elif commsParams.kernel == "emb_lookup":
                 comms_utils.init_emb_lookup(
@@ -1003,7 +1017,7 @@ class commsCollBench(paramCommsBench):
                 ) = self.prepComp(
                     commsParams.mm_dim[0],
                     commsParams.mm_dim[1],
-                    commsParams.dtype,
+                    commsParams.comp_data_type,
                     curDevice,
                     commsParams.kernel,
                 )

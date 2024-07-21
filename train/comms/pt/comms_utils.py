@@ -854,6 +854,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.inSplit = args.i
         self.outSplit = args.o
         self.data_type = args.data_type
+        self.comp_data_type = args.comp_data_type
         self.stepFactor = args.f
         self.stepBytes = args.sb
         self.srcOrDst = args.root
@@ -1361,18 +1362,19 @@ class paramCommsBench(ABC):
         mm0_dim1: int,
         mm1_dim0: int,
         mm1_dim1: int,
-        dtype: str,
+        dtype: torch.dtype,
         curDevice: str,
         gemmTensor: torch.tensor = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if gemmTensor is None:
-            in1 = np.random.rand(mm0_dim0, mm0_dim1)
-            in2 = np.random.rand(mm1_dim0, mm1_dim1)
-
-            MMin1 = torch.FloatTensor(in1).to(curDevice)
-            MMin2 = torch.FloatTensor(in2).to(curDevice)
+            MMin1 = self.backendFuncs.alloc_random(
+                (mm0_dim0, mm0_dim1), curDevice, dtype
+            )
+            MMin2 = self.backendFuncs.alloc_random(
+                (mm1_dim0, mm1_dim1), curDevice, dtype
+            )
             MMout = self.backendFuncs.alloc_empty(
-                (mm0_dim0, mm1_dim1), dtype, curDevice
+                (mm0_dim0, mm1_dim1), curRankDevice=curDevice, dtype=dtype
             )
         else:
             mm_size0 = mm0_dim0 * mm0_dim1
@@ -1393,7 +1395,7 @@ class paramCommsBench(ABC):
         self,
         mm_dim0: int,
         mm_dim1: int,
-        dtype: str,
+        dtype: torch.dtype,
         curDevice: str,
         kernel: str,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1404,16 +1406,20 @@ class paramCommsBench(ABC):
                 [mm_dim0, mm_dim1], curDevice, dtype
             )
             compOut = self.backendFuncs.alloc_empty(
-                [mm_dim0, mm_dim1], dtype, curDevice
+                [mm_dim0, mm_dim1], curDevice, dtype
             )
         else:
             compOut = self.backendFuncs.alloc_empty(
-                [mm_dim0, mm_dim1], dtype, curDevice
+                [mm_dim0, mm_dim1], curDevice, dtype
             )
         return (compOut, compIn1, compIn2)
 
     def prepGemm(
-        self, mm_dim: int, dtype: str, curDevice: str, gemmTensor: torch.tensor = None
+        self,
+        mm_dim: int,
+        dtype: torch.dtype,
+        curDevice: str,
+        gemmTensor: torch.tensor = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         return self.prepGemmNotSquare(
             mm_dim, mm_dim, mm_dim, mm_dim, dtype, curDevice, gemmTensor

@@ -820,7 +820,7 @@ class PyTorchDistBackend(backendFunctions):
         )
         return EE
 
-    def alloc_empty(self, sizeArr, dtype, curRankDevice):
+    def alloc_empty(self, sizeArr, curRankDevice, dtype):
         return torch.empty(sizeArr, device=curRankDevice, dtype=dtype)
 
     def clear_memory(self, collectiveArgs):
