@@ -7,7 +7,6 @@ import sys
 import time
 from collections import defaultdict
 from datetime import datetime
-from functools import reduce
 
 import numpy as np
 import torch
@@ -23,8 +22,6 @@ from et_replay.et_replay_utils import (
     generate_suffix,
     get_input_tensors,
     get_output_tensors,
-    has_backward_parent,
-    is_backward_aten,
     is_fbgemm_backward,
     is_fbgemm_forward,
     is_fbgemm_forward_unweighted,
@@ -32,11 +29,10 @@ from et_replay.et_replay_utils import (
     is_tensor,
     is_tensor_list,
     skip_op,
-    TORCH_DTYPES_BYTES,
     TORCH_DTYPES_RNG,
     TORCH_DTYPES_RNG_str,
 )
-from et_replay.execution_trace import ExecutionTrace, NodeType
+from et_replay.execution_trace import ExecutionTrace
 from et_replay.utils import trace_handler
 from param_bench.train.compute.python.lib import pytorch as lib_pytorch
 from param_bench.train.compute.python.lib.init_helper import load_modules
@@ -45,7 +41,7 @@ from torch._inductor.async_compile import AsyncCompile
 from torch._inductor.codecache import TritonFuture
 
 # grid and split_scan_grid are dynamically loaded
-from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid
+from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid  # noqa
 from torch.profiler import ExecutionTraceObserver
 
 
@@ -79,7 +75,7 @@ class ExgrReplayManager:
         # Permanent registry of the tensors that need to be initialized.
         self.tensor_registry_permanent = {}
         # Registry of all input tensors.
-        self.dependency_permanent = set()
+        self.input_tensor_ids = set()
         # Runtime registry of all tensors.
         self.tensor_registry = {}
         # Nodes/Ops to replay after preprocessing.
@@ -147,13 +143,6 @@ class ExgrReplayManager:
         # Store the backward fbgemm ops generated in the forward.
         self.fbgemm_backward_ops = []
 
-        # Dict that stores the input and output tensors of an operator. This is used to detect the
-        # tensors that appear among the child operator and can not be observed at parent-level.
-        self.top_tensors = {}
-        # Additional tensors we allocate since replay at parent-level.
-        self.additional_tensors = set()
-        self.additional_tensors_size = 0
-
         # Debug use, record the nodes we skip.
         self.actual_skip_nodes = []
         self.actual_skip_nodes_cnt = 0
@@ -163,6 +152,11 @@ class ExgrReplayManager:
         # since device change should be captured in operator execution and be naturally recovered by replaying
         # the operators.
         self.tensor_device = {}
+
+        # This is the map between replay_tensor_id to the last node id that uses it.
+        # After an op runs, we check the input/output tensors that op used, if the last_node_id
+        # of the replay_tensor_id is the same as or greater than the current node id, that tensor is deleted
+        self.replay_tensor_id_to_last_node_id_map = {}
 
         # Unrecognized nodes that are neither operators nor predefined label nodes.
         self.exceptional_nodes = set()
@@ -312,16 +306,6 @@ class ExgrReplayManager:
         """
 
         def anlayze_node(node):
-            self.top_tensors[node] = set()
-            for _, t_id, _ in get_input_tensors(node):
-                if self.tensor_with_device:
-                    t_id = tuple(list(t_id)[:5])
-                self.top_tensors[node].add(t_id)
-            for _, t_id, _ in get_output_tensors(node):
-                if self.tensor_with_device:
-                    t_id = tuple(list(t_id)[:5])
-                self.top_tensors[node].add(t_id)
-
             for _, t_id, _ in get_input_tensors(node):
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
@@ -329,7 +313,7 @@ class ExgrReplayManager:
                     self.compute_only or self.args.separate
                 ):
                     continue
-                self.dependency_permanent.add(t_id)
+                self.input_tensor_ids.add(t_id)
             func, output_count = self.build_func(node)
             self.funcs[node.id] = (func, output_count)
 
@@ -392,95 +376,44 @@ class ExgrReplayManager:
 
         assert len(self.parallel_nodes_ids) == len(set(self.parallel_nodes_ids))
 
-    def analyze_subgraph(self, root):
-        def bfs_traverse(node):
-            for child in node.children:
-                if any(x in child.name for x in self.skip_node_names):
-                    continue
-
-                if is_backward_aten(child) or has_backward_parent(child):
-                    continue
-                else:
-                    if (
-                        child not in self.sorted_nodes
-                        and child.type == NodeType.OPERATOR
-                    ):
-                        node = child.parent
-                        while node and node not in self.sorted_nodes:
-                            node = node.parent
-                        if not node:
-                            self.exceptional_nodes.add(child)
-                            continue
-                        for data_type, t_id, shape in get_output_tensors(child):
-                            if self.tensor_with_device:
-                                t_id = tuple(list(t_id)[:5])
-                            if (
-                                t_id not in self.top_tensors[node]
-                                and t_id in self.dependency_permanent
-                                and t_id not in self.additional_tensors
-                            ):
-                                self.additional_tensors.add(t_id)
-                                if shape:
-                                    self.additional_tensors_size += (
-                                        reduce(lambda x, y: x * y, shape)
-                                        * TORCH_DTYPES_BYTES[
-                                            data_type.lstrip("Tensor(").rstrip(")")
-                                        ]
-                                    )
-                    bfs_traverse(child)
-
-        bfs_traverse(root)
-        print(
-            f"Additional allocated {len(self.additional_tensors)} tensors with total size of {self.additional_tensors_size/1024/1024}MB"
-        )
-
     def analyze_tensors(self):
         def add_unique_tensor(node_name, node_id, t_id, shape, input, device=-1):
             # If we did not see this tensor before, add it as a unique tensor.
             if t_id not in self.original_unique_tensors:
                 self.original_unique_tensors.add(t_id)
                 self.replay_unique_tensor_num += 1
-                self.tensors_mapping[(node_id, t_id, input)] = (
-                    self.replay_unique_tensor_num
-                )
-                self.replay_tensors_shapes[
-                    self.tensors_mapping[(node_id, t_id, input)]
-                ] = shape
-                self.tensor_shapes[t_id].add(
-                    (self.tensors_mapping[(node_id, t_id, input)], tuple(shape))
-                )
+                replay_t_id = self.replay_unique_tensor_num
+                self.tensors_mapping[(node_id, t_id, input)] = replay_t_id
+                self.replay_tensors_shapes[replay_t_id] = shape
+                self.tensor_shapes[t_id].add((replay_t_id, tuple(shape)))
+                self.replay_tensor_id_to_last_node_id_map[replay_t_id] = node_id
                 if self.tensor_with_device:
-                    self.tensor_device[self.tensors_mapping[(node_id, t_id, input)]] = (
-                        device
-                    )
+                    self.tensor_device[replay_t_id] = device
                 if node_name == "aten::to":
-                    self.special_tensors.add(
-                        self.tensors_mapping[(node_id, t_id, input)]
-                    )
+                    self.special_tensors.add(replay_t_id)
                 return
 
             # If we saw this tensor before but with a different shape, add it as a unique tensor.
-            for relay_t_id, pre_shape in self.tensor_shapes[t_id]:
+            for replay_t_id, pre_shape in self.tensor_shapes[t_id]:
                 if tuple(shape) == pre_shape:
-                    self.tensors_mapping[(node_id, t_id, input)] = relay_t_id
+                    self.tensors_mapping[(node_id, t_id, input)] = replay_t_id
+                    self.replay_tensor_id_to_last_node_id_map[replay_t_id] = max(
+                        self.replay_tensor_id_to_last_node_id_map[replay_t_id], node_id
+                    )
                     if node_name == "aten::to":
-                        self.special_tensors.add(relay_t_id)
+                        self.special_tensors.add(replay_t_id)
                     return
 
             self.replay_unique_tensor_num += 1
             self.tensors_mapping[(node_id, t_id, input)] = self.replay_unique_tensor_num
-            self.replay_tensors_shapes[self.tensors_mapping[(node_id, t_id, input)]] = (
-                shape
-            )
-            self.tensor_shapes[t_id].add(
-                (self.tensors_mapping[(node_id, t_id, input)], tuple(shape))
-            )
+            replay_t_id = self.replay_unique_tensor_num
+            self.replay_tensors_shapes[replay_t_id] = shape
+            self.tensor_shapes[t_id].add((replay_t_id, tuple(shape)))
+            self.replay_tensor_id_to_last_node_id_map[replay_t_id] = node_id
             if self.tensor_with_device:
-                self.tensor_device[self.tensors_mapping[(node_id, t_id, input)]] = (
-                    device
-                )
+                self.tensor_device[replay_t_id] = device
             if node_name == "aten::to":
-                self.special_tensors.add(self.tensors_mapping[(node_id, t_id, input)])
+                self.special_tensors.add(replay_t_id)
 
         for node in self.sorted_nodes:
             if node.name == "record_param_comms" and (
@@ -491,24 +424,24 @@ class ExgrReplayManager:
                 if self.tensor_with_device:
                     device = list(t_id)[5]
                     t_id = tuple(list(t_id)[:5])
-                    if t_id in self.dependency_permanent:
+                    if t_id in self.input_tensor_ids:
                         add_unique_tensor(
                             node.name, node.id, t_id, shape, input=True, device=device
                         )
                 else:
-                    if t_id in self.dependency_permanent:
+                    if t_id in self.input_tensor_ids:
                         add_unique_tensor(node.name, node.id, t_id, shape, input=True)
 
             for _, t_id, shape in get_output_tensors(node):
                 if self.tensor_with_device:
                     device = list(t_id)[5]
                     t_id = tuple(list(t_id)[:5])
-                    if t_id in self.dependency_permanent:
+                    if t_id in self.input_tensor_ids:
                         add_unique_tensor(
                             node.name, node.id, t_id, shape, input=False, device=device
                         )
                 else:
-                    if t_id in self.dependency_permanent:
+                    if t_id in self.input_tensor_ids:
                         add_unique_tensor(node.name, node.id, t_id, shape, input=False)
 
         # Simulate the execution progress and record the output tensors we have seen so far.
@@ -522,7 +455,7 @@ class ExgrReplayManager:
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
                 if (
-                    t_id in self.dependency_permanent
+                    t_id in self.input_tensor_ids
                     and self.tensors_mapping[(node.id, t_id, True)] not in output_set
                 ):
                     self.instantiate.add(self.tensors_mapping[(node.id, t_id, True)])
@@ -530,7 +463,7 @@ class ExgrReplayManager:
             for _, t_id, _ in get_output_tensors(node):
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
-                if t_id in self.dependency_permanent:
+                if t_id in self.input_tensor_ids:
                     output_set.add(self.tensors_mapping[(node.id, t_id, False)])
 
     def allocate_tensors(self):
@@ -561,7 +494,7 @@ class ExgrReplayManager:
                     t_id = tuple(list(t_id)[:5])
                 replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
                 if (
-                    t_id in self.dependency_permanent
+                    t_id in self.input_tensor_ids
                     and replay_t_id not in self.tensor_registry_permanent.keys()
                     and (
                         node.name == "aten::embedding_bag"
@@ -684,7 +617,7 @@ class ExgrReplayManager:
                         t_id = tuple(list(t_id)[:5])
                     replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
                     if (
-                        t_id in self.dependency_permanent
+                        t_id in self.input_tensor_ids
                         and replay_t_id not in self.tensor_registry_permanent.keys()
                         and (
                             node.name == "aten::embedding_bag"
@@ -752,7 +685,7 @@ class ExgrReplayManager:
                             tensor_allocation_str += f"tensor_{replay_t_id} = None\n"
                             self.tensor_registry_permanent[replay_t_id] = 1
                     elif (
-                        t_id in self.dependency_permanent
+                        t_id in self.input_tensor_ids
                         and replay_t_id not in self.tensor_registry_permanent.keys()
                         and replay_t_id not in self.instantiate
                     ):
@@ -837,7 +770,7 @@ class ExgrReplayManager:
                 (_, t_id, _) = output_tensors.pop(0)
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
-                if t_id in self.dependency_permanent:
+                if t_id in self.input_tensor_ids:
                     replay_t_id = self.tensors_mapping[(node.id, t_id, False)]
                     if (
                         replay_t_id not in self.unchangeable_intermediate_tensors
@@ -1162,30 +1095,32 @@ class ExgrReplayManager:
         if self.debug and iter >= self.numWarmupIters:
             after_execution = time.time_ns()
 
+        for _, t_id, _ in get_input_tensors(node):
+            if self.tensor_with_device:
+                t_id = tuple(list(t_id)[:5])
+            replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
+            if (
+                node.id >= self.replay_tensor_id_to_last_node_id_map[replay_t_id]
+                and replay_t_id not in self.instantiate
+            ):
+                del self.tensor_registry[replay_t_id]
+
         for (_, t_id, _), output in zip(get_output_tensors(node), outputs):
             if self.tensor_with_device:
                 t_id = tuple(list(t_id)[:5])
-            # if output.isnan().any():
-            #     print(
-            #         node.id,
-            #         t_id,
-            #         output,
-            #         inputs,
-            #     )
-            if (
-                t_id in self.dependency_permanent
-                and self.tensors_mapping[(node.id, t_id, False)]
-                not in self.unchangeable_intermediate_tensors
-            ):
+
+            if t_id in self.input_tensor_ids:
+                replay_t_id = self.tensors_mapping[(node.id, t_id, False)]
                 if (
-                    self.tensors_mapping[(node.id, t_id, False)]
-                    not in self.instantiate
-                    # and self.tensors_mapping[(node.id, t_id, False)]
-                    # not in self.tensor_registry
+                    replay_t_id not in self.unchangeable_intermediate_tensors
+                    and replay_t_id not in self.instantiate
                 ):
-                    self.tensor_registry[
-                        self.tensors_mapping[(node.id, t_id, False)]
-                    ] = output
+                    if node.id < self.replay_tensor_id_to_last_node_id_map[replay_t_id]:
+                        self.tensor_registry[replay_t_id] = output
+                    else:
+                        del output
+            else:
+                del output
 
         if self.profile_memory:
             self.op_allocated_mem[node] = (
@@ -1205,32 +1140,6 @@ class ExgrReplayManager:
 
     def init_comms(self):
         pass
-
-    def analyze_ops(self):
-        fused_cnt = 0
-        aten_up_cnt = 0
-        aten_cnt = 0
-        custom_cnt = 0
-        comms_cnt = 0
-        for op in self.actual_skip_nodes:
-            if "fused" in op:
-                fused_cnt += 1
-            elif "aten::record_stream" in op or "aten::set_" in op:
-                aten_up_cnt += 1
-            elif "aten::" in op:
-                aten_cnt += 1
-            elif "fbgemm::" in op:
-                custom_cnt += 1
-            elif "record_param_comms" in op:
-                comms_cnt += 1
-            else:
-                print(op)
-        print("fused cnt: ", fused_cnt)
-        print("aten unsupported cnt: ", aten_up_cnt)
-        print("aten cnt: ", aten_cnt)
-        print("custom cnt: ", custom_cnt)
-        print("comms cnt: ", comms_cnt)
-        print("skipped ops: ", self.actual_skip_nodes)
 
     def preprocess_graph(self):
         if not self.compute_only and not self.generator:
@@ -1254,10 +1163,6 @@ class ExgrReplayManager:
         self.detect_tensor_device(root)
 
         self.extract_subgraph(root)
-
-        # self.analyze_ops()
-
-        # self.analyze_subgraph(root)
 
         self.analyze_tensors()
 
@@ -1359,8 +1264,6 @@ class ExgrReplayManager:
                     torch.cuda.synchronize(self.device)
                     if iter >= self.numWarmupIters:
                         total_time += event_1.elapsed_time(event_2)
-                    # Comment out this for now since it will introduce additional cudaMalloc.
-                    # self.reset_registry()
                     prof.step()
                 benchmark_result["execution finished"] = True
                 print("Execution finished!")
@@ -1397,7 +1300,6 @@ class ExgrReplayManager:
                 torch.cuda.synchronize(self.device)
                 if iter >= self.numWarmupIters:
                     total_time += event_1.elapsed_time(event_2)
-                # self.reset_registry()
             benchmark_result["execution finished"] = True
             print("Execution finished!")
 
