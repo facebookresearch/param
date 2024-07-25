@@ -119,6 +119,8 @@ class commsTraceReplayBench(paramCommsBench):
         self.out_path = ""
         self.outputRanks = None
         self.colls_per_batch = -1
+        self.coll_in_batch_num = 0
+        self.replay_start_time = -1
         self.use_timestamp = False
         self.num_replays = 1
         self.profiler_num_replays_start = 0
@@ -991,17 +993,25 @@ class commsTraceReplayBench(paramCommsBench):
         Returns:
             None
         """
+        self.coll_in_batch_num = 0
+        self.replay_start_time = time.monotonic_ns()
+        for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
+            self.replaySingle(commsParams, curComm, cnt, warmup)
+
+    def replaySingle(self, commsParams: commsParamsHolderBase, curComm: commsArgs, cnt: int, warmup: bool = False):
+        """
+        Replay comms trace.
+        Args:
+            commsParams: Run-time parameters for replay.
+            id: comms op id.
+        Returns:
+            Output tensor.
+        """
         if warmup:
             logLable = "[Warm-up]"
         else:
             logLable = f"[Replay {self.replayIter}]"
 
-        coll_in_batch_num = 0
-        startTime = time.monotonic_ns()
-        for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
-            self.run_comm_op(curComm, commsParams, cnt, logLable, warmup, startTime, coll_in_batch_num)
-
-    def run_comm_op(self, curComm: commsArgs, commsParams: commsParamsHolderBase, cnt: int, logLable: str, warmup: bool, startTime: int, coll_in_batch_num: int):
         curBlocks = curComm.markerStack if curComm.markerStack is not None else []
         curBlockStack = (
             " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
@@ -1062,11 +1072,11 @@ class commsTraceReplayBench(paramCommsBench):
                 self.collectiveArgs.opTensor,
             ) = self.prepComms(curComm, commsParams, not self.reuse_tensors)
 
-            if not warmup and self.colls_per_batch > 0 and coll_in_batch_num == 0:
+            if not warmup and self.colls_per_batch > 0 and self.coll_in_batch_num == 0:
                 batch_begin = time.monotonic()
             # wait for collective timestamp if enabled.
             if not warmup and self.use_timestamp:
-                self.waitForTimestamp(curComm, startTime)
+                self.waitForTimestamp(curComm, self.replay_start_time)
             # send comm request to pytorch backend
             (latency, global_latency) = self.runComms(
                 collName, curComm, curBlockStack
@@ -1086,12 +1096,12 @@ class commsTraceReplayBench(paramCommsBench):
                 )
             # calculating batch latency (batch defined by --colls-per-batch)
             if not warmup and collName == "wait" and self.colls_per_batch > 0:
-                coll_in_batch_num += 1
-                if coll_in_batch_num == self.colls_per_batch:
+                self.coll_in_batch_num += 1
+                if self.coll_in_batch_num == self.colls_per_batch:
                     batch_latency = (
                         time.monotonic() - batch_begin
                     ) * 1e3  # make it millisecond
-                    coll_in_batch_num = 0
+                    self.coll_in_batch_num = 0
                     self.batchLat.append(batch_latency)
 
             recordName = collName
@@ -1110,62 +1120,6 @@ class commsTraceReplayBench(paramCommsBench):
             logger.info(
                 f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} in block [{curBlockStack}]... {global_latency:.2f} us"
             )
-
-    def replaySingle(
-        self, commsParams: commsParamsHolderBase, id: int, regenerateTensors: True
-    ) -> torch.tensor:
-        """
-        Replay comms trace.
-        Args:
-            commsParams: Run-time parameters for replay.
-            id: comms op id.
-        Returns:
-            Output tensor.
-        """
-        for _, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
-            if curComm.id == id:
-                collName = paramToCommName(curComm.comms)
-                if collName not in self.allowList:
-                    return
-
-                curBlocks = (
-                    curComm.markerStack if curComm.markerStack is not None else []
-                )
-                curBlockStack = (
-                    " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
-                )
-
-                if self.backendFuncs.get_global_rank() == 0:
-                    logger.debug(
-                        f"[Rank {self.collectiveArgs.global_rank:3}] Replaying \n{str(curComm.comms)}\n"
-                    )
-
-                # read fields and prepare the tensors
-                (
-                    self.collectiveArgs.ipTensor,
-                    self.collectiveArgs.opTensor,
-                ) = self.prepComms(curComm, commsParams, regenerateTensors)
-
-                # send comm request to pytorch backend
-                (latency, global_latency) = self.runComms(
-                    collName, curComm, curBlockStack
-                )
-
-                # perform data validation check on the final opTensor
-                if (
-                    self.is_blocking
-                    and commsParams.dcheck == 1
-                    and collName not in ("wait", "barrier")
-                ):
-                    commsParams.collective = collName
-                    commsParams.srcOrDst = (
-                        curComm.root if curComm.root is not None else 0
-                    )
-                    self.dcheck(
-                        commsParams, curComm.outMsgSize, self.collectiveArgs.opTensor
-                    )
-
-                return self.collectiveArgs.opTensor
 
     def benchTime(self, commsParams: commsParamsHolderBase) -> None:
         """
