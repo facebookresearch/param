@@ -1010,12 +1010,6 @@ class PyTorchDistBackend(backendFunctions):
                     raise RuntimeError("Unable to import initialize_ucc_plugin")
                 else:
                     initialize_ucc_plugin(backend)
-        # Import Fairring
-        if backend == "fairring":
-            try:
-                import fairring  # noqa
-            except ImportError:
-                raise RuntimeError("Unable to import Fairring")
 
     def get_new_pg(self, group_ranks, backend):
         if self.use_ext_dist:

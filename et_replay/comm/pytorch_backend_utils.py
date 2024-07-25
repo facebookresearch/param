@@ -15,7 +15,7 @@ from torch.distributed import ProcessGroup
 logger = logging.getLogger(__name__)
 
 supportedDevices = ["cpu", "cuda", "rocm", "tpu"]
-supportedC10dBackends = ["nccl", "gloo", "mpi", "ucc", "xla", "fairring"]
+supportedC10dBackends = ["nccl", "gloo", "mpi", "ucc", "xla"]
 supportedCollectives = [
     "reduce",
     "all_reduce",
