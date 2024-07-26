@@ -510,6 +510,7 @@ class ExecutionTrace:
             rf_id,
             kernel_backend,
             kernel_file,
+            None,
             x["inputs"]["strides"],
             x["outputs"]["strides"],
         )
