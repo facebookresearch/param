@@ -1958,8 +1958,6 @@ class ExgrReplayManager:
             parser.print_help(sys.stderr)
             sys.exit(1)
 
-from torch.profiler import profile, record_function, ProfilerActivity
-
 def main():
     # Load PyTorch implementations for data generator and operators.
     load_modules(lib_pytorch)
