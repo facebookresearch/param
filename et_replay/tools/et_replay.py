@@ -23,7 +23,7 @@ from torch._inductor.codecache import TritonFuture
 from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid
 from torch.profiler import ExecutionTraceObserver
 
-from et_replay.comm import comms_utils
+from et_replay.comm import comms_utils, param_profile
 from et_replay.comm.comms_utils import bootstrap_info_holder, commsParamsHolderBase
 from et_replay.et_replay_utils import (
     TORCH_DTYPES_BYTES,
@@ -123,11 +123,11 @@ class CommsReplayManager(commsTraceReplayBench):
                 return tensor_list
 
         if len(input_tensors) > 0:
-            self.comp_replay_manager.lazy_alloc_tensors(input_tensors, node.id)
+            self.comp_replay_manager.lazy_alloc_tensors(input_tensors, node)
             ip_tensor = extract_tensor_from_list(input_tensors[0])
 
         if len(output_tensors) > 0:
-            self.comp_replay_manager.lazy_alloc_tensors(output_tensors, node.id)
+            self.comp_replay_manager.lazy_alloc_tensors(output_tensors, node)
             op_tensor = extract_tensor_from_list(output_tensors[0])
 
         return (ip_tensor, op_tensor)
@@ -404,6 +404,7 @@ class ExgrReplayManager:
                 )
                 for k, v in self.tensor_registry_permanent.items()
             }
+        self.tensor_registry_permanent.clear()
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -598,9 +599,10 @@ class ExgrReplayManager:
                     else:
                         output_set.add(self.tensors_mapping[(node.id, t_id, False)])
 
-    def get_tensor_from_storage(self, storage_id, data_offset, elem_bytes, device, shape, data_type):
+    def get_tensor_from_storage(self, node, storage_id, data_offset, elem_bytes, device, shape, data_type):
         tensor_data = self.tensor_storage_map.setdefault(storage_id, {})
         device = torch.device(device)
+
         if device not in tensor_data:
             if data_type in [torch.half, torch.float32, torch.float64, torch.bfloat16]:
                 storage_tensor = torch.rand(
@@ -610,6 +612,7 @@ class ExgrReplayManager:
                 storage_tensor = torch.ones(
                     (self.tensor_storage_sizes[storage_id] // elem_bytes), dtype=data_type, device=device
                 )
+        
             tensor_data[device] = storage_tensor
 
             if (storage_id, device) not in self.tensor_alloc_set:
@@ -1320,14 +1323,14 @@ class ExgrReplayManager:
         except Exception as e:
             print(f"Outputs error: {e} at node: {node.id}")
 
-    def lazy_alloc_tensors(self, inputs, node_id):
+    def lazy_alloc_tensors(self, inputs, node):
         for i in range(len(inputs)):
             if isinstance(inputs[i], tuple) and inputs[i][0] == "lazy_alloc":
-                inputs[i] = inputs[i][2]()
+                inputs[i] = inputs[i][2](node)
             elif isinstance(inputs[i], list):
                 for j in range(len(inputs[i])):
                     if isinstance(inputs[i][j], tuple) and inputs[i][j][0] == "lazy_alloc":
-                        inputs[i][j] = inputs[i][j][2]()
+                        inputs[i][j] = inputs[i][j][2](node)
 
     def recycle_instantiate_tensors(self, node_id, storage_id, device):
         assert node_id in self.instantiate_tensor_ref_cnts_tmp[storage_id][device]
@@ -1363,79 +1366,79 @@ class ExgrReplayManager:
                 start_ns = time.time_ns()
 
             func, output_count = self.funcs[node.id]
-            if not func:
-                return
-            inputs = self.get_inputs(node)
             
+            inputs = self.get_inputs(node)
+            outputs = []
+
             # lazy allocate tensors
-            self.lazy_alloc_tensors(inputs, node.id)
+            self.lazy_alloc_tensors(inputs, node)
+            
+            if func:
+                # Workaround to eliminate the "strides() called on undefined Tensor" error.
+                if node.name == "aten::convolution_backward":
+                    inputs[-1] = [True, True, True]
 
-            # Workaround to eliminate the "strides() called on undefined Tensor" error.
-            if node.name == "aten::convolution_backward":
-                inputs[-1] = [True, True, True]
-
-            # Workaround to handle tensor with same id but different data types (ads_cmf10x_single_iter_512_newest_eg.json).
-            if node.name == "aten::index_add_":
-                inputs[3] = inputs[3].to(torch.float64)
-                inputs[2] = inputs[2].to(torch.int)
-            if node.name == "aten::index_copy_":
-                if node.input_types[3] == "Tensor(double)":
+                # Workaround to handle tensor with same id but different data types (ads_cmf10x_single_iter_512_newest_eg.json).
+                if node.name == "aten::index_add_":
                     inputs[3] = inputs[3].to(torch.float64)
-                if node.input_types[2] == "Tensor(long)":
-                    inputs[2] = inputs[2].to(torch.int64)
-            if node.name == "aten::index_select":
-                inputs[2] = inputs[2].to(torch.int)
+                    inputs[2] = inputs[2].to(torch.int)
+                if node.name == "aten::index_copy_":
+                    if node.input_types[3] == "Tensor(double)":
+                        inputs[3] = inputs[3].to(torch.float64)
+                    if node.input_types[2] == "Tensor(long)":
+                        inputs[2] = inputs[2].to(torch.int64)
+                if node.name == "aten::index_select":
+                    inputs[2] = inputs[2].to(torch.int)
 
-            if self.debug and iter >= self.numWarmupIters:
-                before_execution = time.time_ns()
+                if self.debug and iter >= self.numWarmupIters:
+                    before_execution = time.time_ns()
 
-            try:
-                outputs = []
-                if output_count == 0:
-                    if node.kernel_backend == "triton":
-                        # remove the last comma
-                        grid_info = inputs[-2]
-                        index = grid_info.rfind(",")
-                        if index >= 0:
-                            grid_info = grid_info[:index] + grid_info[index + 1 :]
-                        exec(
-                            f"func.run(*inputs[:-2], grid={grid_info}, stream={inputs[-1]})"
-                        )
+                try:
+                    if output_count == 0:
+                        if node.kernel_backend == "triton":
+                            # remove the last comma
+                            grid_info = inputs[-2]
+                            index = grid_info.rfind(",")
+                            if index >= 0:
+                                grid_info = grid_info[:index] + grid_info[index + 1 :]
+                            exec(
+                                f"func.run(*inputs[:-2], grid={grid_info}, stream={inputs[-1]})"
+                            )
+                        else:
+                            func(*inputs)
                     else:
-                        func(*inputs)
-                else:
-                    if output_count == 1:
-                        tmp = (func(*inputs),)
-                    else:
-                        tmp = func(*inputs)
-                    # Flatten any tensor lists
-                    # TODO: Simplify this
-                    if not tmp:
-                        print(f"Not expect that {node.id} has no output.")
-                        return
-                    for x in tmp:
-                        if isinstance(x, list) and isinstance(x[0], torch.Tensor):
-                            outputs.extend(x)
-                        elif isinstance(x, torch.Tensor):
-                            outputs.append(x)
-            except Exception as e:
-                print(
-                    f"Run op exception Error: {e}, node id: {node.id}, func: {func}, inputs: {inputs}"
-                )
-                exit(1)
+                        if output_count == 1:
+                            tmp = (func(*inputs),)
+                        else:
+                            tmp = func(*inputs)
+                        # Flatten any tensor lists
+                        # TODO: Simplify this
+                        if not tmp:
+                            print(f"Not expect that {node.id} has no output.")
+                            return
+                        for x in tmp:
+                            if isinstance(x, list) and isinstance(x[0], torch.Tensor):
+                                outputs.extend(x)
+                            elif isinstance(x, torch.Tensor):
+                                outputs.append(x)
+                except Exception as e:
+                    print(
+                        f"Run op exception Error: {e}, node id: {node.id}, func: {func}, inputs: {inputs}"
+                    )
+                    exit(1)
 
-            if node.name == "aten::repeat_interleave":
-                current_len = node.input_shapes[0][0]
-                target_len = node.output_shapes[0][0]
-                if current_len < target_len:
-                    dtype, _ = TORCH_DTYPES_RNG[
-                        node.output_types[0].lstrip("Tensor(").rstrip(")")
-                    ]
-                    tmp = torch.zeros(target_len - current_len).to(dtype).cuda(self.device)
-                    outputs[0] = torch.cat((tmp, outputs[0]))
+                if node.name == "aten::repeat_interleave":
+                    current_len = node.input_shapes[0][0]
+                    target_len = node.output_shapes[0][0]
+                    if current_len < target_len:
+                        dtype, _ = TORCH_DTYPES_RNG[
+                            node.output_types[0].lstrip("Tensor(").rstrip(")")
+                        ]
+                        tmp = torch.zeros(target_len - current_len).to(dtype).cuda(self.device)
+                        outputs[0] = torch.cat((tmp, outputs[0]))
 
-            if self.debug and iter >= self.numWarmupIters:
-                after_execution = time.time_ns()
+                if self.debug and iter >= self.numWarmupIters:
+                    after_execution = time.time_ns()
 
             for _, t_id, _ in get_input_tensors(node):
                 tensor_id, storage_id, storage_offset, element_num, item_size, device_str = t_id
@@ -1444,7 +1447,9 @@ class ExgrReplayManager:
                     device = torch.device(device_str)
                 else:
                     device = self.device
+
                 replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
+
                 if (
                     node.id >= self.replay_tensor_id_to_last_node_id_map[replay_t_id]
                     and replay_t_id not in self.instantiate
@@ -1456,7 +1461,6 @@ class ExgrReplayManager:
             for (_, t_id, _), output in zip(get_output_tensors(node), outputs):
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
-
                 if t_id in self.input_tensor_ids:
                     replay_t_id = self.tensors_mapping[(node.id, t_id, False)]
                     if (
@@ -1467,6 +1471,8 @@ class ExgrReplayManager:
                             self.tensor_registry[replay_t_id] = output
                         else:
                             del output
+                            if replay_t_id in self.tensor_registry:
+                                del self.tensor_registry[replay_t_id]
                 else:
                     del output
 
@@ -1665,13 +1671,28 @@ class ExgrReplayManager:
                         prev_iter = iter
                         start_ns = time.time_ns()
                     self.instantiate_tensor_ref_cnts_tmp = copy.deepcopy(self.instantiate_tensor_ref_cnts)
+                    if not (self.compute_only or self.args.separate):
+                        self.commsBench.replayIter = iter
                     event_1.record()
                     for cnt, node in enumerate(self.sorted_nodes):
                         self.run_op(node, iter, cnt)
                     print("Finished one iteration.")
                     event_2.record()
                     self.tensor_alloc_set.clear()
+                    if not (self.compute_only or self.args.separate):
+                        self.commsBench.resetComms()
+                        # make sure all ops are completed
+                        with param_profile.paramProfile(
+                            description=f"# PARAM replay {self.commsBench.replayIter} post-replay global sync"
+                        ):
+                            self.commsBench.backendFuncs.sync_barrier(self.commsBench.collectiveArgs)
                     torch.cuda.synchronize(self.device)
+                    if not (self.compute_only or self.args.separate):
+                        self.commsBench.backendFuncs.clear_memory(self.commsBench.collectiveArgs)
+
+                    gc.collect()
+                    torch.cuda.empty_cache()
+
                     if iter >= self.numWarmupIters:
                         total_time += event_1.elapsed_time(event_2)
                     # Comment out this for now since it will introduce additional cudaMalloc.
@@ -1706,12 +1727,27 @@ class ExgrReplayManager:
                     prev_iter = iter
                     start_ns = time.time_ns()
                 self.instantiate_tensor_ref_cnts_tmp = copy.deepcopy(self.instantiate_tensor_ref_cnts)
+                if not (self.compute_only or self.args.separate):
+                    self.commsBench.replayIter = iter
                 event_1.record()
                 for cnt, node in enumerate(self.sorted_nodes):
                     self.run_op(node, iter, cnt)
                 event_2.record()
                 self.tensor_alloc_set.clear()
+                if not (self.compute_only or self.args.separate):
+                    self.commsBench.resetComms()
+                    # make sure all ops are completed
+                    with param_profile.paramProfile(
+                        description=f"# PARAM replay {self.commsBench.replayIter} post-replay global sync"
+                    ):
+                        self.commsBench.backendFuncs.sync_barrier(self.commsBench.collectiveArgs)
                 torch.cuda.synchronize(self.device)
+                if not (self.compute_only or self.args.separate):
+                    self.commsBench.backendFuncs.clear_memory(self.commsBench.collectiveArgs)
+
+                gc.collect()
+                torch.cuda.empty_cache()
+                
                 if iter >= self.numWarmupIters:
                     total_time += event_1.elapsed_time(event_2)
                 # self.reset_registry()
@@ -1921,6 +1957,8 @@ class ExgrReplayManager:
         if check_args and self.args.input is None and self.args.trace_path is None:
             parser.print_help(sys.stderr)
             sys.exit(1)
+
+from torch.profiler import profile, record_function, ProfilerActivity
 
 def main():
     # Load PyTorch implementations for data generator and operators.
