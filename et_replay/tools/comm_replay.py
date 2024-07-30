@@ -597,8 +597,9 @@ class commsTraceReplayBench(paramCommsBench):
                 commsOp.pgId,
                 commsOp.inMsgSize,
                 commsOp.outMsgSize,
-                commsOp.inSplit,
-                commsOp.outSplit,
+                # inSplit and outSplit are list type, need to be converted for hash
+                tuple(commsOp.inSplit),
+                tuple(commsOp.outSplit),
             )
         else:
             op = (
