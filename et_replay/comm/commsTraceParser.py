@@ -9,6 +9,9 @@ from et_replay.comm import comms_utils
 from et_replay.comm.comms_utils import commsArgs
 from et_replay.comm.backend.base_backend import supportedP2pOps
 
+import logging
+logger = logging.getLogger(__name__)
+
 tensorDtypeMap = {
     "Tensor(int)": "int",
     "Tensor(float)": "float",
@@ -112,7 +115,8 @@ def _parse_proc_group_info(in_trace: ExecutionTrace):
         for pg in pg_objs:
             if not pg["pg_name"].isdecimal():
                 # TODO support local synchronization pg
-                raise ValueError(f"Process group name is {pg['pg_name']} in node {node['id']}, which is not supported.")
+                logger.warning(f"Process group name is {pg['pg_name']} in node {node.id}, which is not supported. Skip.")
+                continue
             (pg_id, ranks, group_size, group_count) = [pg[k] for k in ["pg_name", "ranks", "group_size", "group_count"]]
             pg_id = int(pg_id)
             pg_ranks_map[node.id][pg_id] = (
