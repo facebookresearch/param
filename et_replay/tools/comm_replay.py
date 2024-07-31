@@ -1595,7 +1595,11 @@ class commsTraceReplayBench(paramCommsBench):
             self.comms_trace = commsTraceParser.parseTrace(
                 self.comms_trace,
                 self.trace_type,
-                (self.trace_file if not os.path.isdir(self.trace_file) else f"{self.trace_file}/{rank}.json"),
+                (
+                    self.trace_file
+                    if not os.path.isdir(self.trace_file)
+                    else f"{self.trace_file}/{rank}.json"
+                ),
                 rank,
                 self.backendFuncs.get_world_size(),
             )

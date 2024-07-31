@@ -466,7 +466,7 @@ class ExecutionTrace:
             if attr["name"] in cls.COMM_ATTR_TYPES.keys()
         }
 
-        params_dict = {k:attr_dict.get(k, None) for k in cls.COMM_ATTR_TYPES.keys()}
+        params_dict = {k: attr_dict.get(k, None) for k in cls.COMM_ATTR_TYPES.keys()}
         return _CommArgs(**params_dict)
 
     @staticmethod
@@ -506,7 +506,11 @@ class ExecutionTrace:
             kernel_file,
         ) = ExecutionTrace._read_attrs(x)
 
-        comm_attrs = ExecutionTrace._read_comm_attrs(x) if x['name'] == "record_param_comms" else None
+        comm_attrs = (
+            ExecutionTrace._read_comm_attrs(x)
+            if x["name"] == "record_param_comms"
+            else None
+        )
 
         return Node(
             x["name"],
@@ -528,7 +532,7 @@ class ExecutionTrace:
             rf_id,
             kernel_backend,
             kernel_file,
-            comm_attrs
+            comm_attrs,
         )
 
     @staticmethod
