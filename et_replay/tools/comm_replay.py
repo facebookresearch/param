@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import time
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Tuple
 
 import numpy as np
 import torch
@@ -610,12 +610,35 @@ class commsTraceReplayBench(paramCommsBench):
 
         return hash(op)
 
+    def generate_io_tensors(
+        self,
+        curComm: commsArgs,
+        commsParams: commsParamsHolderBase,
+        regenerateTensors: bool
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Use exactly specified inMsgSize/outMsgSize if call from trace replay
+        # This avoid regenerating sizes such as in _prep_all_gather_base
+        commsParams.size_from_trace = True
+        commsParams.dtype = self.dtypeMap[curComm.dtype]
+        if not curComm.id or regenerateTensors:
+            return super().prepComm(curComm, commsParams)
+        else:
+            commsOpHash = self.hashEtCommsOp(curComm)
+            if commsOpHash in self.et_to_tensors:
+                # Allocate input/output tensors if first time replay, otherwise the previous ones.
+                super().prepComm(curComm, commsParams, False)
+                (ipTensor, opTensor) = self.et_to_tensors[commsOpHash]
+            else:
+                (ipTensor, opTensor) = super().prepComm(curComm, commsParams, True)
+                self.et_to_tensors[commsOpHash] = (ipTensor, opTensor)
+        return (ipTensor, opTensor)
+
     def prepComms(
         self,
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         regenerateTensors: bool = True,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Prepares the appropriate tensors for the current collective communication.
 
@@ -686,22 +709,7 @@ class commsTraceReplayBench(paramCommsBench):
                 f"shrink message sizes to curInNumElem {curComm.inMsgSize}, curOutNumElem {curComm.outMsgSize}"
             )
 
-        # Use exactly specified inMsgSize/outMsgSize if call from trace replay
-        # This avoid regenerating sizes such as in _prep_all_gather_base
-        commsParams.size_from_trace = True
-        commsParams.dtype = self.dtypeMap[curComm.dtype]
-        if not curComm.id or regenerateTensors:
-            return super().prepComm(curComm, commsParams)
-        else:
-            commsOpHash = self.hashEtCommsOp(curComm)
-            if commsOpHash in self.et_to_tensors:
-                # Allocate input/output tensors if first time replay, otherwise the previous ones.
-                super().prepComm(curComm, commsParams, False)
-                (ipTensor, opTensor) = self.et_to_tensors[commsOpHash]
-            else:
-                (ipTensor, opTensor) = super().prepComm(curComm, commsParams, True)
-                self.et_to_tensors[commsOpHash] = (ipTensor, opTensor)
-        return (ipTensor, opTensor)
+        return self.generate_io_tensors(curComm, commsParams, regenerateTensors)
 
     def commRebalance(self, curComm: commsArgs) -> None:
         """
