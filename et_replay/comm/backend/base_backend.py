@@ -15,7 +15,7 @@ from torch.distributed import ProcessGroup
 logger = logging.getLogger(__name__)
 
 supportedDevices = ["cpu", "cuda", "rocm", "tpu"]
-supportedC10dBackends = ["nccl", "gloo", "mpi", "ucc", "xla"]
+supportedC10dBackends = ["nccl", "gloo", "mpi", "fairring", "xla"]
 supportedCollectives = [
     "reduce",
     "all_reduce",
@@ -125,7 +125,7 @@ class collectiveArgsHolder:
         self.use_ext_dist = False
 
 
-class backendFunctions(ABC):
+class BaseBackend(ABC):
     """Abstract base class, provides common abstraction for all the backends."""
 
     def __init__(self) -> None:
@@ -151,51 +151,6 @@ class backendFunctions(ABC):
 
         self.computeFunc = {"gemm": self.gemm}
 
-    def getBusBW(
-        self, collective: str, algBW: float, collectiveArgs: collectiveArgsHolder
-    ) -> float:
-        """
-        Calculate bus bandwidth for collective.
-
-        Args:
-            collective: Name of collective.
-            algBW: Algorithmic bandwidth for the collective.
-            collectiveArgs: Contains information about world size.
-        Returns:
-            busBW: Bus bandwidth in GBps
-        """
-        busBW = algBW
-        mulFactor = 1.0
-        if collective == "all_reduce":
-            if collectiveArgs.world_size != 0:
-                mulFactor = (
-                    2 * (collectiveArgs.world_size - 1) / (collectiveArgs.world_size)
-                )
-            busBW = algBW * mulFactor
-        elif collective in (
-            "all_to_all_single",
-            "all_to_all",
-            "all_to_allv",
-            "gather",
-            "all_gather",
-            "reduce_scatter",
-            "reduce_scatter_base",
-            "scatter",
-            "all_gather_base",
-        ):
-            if collectiveArgs.world_size != 0:
-                mulFactor = (collectiveArgs.world_size - 1) / (
-                    collectiveArgs.world_size
-                )
-            busBW = algBW * mulFactor
-        elif collective in ("reduce", "broadcast", "incast", "multicast"):
-            busBW = algBW
-        else:
-            logger.error(
-                f"collective: {collective} is not supported in computing bus BW! "
-            )
-        return busBW
-
     def alloc_ones(
         self,
         sizeArr: int,
@@ -219,6 +174,7 @@ class backendFunctions(ABC):
             ipTensor = ipTensor * scaleFactor
         return ipTensor
 
+    @abstractmethod
     def noop(
         self,
         collectiveArgs: collectiveArgsHolder = None,
@@ -357,12 +313,12 @@ class backendFunctions(ABC):
         pass
 
 
-customized_backend: Dict[str, backendFunctions] = {}
+customized_backend: Dict[str, BaseBackend] = {}
 
 
 def register_customized_backend(
     name: str,
-    func: backendFunctions,
+    func: BaseBackend,
     device: Optional[str] = None,
 ) -> None:
     global customized_backend

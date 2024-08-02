@@ -38,15 +38,15 @@ except ImportError:
 
 import numpy as np
 import torch
-
-from et_replay.comm.param_profile import paramTimer
-from et_replay.comm.pytorch_backend_utils import (
-    backendFunctions,
+from et_replay.comm.backend.base_backend import (
+    BaseBackend,
     collectiveArgsHolder,
     customized_backend,
     supportedC10dBackends,
     supportedDevices,
 )
+
+from et_replay.comm.param_profile import paramTimer
 from torch._C._distributed_c10d import ProcessGroup  # @manual
 
 random.seed()
@@ -233,7 +233,7 @@ def fixBeginSize(commsParams: commsParamsHolder, world_size: int) -> None:
 
 
 def get_rank_details(
-    backendFuncs: backendFunctions,
+    backendFuncs: BaseBackend,
 ) -> Tuple[int, int, int, ProcessGroup, str, str]:
     """
     Returns the details of the rank for the current backendFunction.
@@ -699,7 +699,7 @@ class paramStreamGuard(ContextDecorator):
         self,
         stream: Optional[torch.cuda.Stream],
         curDevice: torch.device,
-        backendFuncs: backendFunctions,
+        backendFuncs: BaseBackend,
         is_blocking: bool = True,
         timer: Optional[paramDeviceTimer] = None,
     ) -> None:
@@ -729,7 +729,7 @@ class paramDeviceTimer(paramTimer):
     Device timer.
     """
 
-    def __init__(self, name: str, backendFuncs: backendFunctions) -> None:
+    def __init__(self, name: str, backendFuncs: BaseBackend) -> None:
         """
         Initialize start and end device events
         """
@@ -918,7 +918,7 @@ class paramCommsBench(ABC):
             "char": torch.int8,
         }
         self.supportedDtype = list(self.dtypeMap.keys())
-        self.backendFuncs: backendFunctions
+        self.backendFuncs: BaseBackend
 
         self.collectiveArgs = collectiveArgsHolder()
         self.comm_size = 1

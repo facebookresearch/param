@@ -13,10 +13,9 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from et_replay.comm.backend.base_backend import BaseBackend, collectiveArgsHolder
 
 from et_replay.comm.param_profile import paramProfile
-from et_replay.comm.pytorch_backend_utils import backendFunctions, collectiveArgsHolder
-
 
 try:
     from param_bench.train.comms.pt.fb.internals import (
@@ -68,7 +67,7 @@ def _dequantize(obj):
             return resultTensor
 
 
-class PyTorchDistBackend(backendFunctions):
+class PyTorchDistBackend(BaseBackend):
     def get_collective_group(self, collectiveArgs):
         if self.use_ext_dist:
             return collectiveArgs.group.my_pg
@@ -996,18 +995,12 @@ class PyTorchDistBackend(backendFunctions):
             if isinstance(self.commsParams, dict)
             else self.commsParams.backend
         )
-        # Import ucc plugin
-        if backend == "ucc":
-            # try OSS/setup.py
+        # Import Fairring
+        if backend == "fairring":
             try:
-                import torch_ucc  # noqa
+                import fairring  # noqa
             except ImportError:
-                try:
-                    from ucc_plugin import initialize_ucc_plugin
-                except ImportError:
-                    raise RuntimeError("Unable to import initialize_ucc_plugin")
-                else:
-                    initialize_ucc_plugin(backend)
+                raise RuntimeError("Unable to import Fairring")
 
     def get_new_pg(self, group_ranks, backend):
         if self.use_ext_dist:
@@ -1021,17 +1014,6 @@ class PyTorchDistBackend(backendFunctions):
         if isinstance(tensorList, list):
             tensorList = [t.cpu().detach().numpy() for t in tensorList]
         return np.array(tensorList)
-
-    def initialize_tcpstore(self, master_ip, master_port):
-        global_rank = self.bootstrap_info.global_rank
-        world_size = self.bootstrap_info.world_size
-        self.tcp_store = dist.TCPStore(
-            master_ip,
-            int(master_port),
-            world_size,
-            is_master=(global_rank == 0),
-            use_libuv=True,
-        )
 
     def initialize_backend(
         self, master_ip, master_port, backend="gloo", eager_mode=False
@@ -1056,7 +1038,13 @@ class PyTorchDistBackend(backendFunctions):
 
         if self.tcp_store is None:
             # TCP store initializaiton for generic CPU data
-            self.initialize_tcpstore(master_ip, master_port)
+            self.tcp_store = dist.TCPStore(
+                master_ip,
+                int(master_port),
+                world_size,
+                is_master=(global_rank == 0),
+                use_libuv=True,
+            )
 
         if not dist.is_initialized():
             # init default process group if not yet initialized or extend_distributed failed or is disabled
