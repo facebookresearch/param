@@ -19,6 +19,7 @@ import numpy as np
 import torch
 
 from et_replay.comm import comms_utils
+from et_replay.comm.backend.base_backend import supportedP2pOps
 from et_replay.comm.comms_utils import (
     bootstrap_info_holder,
     commsArgs,
@@ -28,7 +29,6 @@ from et_replay.comm.comms_utils import (
     paramToCommName,
 )
 from et_replay.comm.param_profile import paramProfile, paramTimer
-from et_replay.comm.pytorch_backend_utils import supportedP2pOps
 
 try:
     from trainer_iteration_wrapper import setTrainingIteration  # @manual
@@ -1382,11 +1382,11 @@ class commsTraceReplayBench(paramCommsBench):
         """
         # init backend and corresponding function pointers
         if commsParams.nw_stack == "pytorch-dist":
-            from et_replay.comm.pytorch_dist_backend import PyTorchDistBackend
+            from et_replay.comm.backend.pytorch_dist_backend import PyTorchDistBackend
 
             self.backendFuncs = PyTorchDistBackend(bootstrap_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":
-            from et_replay.comm.pytorch_tpu_backend import PyTorchTPUBackend
+            from et_replay.comm.backend.pytorch_tpu_backend import PyTorchTPUBackend
 
             self.backendFuncs = PyTorchTPUBackend(bootstrap_info, commsParams)
         else:
