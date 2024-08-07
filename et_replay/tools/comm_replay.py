@@ -31,7 +31,8 @@ from et_replay.comm.comms_utils import (
 from et_replay.comm.param_profile import paramProfile, paramTimer
 
 try:
-    from trainer_iteration_wrapper import setTrainingIteration  # @manual
+    # pyre-ignore[21]:
+    from trainer_iteration_wrapper import setTrainingIteration
 except ImportError:
     pass
 
@@ -89,6 +90,8 @@ def writeCommDetails(commsTracePerf: List, rank: int, folder: str = "./") -> Non
             json.dump(commsTracePerf, write_file, indent=2)
 
 
+# pyre-ignore[13]: lint complained about self.backendFuncs is never initlized.
+#                  it is initialized in initBackend
 class commsTraceReplayBench(paramCommsBench):
     """
     A class to replay and benchmark generated traces for collective communications.
