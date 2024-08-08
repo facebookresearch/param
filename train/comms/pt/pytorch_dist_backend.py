@@ -20,6 +20,13 @@ from param_bench.train.comms.pt.pytorch_backend_utils import (
 )
 
 try:
+    from triton.ops.matmul import matmul as triton_matmul
+
+    has_triton = True
+except ImportError:
+    has_triton = False
+
+try:
     from param_bench.train.comms.pt.fb.internals import (
         all_to_all_internal,
         all_to_allv_internal,
@@ -695,7 +702,17 @@ class PyTorchDistBackend(backendFunctions):
 
     def gemm(self, collectiveArgs):
         # Matrix multiplication as compute kernel
-        collectiveArgs.MMout = torch.mm(collectiveArgs.MMin1, collectiveArgs.MMin2)
+        if collectiveArgs.use_triton:
+            if has_triton:
+                collectiveArgs.MMout = triton_matmul(
+                    collectiveArgs.MMin1, collectiveArgs.MMin2
+                )
+            else:
+                raise RuntimeError("Triton not imported. Cannot run triton_matmul")
+        else:
+            collectiveArgs.MMout = torch.matmul(
+                collectiveArgs.MMin1, collectiveArgs.MMin2
+            )
 
     def add(self, collectiveArgs):
         collectiveArgs.compOut = torch.add(
