@@ -294,8 +294,29 @@ class Node:
                 tensors.extend(self.get_tensors(zip(elem_type, input, shape)))
         return tensors
 
+    def get_tensor_strides(
+        self, input_list: Iterable, stride_list: Iterable
+    ) -> List[tuple]:
+        strides = []
+        for (type, input, shape), stride in zip(input_list, stride_list):
+            if type.startswith("Tensor"):
+                strides.append(tuple(stride))
+            # GenericList could have tensor elements
+            elif type.startswith("GenericList"):
+                elem_type = type[len("GenericList[") : -1].split(",")
+                strides.extend(
+                    self.get_tensor_strides(zip(elem_type, input, shape), stride)
+                )
+        return strides
+
     def get_input_tensors(self) -> List[tuple]:
         return self.get_tensors(self.get_inputs())
+
+    def get_input_tensor_strides(self) -> Optional[List[tuple]]:
+        if self.input_strides is None:
+            return None
+        else:
+            return self.get_tensor_strides(self.get_inputs(), self.input_strides)
 
     def get_output_tensors(self) -> List[tuple]:
         return self.get_tensors(self.get_outputs())
@@ -542,7 +563,7 @@ class ExecutionTrace:
             if type.startswith("genericlist"):
                 param = {"type": "genericlist"}
                 param["value"] = []
-                type_list = type[12:-1].split(",")
+                type_list = type[len("GenericList[") : -1].split(",")
                 param_list = zip(value, type_list, shape)
                 for v, t, s in param_list:
                     param["value"].append(get_param(v, t, s))
