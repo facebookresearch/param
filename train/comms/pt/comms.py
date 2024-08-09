@@ -141,8 +141,22 @@ class commsCollBench(paramCommsBench):
             type=str,
             default="gemm",
             help="Compute kernel, used for comms-compute or compute mode",
-            choices=["gemm", "emb_lookup", "add", "sub", "add_num", "sub_num", "copy"],
+            choices=[
+                "gemm",
+                "emb_lookup",
+                "add",
+                "sub",
+                "add_num",
+                "sub_num",
+                "copy",
+            ],
         )  # Compute kernel: "gemm"
+        parser.add_argument(
+            "--use-triton",
+            action="store_true",
+            default=False,
+            help="To use triton kernel for gemm",
+        )  # Enable triton kernels option
         parser.add_argument(
             "--num-compute",
             "--num-compute-per-iteration",
@@ -960,6 +974,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.asyncOp = False if commsParams.blockingFlag == 1 else True
         self.collectiveArgs.numComputePerIter = commsParams.num_compute
         self.collectiveArgs.numCollPerIter = commsParams.num_coll
+        self.collectiveArgs.use_triton = commsParams.use_triton
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)

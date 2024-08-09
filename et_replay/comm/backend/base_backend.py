@@ -174,7 +174,6 @@ class BaseBackend(ABC):
             ipTensor = ipTensor * scaleFactor
         return ipTensor
 
-    @abstractmethod
     def noop(
         self,
         collectiveArgs: collectiveArgsHolder = None,
