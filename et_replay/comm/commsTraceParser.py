@@ -12,22 +12,6 @@ from et_replay.comm.comms_utils import commsArgs
 import logging
 logger = logging.getLogger(__name__)
 
-tensorDtypeMap = {
-    "Tensor(int)": "int",
-    "Tensor(float)": "float",
-    "Tensor(bool)": "bool",
-    "Tensor(long)": "long",
-    "Tensor(long int)": "long",
-    "Tensor(double)": "double",
-    "Tensor(half)": "half",
-    "Tensor(byte)": "byte",
-    "Tensor(c10::Half)": "half",
-    "Tensor(c10::BFloat16)": "bfloat16",
-    "Tensor(unsigned char)": "char",
-    "Tensor(signed char)": "char",
-}
-
-
 def parseTrace(
     in_trace: List, trace_type: str, trace_file_path: str, target_rank: int, total_ranks: int
 ) -> List:
@@ -54,34 +38,6 @@ def parseTrace(
 Please check supported types with '--help'")
 
     return parsed_trace
-
-
-def _getTensorInfoFromPyTorchETEntry(
-    tensor_container: List, container_type: str
-) -> Tuple[int, int, str]:
-    """
-    Extract message size, tensor count, type from PyTorch ET entry inputs/outputs field.
-    NOTE: This format can be changed at anytime. TODO: When an extract/parsing tool is available in ATC, switch to it.
-    """
-    list_count = container_type.count("GenericList")
-    tensors = []
-    if list_count == 2:
-        # GenericList[GenericList[Tensor(), Tensor()]]
-        tensors = tensor_container[0][0]
-        dtype = container_type.replace("GenericList[", "").split(",", 1)[0]
-    elif list_count == 1:
-        # GenericList[Tensor()]
-        tensors = tensor_container[0]
-        dtype = container_type.replace("GenericList[", "").replace("]", "")
-    else:
-        tensors.append(tensor_container[0])
-        dtype = container_type
-
-    msg_size = 0
-    for tensor in tensors:
-        msg_size += tensor[3]
-
-    return msg_size, dtype
 
 
 def _parseExecutionTrace(
