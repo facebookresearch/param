@@ -517,6 +517,7 @@ class ExgrReplayManager:
                         self.args.pooling_factor,
                         self.args.alpha,
                     )
+            tensor_strides = node.get_input_tensor_strides()
             for idx, (data_type, t_id, shape) in enumerate(get_input_tensors(node)):
                 device = self.device
                 if self.tensor_with_device:
@@ -549,7 +550,7 @@ class ExgrReplayManager:
 
                             strides = None
                             if node.input_strides is not None:
-                                strides = node.input_strides[idx]
+                                strides = tensor_strides[idx]
                             tensor = self.get_tensor_from_storage(
                                 t_id[1],  # storage_id
                                 t_id[2],  # offset
@@ -833,7 +834,7 @@ class ExgrReplayManager:
                     )
                 elif output_type.startswith("GenericList"):
                     outputs += "["
-                    elements_type = output_type[12:-1].split(",")
+                    elements_type = output_type[len("GenericList[") : -1].split(",")
                     for element_type in elements_type:
                         outputs += _parse_element_type(
                             node, element_type, output_tensors, override
@@ -1022,7 +1023,7 @@ class ExgrReplayManager:
                 storage_tensor.untyped_storage(),
                 storage_offset=data_offset,
                 size=shape,
-                stride=tuple(strides),
+                stride=strides,
             )
 
         return x

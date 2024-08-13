@@ -31,7 +31,8 @@ from et_replay.comm.comms_utils import (
 from et_replay.comm.param_profile import paramProfile, paramTimer
 
 try:
-    from trainer_iteration_wrapper import setTrainingIteration  # @manual
+    # pyre-ignore[21]:
+    from trainer_iteration_wrapper import setTrainingIteration
 except ImportError:
     pass
 
@@ -90,6 +91,8 @@ def writeCommDetails(commsTracePerf: List, rank: int, folder: str = "./") -> Non
             json.dump(commsTracePerf, write_file, indent=2)
 
 
+# pyre-ignore[13]: lint complained about self.backendFuncs is never initlized.
+#                  it is initialized in initBackend
 class commsTraceReplayBench(paramCommsBench):
     """
     A class to replay and benchmark generated traces for collective communications.
@@ -594,8 +597,9 @@ class commsTraceReplayBench(paramCommsBench):
                 commsOp.pgId,
                 commsOp.inMsgSize,
                 commsOp.outMsgSize,
-                commsOp.inSplit,
-                commsOp.outSplit,
+                # inSplit and outSplit are list type, need to be converted for hash
+                tuple(commsOp.inSplit),
+                tuple(commsOp.outSplit),
             )
         else:
             op = (
@@ -801,8 +805,8 @@ class commsTraceReplayBench(paramCommsBench):
                         self.collectiveArgs.collective = collName
                         self.backendFuncs.P2POp(self.collectiveArgs, retFlag=True)
 
-                if collName in ["broadcast"]:
-                    self.collectiveArgs.srcOrDst = curComm.srcOrDst
+                if collName in ["reduce", "broadcast", "gather", "scatter"]:
+                    self.collectiveArgs.srcOrDst = curComm.root
 
                 retObj = self.backendFuncs.collectiveFunc[collName](
                     self.collectiveArgs, retFlag=True

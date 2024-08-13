@@ -869,6 +869,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.mode = args.mode
 
         self.kernel = args.kernel
+        self.use_triton = args.use_triton
         self.num_compute = args.num_compute
         self.num_coll = args.num_coll
         self.mm_dim = args.mm_dim
