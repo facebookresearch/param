@@ -41,7 +41,8 @@ logger = logging.getLogger(__name__)
 # sleep for 20ms to wait for next collective
 LOOP_TIMER_S = 0.02
 
-VALID_TRACE_TYPES = ["basic", "et", "kineto"]
+# index 0 is default value of trace type
+VALID_TRACE_TYPES = ["et"]
 
 
 def writeCommDetails(commsTracePerf: List, rank: int, folder: str = "./") -> None:
@@ -176,8 +177,10 @@ class commsTraceReplayBench(paramCommsBench):
         parser.add_argument(
             "--trace-type",
             type=str,
-            default="basic",
-            help=f"Trace type used for replay. Supported trace types: {str(VALID_TRACE_TYPES)}. By default use basic trace.",
+            choices=VALID_TRACE_TYPES,
+            default=VALID_TRACE_TYPES[0],
+            help=f"Select trace type used for replay. Supported trace types: {VALID_TRACE_TYPES}. \
+                   'et' represents Chakra host execution trace.",
         )
         parser.add_argument(
             "--use-one-trace",
@@ -594,8 +597,9 @@ class commsTraceReplayBench(paramCommsBench):
                 commsOp.pgId,
                 commsOp.inMsgSize,
                 commsOp.outMsgSize,
-                commsOp.inSplit,
-                commsOp.outSplit,
+                # inSplit and outSplit are list type, need to be converted for hash
+                tuple(commsOp.inSplit),
+                tuple(commsOp.outSplit),
             )
         else:
             op = (
@@ -801,8 +805,8 @@ class commsTraceReplayBench(paramCommsBench):
                         self.collectiveArgs.collective = collName
                         self.backendFuncs.P2POp(self.collectiveArgs, retFlag=True)
 
-                if collName in ["broadcast"]:
-                    self.collectiveArgs.srcOrDst = curComm.srcOrDst
+                if collName in ["reduce", "broadcast", "gather", "scatter"]:
+                    self.collectiveArgs.srcOrDst = curComm.root
 
                 retObj = self.backendFuncs.collectiveFunc[collName](
                     self.collectiveArgs, retFlag=True
@@ -1592,6 +1596,11 @@ class commsTraceReplayBench(paramCommsBench):
             self.comms_trace = commsTraceParser.parseTrace(
                 self.comms_trace,
                 self.trace_type,
+                (
+                    self.trace_file
+                    if not os.path.isdir(self.trace_file)
+                    else f"{self.trace_file}/{rank}.json"
+                ),
                 rank,
                 self.backendFuncs.get_world_size(),
             )
