@@ -1140,5 +1140,7 @@ class PyTorchDistBackend(backendFunctions):
 
     def __del__(self):
         if dist.is_initialized():
+            for group in self.groups.values():
+                dist.destroy_process_group(group)
             dist.destroy_process_group()
         pass
