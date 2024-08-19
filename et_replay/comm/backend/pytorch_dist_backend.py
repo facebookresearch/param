@@ -30,7 +30,7 @@ try:
 except ImportError:
     try:
         # Open-source extend_distributed.py can be found in https://github.com/facebookresearch/dlrm
-        import extend_distributed
+        import extend_distributed  # pyre-ignore[21]:
 
         has_ext_dist = True
     except ImportError:
@@ -783,7 +783,11 @@ class PyTorchDistBackend(BaseBackend):
         return _sizeBytes
 
     def alloc_random(
-        self, sizeArr, curRankDevice="cuda", dtype=torch.float32, scaleFactor=1.0
+        self,
+        sizeArr: List[int],
+        curRankDevice="cuda",
+        dtype=torch.float32,
+        scaleFactor=1.0,
     ):
         if dtype in (
             torch.int8,
@@ -954,7 +958,7 @@ class PyTorchDistBackend(BaseBackend):
         device: Optional[torch.device] = None,
     ):
         """Synchronize a stream with its associated device"""
-        if device.type == "cuda":
+        if device is not None and device.type == "cuda":
             # if the stream is None, sync on the current default stream
             cur_stream = (
                 stream
@@ -1000,7 +1004,7 @@ class PyTorchDistBackend(BaseBackend):
         # Import Fairring
         if backend == "fairring":
             try:
-                import fairring  # noqa
+                import fairring  # pyre-ignore[21]:
             except ImportError:
                 raise RuntimeError("Unable to import Fairring")
 

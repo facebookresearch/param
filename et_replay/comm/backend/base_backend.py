@@ -131,21 +131,21 @@ class BaseBackend(ABC):
     def __init__(self) -> None:
         self.tcp_store = None
         self.collectiveFunc = {
-            "all_to_all_single": self.all_to_all_single,
+            "all_to_all_single": self.all_to_all_single,  # pyre-ignore[16]:
             "all_to_all": self.all_to_all,
             "all_to_allv": self.all_to_allv,
             "all_reduce": self.all_reduce,
-            "broadcast": self.broadcast,
-            "gather": self.gather,
-            "all_gather": self.all_gather,
-            "all_gather_base": self.all_gather_base,
+            "broadcast": self.broadcast,  # pyre-ignore[16]:
+            "gather": self.gather,  # pyre-ignore[16]:
+            "all_gather": self.all_gather,  # pyre-ignore[16]:
+            "all_gather_base": self.all_gather_base,  # pyre-ignore[16]:
             "reduce": self.reduce,
-            "reduce_scatter": self.reduce_scatter,
-            "reduce_scatter_base": self.reduce_scatter_base,
-            "scatter": self.scatter,
+            "reduce_scatter": self.reduce_scatter,  # pyre-ignore[16]:
+            "reduce_scatter_base": self.reduce_scatter_base,  # pyre-ignore[16]:
+            "scatter": self.scatter,  # pyre-ignore[16]:
             "barrier": self.barrier,
-            "incast": self.incast,
-            "multicast": self.multicast,
+            "incast": self.incast,  # pyre-ignore[16]:
+            "multicast": self.multicast,  # pyre-ignore[16]:
             "noop": self.noop,
         }
 
@@ -153,7 +153,7 @@ class BaseBackend(ABC):
 
     def alloc_ones(
         self,
-        sizeArr: int,
+        sizeArr: List[int],
         curRankDevice: str = "cuda",
         dtype: torch.dtype = torch.float32,
         scaleFactor: float = 1.0,
@@ -176,7 +176,7 @@ class BaseBackend(ABC):
 
     def noop(
         self,
-        collectiveArgs: collectiveArgsHolder = None,
+        collectiveArgs: collectiveArgsHolder,
         retFlag: bool = False,
         pair: bool = False,
     ) -> None:
@@ -236,7 +236,7 @@ class BaseBackend(ABC):
     @abstractmethod
     def alloc_random(
         self,
-        sizeArr: int,
+        sizeArr: List[int],
         curRankDevice: str,
         dtype: torch.dtype,
         scaleFactor: float = 1.0,
@@ -253,7 +253,7 @@ class BaseBackend(ABC):
 
     @abstractmethod
     def alloc_empty(
-        self, sizeArr: int, dtype: torch.dtype, curRankDevice: str
+        self, sizeArr: List[int], dtype: torch.dtype, curRankDevice: str
     ) -> torch.Tensor:
         """Allocate tensor with uninitialized data based on parameters."""
         pass

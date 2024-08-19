@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 from torch.autograd.profiler import record_function
 
@@ -18,10 +18,15 @@ logger = logging.getLogger(__name__)
 class paramProfile(record_function):
     """Inherit from PyTorch profiler to enable autoguard profiling while measuring the time interval in PARAM"""
 
-    def __init__(self, timer: paramTimer = None, description: str = "") -> None:
+    def __init__(
+        self, timer: Optional[paramTimer] = None, description: str = ""
+    ) -> None:
+        super().__init__(name=description)
         self.description = description
         self.timer = timer
-        super().__init__(name=description)
+        self.start = 0.0
+        self.end = 0.0
+        self.intervalNS = 0.0
 
     def __enter__(self) -> paramProfile:
         super().__enter__()

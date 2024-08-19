@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import time
-from os import path
 from typing import Dict, List, Set
 
 import numpy as np
@@ -60,7 +59,7 @@ def writeCommDetails(commsTracePerf: List, rank: int, folder: str = "./") -> Non
     if len(folder) == 0:
         # skip output if the path is explicitly set to ""
         return
-    comms_file = folder + f"/replayedCommsPerf.rank{rank}.json"
+    comms_file = folder + f"/replayedCommsPerf.rank-{rank}.json"
     logger.info(f"[Rank {rank:3}] Writing comms details to {comms_file}")
 
     saveToLocal = True
@@ -115,7 +114,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.max_msg_cnt = 0  # 0 means no limit
         self.num_msg = 0
         self.is_blocking = True
-        self.do_warm_up = True
+        self.do_warm_up = False
         self.reuse_tensors = False
 
         self.allowList = ""
@@ -157,7 +156,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         self.embLookupReuse = {}
 
-    def readArgs(self, parser: argparse.ArgumentParser) -> None:
+    def readArgs(self, parser: argparse.ArgumentParser) -> argparse.Namespace:
         """
         Reads command line args to set runtime parameters for replay.
 
@@ -217,7 +216,7 @@ class commsTraceReplayBench(paramCommsBench):
             "--do-warm-up",
             action="store_true",
             default=self.do_warm_up,
-            help="Toggle to disable performing extra replaying for warm-up",
+            help="Toggle to enable performing extra replaying for warm-up",
         )
         parser.add_argument(
             "--reuse-tensors",
@@ -559,7 +558,7 @@ class commsTraceReplayBench(paramCommsBench):
 
     def getCommGroupInfo(
         self, curComm: commsArgs, commsParams: commsParamsHolderBase
-    ) -> (int, str):
+    ) -> tuple[int, str]:
         """
         Return the group infomation of the current process group
         including group rank of the local process, and a description string for logging purpose.
@@ -616,20 +615,20 @@ class commsTraceReplayBench(paramCommsBench):
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         regenerateTensors: bool = True,
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Prepares the appropriate tensors for the current collective communication.
 
         Args:
             curComm: The current communication that we are preparing the correct tensor for.
             commsParams: Holds the comms param arguments that will determine tensor attributes.
-            regenerateTensors: when an id is being replayed multiple times, setting this to false will use temsors from previous runs
+            regenerateTensors: when an id is being replayed multiple times, setting this to false will use tensors from previous runs
         Returns:
             (ipTensor, opTensor) if the current communication requires tensors, None otherwise.
         """
         commOp = paramToCommName(curComm.comms)
         if commOp in ("wait", "barrier", "batch_isend_irecv"):
-            return ([], [])
+            return (torch.Tensor(), torch.Tensor())
 
         # prep process group for hard-coded traces
         if curComm.pgId is not None and not self.shrink:
@@ -729,7 +728,7 @@ class commsTraceReplayBench(paramCommsBench):
             # Pass in curComm to modify it in the trace
             self.rebalanceSplit(curComm)
 
-    def runCompute(self, func, curBlockStack: str) -> float:
+    def runCompute(self, func, curBlockStack: str) -> tuple[float, float]:
         """
         Replays a specified compute operation and records metrics for benchmarking.
 
@@ -764,7 +763,7 @@ class commsTraceReplayBench(paramCommsBench):
 
     def runComms(
         self, collName: str, curComm: commsArgs, curBlockStack: str
-    ) -> (float, float):
+    ) -> tuple[float, float]:
         """
         Replays collective communication operation and records metrics for benchmarking.
 
@@ -816,6 +815,7 @@ class commsTraceReplayBench(paramCommsBench):
                 logger.warn(
                     f"Unsupported collective name: {collName}. Skipping replaying the collective"
                 )
+                retObj = None
 
             # if blocking, post outstanding ops and wait for them to complete. if nonblocking, just post op
             if self.is_blocking:
@@ -1115,8 +1115,11 @@ class commsTraceReplayBench(paramCommsBench):
                 )
 
     def replaySingle(
-        self, commsParams: commsParamsHolderBase, id: int, regenerateTensors: True
-    ) -> torch.tensor:
+        self,
+        commsParams: commsParamsHolderBase,
+        id: int,
+        regenerateTensors: bool = True,
+    ) -> torch.Tensor:
         """
         Replay comms trace.
         Args:
@@ -1129,7 +1132,7 @@ class commsTraceReplayBench(paramCommsBench):
             if curComm.id == id:
                 collName = paramToCommName(curComm.comms)
                 if collName not in self.allowList:
-                    return
+                    return torch.Tensor()
 
                 curBlocks = (
                     curComm.markerStack if curComm.markerStack is not None else []
@@ -1540,13 +1543,12 @@ class commsTraceReplayBench(paramCommsBench):
                         full_trace_path=self.use_one_trace,
                         trace_type=self.trace_type,
                     )
-
             self.comms_trace = json.load(raw_comms_trace)
         else:
             # Check if self.trace_file is a directory or a single file
             if os.path.isdir(self.trace_file):
                 # Directory mode: construct the path to the rank-specific file
-                trace_file_path = f"{self.trace_file}/{rank}.json"
+                trace_file_path = f"{self.trace_file}/rank-{rank}.json"
             else:
                 # Single file mode: use self.trace_file as is
                 trace_file_path = self.trace_file
@@ -1599,7 +1601,7 @@ class commsTraceReplayBench(paramCommsBench):
                 (
                     self.trace_file
                     if not os.path.isdir(self.trace_file)
-                    else f"{self.trace_file}/{rank}.json"
+                    else f"{self.trace_file}/rank-{rank}.json"
                 ),
                 rank,
                 self.backendFuncs.get_world_size(),

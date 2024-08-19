@@ -11,6 +11,8 @@ from __future__ import (
     unicode_literals,
 )
 
+import argparse
+
 import logging
 import os
 import random
@@ -333,7 +335,7 @@ def clearQuantCommCtx(collectiveArgs: collectiveArgsHolder) -> None:
         remove_quantization_handlers(collectiveArgs)
 
 
-def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
+def paramToCommName(name: str, supported_comms: Optional[List[str]] = None) -> str:
     """
     Map any possible creative collective names to the internal name.
     Validate the `name` if `supported_comms` is provided.
@@ -374,7 +376,7 @@ def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
     return new_name
 
 
-def ensureTensorFlush(tensors: Union[List[torch.Tensor], torch.Tensor]) -> float:
+def ensureTensorFlush(tensors: Union[List[torch.Tensor], torch.Tensor]) -> Any:
     """
     Use this to flush non-blocking ops to ensure they are really complete.
 
@@ -645,9 +647,6 @@ class paramDeviceTimer(paramTimer):
         self.start_event = backendFuncs.get_new_event(enable_timing=True)
         self.end_event = backendFuncs.get_new_event(enable_timing=True)
 
-    def reset(self) -> None:
-        self.elapsedTimeNS = 0.0
-
     def start(self, stream=None) -> None:
         self.start_event.record(stream)
 
@@ -771,7 +770,7 @@ class commsParamsHolder(commsParamsHolderBase):
 class paramCommsBench(ABC):
     """Abstract class for any param comms benchmark."""
 
-    def __init__(self, supportedNwstacks: List[str] = None) -> None:
+    def __init__(self, supportedNwstacks: List[str]) -> None:
         self.supportedNwstacks = supportedNwstacks
         self.supported_tpu_core_valuses = [1, 8]
         self.dtypeMap = {
@@ -918,7 +917,7 @@ class paramCommsBench(ABC):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Prepare the all_to_allv mode"""
 
-        opTensor = []
+        opTensor = torch.Tensor()
         if allocate:
             # all_to_allv requires two tensors
             opTensor = self.backendFuncs.alloc_random(
@@ -950,8 +949,8 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        ipTensor = None
-        opTensor = None
+        ipTensor = torch.Tensor()
+        opTensor = torch.Tensor()
         if allocate:
             if commsParams.dcheck == 1:
                 ipTensor = self.backendFuncs.alloc_ones(
@@ -974,7 +973,7 @@ class paramCommsBench(ABC):
 
     def _prep_all_to_all(
         self,
-        ipTensor: torch.Tensor,
+        ipTensor: List[torch.Tensor],
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
@@ -984,7 +983,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         # all_to_all requires two tensor lists, e.g., List[torch.Tensor]
 
         ipTensor = []
@@ -1020,7 +1019,7 @@ class paramCommsBench(ABC):
 
     def _prep_all_gather(
         self,
-        ipTensor: torch.tensor,
+        ipTensor: torch.Tensor,
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
@@ -1030,7 +1029,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         opTensor = []
 
         if not commsParams.size_from_trace:
@@ -1059,7 +1058,7 @@ class paramCommsBench(ABC):
 
     def _prep_all_gather_base(
         self,
-        ipTensor: torch.tensor,
+        ipTensor: torch.Tensor,
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
@@ -1070,14 +1069,14 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        opTensor = []
+        opTensor = torch.Tensor()
         if not commsParams.size_from_trace:
             numElementsOut = numElementsIn
             numElementsIn = numElementsIn // world_size
         if allocate:
             if commsParams.dcheck == 1:
                 ipTensor = self.backendFuncs.alloc_ones(
-                    numElementsIn,
+                    [numElementsIn],
                     curDevice,
                     dtype,
                     scaleFactor=self.initVal,
@@ -1097,7 +1096,7 @@ class paramCommsBench(ABC):
 
     def _prep_incast(
         self,
-        ipTensor: torch.tensor,
+        ipTensor: torch.Tensor,
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
@@ -1107,7 +1106,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         # incast requires a tensor list with length of src_ranks, e.g., List[torch.Tensor]
         opTensor = []
 
@@ -1122,7 +1121,7 @@ class paramCommsBench(ABC):
 
     def _prep_reduce_scatter(
         self,
-        ipTensor: torch.tensor,
+        ipTensor: List[torch.Tensor],
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
@@ -1132,9 +1131,9 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[List[torch.Tensor], torch.Tensor]:
         ipTensor = []
-        opTensor = []
+        opTensor = torch.Tensor()
         if not commsParams.size_from_trace:
             numElementsIn = numElementsOut // world_size
             numElementsOut = numElementsOut // world_size
@@ -1168,7 +1167,7 @@ class paramCommsBench(ABC):
 
     def _prep_reduce_scatter_base(
         self,
-        ipTensor: torch.tensor,
+        ipTensor: torch.Tensor,
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
@@ -1179,15 +1178,15 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        ipTensor = []
-        opTensor = []
+        ipTensor = torch.Tensor()
+        opTensor = torch.Tensor()
         if not commsParams.size_from_trace:
             numElementsIn = numElementsOut
             numElementsOut = numElementsOut // world_size
         if allocate:
             if commsParams.dcheck == 1:
                 ipTensor = self.backendFuncs.alloc_ones(
-                    numElementsIn,
+                    [numElementsIn],
                     curDevice,
                     commsParams.dtype,
                     self.initVal,
@@ -1206,7 +1205,7 @@ class paramCommsBench(ABC):
 
     def _prep_pt2pt(
         self,
-        ipTensor: torch.tensor,
+        ipTensor: torch.Tensor,
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         numElementsIn: int,
@@ -1218,7 +1217,7 @@ class paramCommsBench(ABC):
         allocate: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # pt2pt or out-of-place collectives
-        opTensor = []
+        opTensor = torch.Tensor()
         if allocate:
             opTensor = self.backendFuncs.alloc_random(
                 [numElementsOut],
@@ -1234,9 +1233,9 @@ class paramCommsBench(ABC):
         mm0_dim1: int,
         mm1_dim0: int,
         mm1_dim1: int,
-        dtype: str,
+        dtype: torch.dtype,
         curDevice: str,
-        gemmTensor: torch.tensor = None,
+        gemmTensor: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if gemmTensor is None:
             in1 = np.random.rand(mm0_dim0, mm0_dim1)
@@ -1245,7 +1244,7 @@ class paramCommsBench(ABC):
             MMin1 = torch.FloatTensor(in1).to(curDevice)
             MMin2 = torch.FloatTensor(in2).to(curDevice)
             MMout = self.backendFuncs.alloc_empty(
-                (mm0_dim0, mm1_dim1), dtype, curDevice
+                [mm0_dim0, mm1_dim1], dtype, curDevice
             )
         else:
             mm_size0 = mm0_dim0 * mm0_dim1
@@ -1263,8 +1262,8 @@ class paramCommsBench(ABC):
 
     # Prepare generic compute operations that uses 1 or 2 input tensors, and 1 output tensor
     def prepComp(
-        self, mm_dim: int, dtype: str, curDevice: str, kernel: str
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        self, mm_dim: int, dtype: torch.dtype, curDevice: str, kernel: str
+    ) -> tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         compIn1 = self.backendFuncs.alloc_random([mm_dim, mm_dim], curDevice, dtype)
         compOut = self.backendFuncs.alloc_empty([mm_dim, mm_dim], dtype, curDevice)
         compIn2 = None
@@ -1273,7 +1272,7 @@ class paramCommsBench(ABC):
         return (compOut, compIn1, compIn2)
 
     def prepGemm(
-        self, mm_dim: int, dtype: str, curDevice: str, gemmTensor: torch.tensor = None
+        self, mm_dim: int, dtype: torch.dtype, curDevice: str, gemmTensor: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         return self.prepGemmNotSquare(
             mm_dim, mm_dim, mm_dim, mm_dim, dtype, curDevice, gemmTensor
@@ -1284,7 +1283,7 @@ class paramCommsBench(ABC):
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, Union[List[torch.Tensor], torch.Tensor]]:
         """
         Allocate the tensors for collective.
 
@@ -1300,7 +1299,7 @@ class paramCommsBench(ABC):
         )
 
         if commOp in ("wait", "barrier"):
-            return ([], [])
+            return (torch.Tensor(), torch.Tensor())
 
         numElementsIn = curComm.inMsgSize
         # numElementsOut is only meaningful for out-of-place collectives and pt2pt
@@ -1310,7 +1309,7 @@ class paramCommsBench(ABC):
         curDevice = commsParams.device
         # seed to generate random value; let's use a small value to avoid potential "overflow when unpacking long"
         scaleFactor = world_size
-        opTensor = []
+        opTensor = torch.Tensor()
 
         if allocate:
             if commsParams.dcheck == 1:
@@ -1323,7 +1322,7 @@ class paramCommsBench(ABC):
                     [numElementsIn], curDevice, dtype, scaleFactor
                 )
         else:
-            ipTensor = []
+            ipTensor = torch.Tensor()
         # TODO: consider using this dictionary to check valid keywords rather than silently defaulting
 
         dispatchDict = {
@@ -1361,12 +1360,12 @@ class paramCommsBench(ABC):
         return (ipTensor, opTensor)
 
     @abstractmethod
-    def runBench(self, *args, **kwargs) -> None:
+    def runBench(self, commsParams: commsParamsHolderBase) -> None:
         """Must override to start the desired benchmarking"""
         pass
 
     @abstractmethod
-    def benchTime(self, *args, **kwargs) -> None:
+    def benchTime(self, commsParams: commsParamsHolderBase) -> None:
         """Must override to run the desired benchmarking"""
         pass
 
@@ -1376,7 +1375,7 @@ class paramCommsBench(ABC):
         pass
 
     @abstractmethod
-    def readArgs(self, parser: ArgumentParser) -> None:
+    def readArgs(self, parser: ArgumentParser) -> argparse.Namespace:
         """Basic/Common arguments for all PARAM-Comm benchmarks"""
         parser.add_argument(
             "--master-ip",

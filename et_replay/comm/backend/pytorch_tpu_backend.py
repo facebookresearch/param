@@ -4,8 +4,8 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
-import torch_xla.core.xla_model as xm  # @manual
-import torch_xla.distributed.xla_multiprocessing as xmp  # @manual
+import torch_xla.core.xla_model as xm  # pyre-ignore[21]:
+import torch_xla.distributed.xla_multiprocessing as xmp  # pyre-ignore[21]:
 
 from et_replay.comm.backend.base_backend import BaseBackend
 
