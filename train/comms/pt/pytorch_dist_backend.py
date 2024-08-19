@@ -1140,7 +1140,9 @@ class PyTorchDistBackend(backendFunctions):
 
     def __del__(self):
         if dist.is_initialized():
+            # destroy all pgs other than default pg
             for group in self.groups.values():
-                dist.destroy_process_group(group)
+                if group != self.get_default_group() and group is not None:
+                    dist.destroy_process_group(group)
+            # destroy default pg at the end
             dist.destroy_process_group()
-        pass
