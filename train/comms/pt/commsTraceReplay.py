@@ -947,7 +947,8 @@ class commsTraceReplayBench(paramCommsBench):
         recordComm = curComm.toDict()
 
         dtypeSizeMap = {
-            v: torch.tensor([], dtype=v).element_size() for v in self.dtypeMap.values()
+            k: torch.tensor([], dtype=v).element_size()
+            for k, v in self.dtypeMap.items()
         }
         recordComm["dtype_size"] = dtypeSizeMap.get(curComm.dtype, 0)
         recordComm["marker_stack"] = curBlockStack
