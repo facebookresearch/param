@@ -173,6 +173,8 @@ class ExgrReplayManager:
         self.tensor_alloc_set = set()
         # Dict that maps tensor storage id to its size
         self.tensor_storage_sizes: Dict[int, int] = defaultdict(int)
+        # And for aten::as_strided, it may need larger storage, hold max sizes here
+        self.as_strided_require_storage_sizes: Dict[int, int] = defaultdict(int)
         # List that holds referenced tensor storages and devices when replay an operation, after the operation complete, it will be cleared
         self.referenced_tensor_storage_ids: List[Tuple[int, torch.device]] = []
         # Ref cnt of instantiate tensors, used to recycle storages
@@ -510,7 +512,25 @@ class ExgrReplayManager:
             if node_name == "aten::to":
                 self.special_tensors.add(replay_t_id)
 
+        def calc_as_strided_max_storage_size(node):
+            tensor_id, storage_id, storage_offset, element_num, item_size, device_str = node.inputs[0]
+            size = node.inputs[1]
+            stride = node.inputs[2]
+
+            max_index = storage_offset
+    
+            for d in range(len(size)):
+                for i in range(size[d]):
+                    max_index += stride[d] if i > 0 else 0
+            
+            self.as_strided_require_storage_sizes[storage_id] = max(
+                self.as_strided_require_storage_sizes[storage_id], (max_index + 1) * item_size
+            )
+
         for node in self.sorted_nodes:
+            if node.name == "aten::as_strided":
+                calc_as_strided_max_storage_size(node)
+
             if node.name == "record_param_comms" and (
                 self.compute_only or self.args.separate
             ):
@@ -609,7 +629,11 @@ class ExgrReplayManager:
 
         device = torch.device(device_str)
 
-        self.tensor_storage_sizes[storage_id] = max(storage_offset + element_num * item_size, self.tensor_storage_sizes[storage_id])
+        self.tensor_storage_sizes[storage_id] = max(
+            storage_offset + element_num * item_size, 
+            self.tensor_storage_sizes[storage_id],
+            self.as_strided_require_storage_sizes[storage_id]
+        )
 
         self.tensor_registry_permanent[replay_t_id] = ("lazy_alloc", (storage_id, device),
             partial(self.get_tensor_from_storage,
