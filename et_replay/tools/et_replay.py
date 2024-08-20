@@ -1415,44 +1415,44 @@ class ExgrReplayManager:
                 if self.debug and iter >= self.numWarmupIters:
                     after_execution = time.time_ns()
 
-        need_del_replay_t_ids_in_input = set() # deal with scenario that the tensor used multi times in the input list
-        for _, t_id, _ in get_input_tensors(node):
-            tensor_id, storage_id, storage_offset, element_num, item_size, device_str = t_id
-            if self.tensor_with_device:
-                t_id = tuple(list(t_id)[:5])
-                device = torch.device(device_str) if device_str != "" else None
-            else:
-                device = self.device
-            replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
-            if (
-                node.id >= self.replay_tensor_id_to_last_node_id_map[replay_t_id]
-                and replay_t_id not in self.instantiate
-            ):
-                need_del_replay_t_ids_in_input.add(replay_t_id)
-            elif replay_t_id in self.instantiate and device is not None:
-                 self.recycle_instantiate_tensors(node.id, storage_id, device)
-
-        for replay_t_id in need_del_replay_t_ids_in_input:
-            del self.tensor_registry[replay_t_id]
-
-        for (_, t_id, _), output in zip(get_output_tensors(node), outputs):
-            if self.tensor_with_device:
-                t_id = tuple(list(t_id)[:5])
-
-                if t_id in self.input_tensor_ids:
-                    replay_t_id = self.tensors_mapping[(node.id, t_id, False)]
-                    if (
-                        replay_t_id not in self.unchangeable_intermediate_tensors
-                        and replay_t_id not in self.instantiate
-                    ):
-                        if node.id < self.replay_tensor_id_to_last_node_id_map[replay_t_id]:
-                            self.tensor_registry[replay_t_id] = output
-                        else:
-                            del output
-                            if replay_t_id in self.tensor_registry:
-                                del self.tensor_registry[replay_t_id]
+            need_del_replay_t_ids_in_input = set() # deal with scenario that the tensor used multi times in the input list
+            for _, t_id, _ in get_input_tensors(node):
+                tensor_id, storage_id, storage_offset, element_num, item_size, device_str = t_id
+                if self.tensor_with_device:
+                    t_id = tuple(list(t_id)[:5])
+                    device = torch.device(device_str) if device_str != "" else None
                 else:
-                    del output
+                    device = self.device
+                replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
+                if (
+                    node.id >= self.replay_tensor_id_to_last_node_id_map[replay_t_id]
+                    and replay_t_id not in self.instantiate
+                ):
+                    need_del_replay_t_ids_in_input.add(replay_t_id)
+                elif replay_t_id in self.instantiate and device is not None:
+                    self.recycle_instantiate_tensors(node.id, storage_id, device)
+
+            for replay_t_id in need_del_replay_t_ids_in_input:
+                del self.tensor_registry[replay_t_id]
+
+            for (_, t_id, _), output in zip(get_output_tensors(node), outputs):
+                if self.tensor_with_device:
+                    t_id = tuple(list(t_id)[:5])
+
+                    if t_id in self.input_tensor_ids:
+                        replay_t_id = self.tensors_mapping[(node.id, t_id, False)]
+                        if (
+                            replay_t_id not in self.unchangeable_intermediate_tensors
+                            and replay_t_id not in self.instantiate
+                        ):
+                            if node.id < self.replay_tensor_id_to_last_node_id_map[replay_t_id]:
+                                self.tensor_registry[replay_t_id] = output
+                            else:
+                                del output
+                                if replay_t_id in self.tensor_registry:
+                                    del self.tensor_registry[replay_t_id]
+                    else:
+                        del output
 
         if self.profile_memory:
             self.op_allocated_mem[node] = (
