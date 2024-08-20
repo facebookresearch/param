@@ -475,9 +475,7 @@ class ExgrReplayManager:
 
     def analyze_tensors(self):
         def add_unique_tensor(node_name, node_id, t_id, shape, input, device=-1):
-            # If we did not see this tensor before, add it as a unique tensor.
-            if t_id not in self.original_unique_tensors:
-                self.original_unique_tensors.add(t_id)
+            def add_tensor_mapping():
                 self.replay_unique_tensor_num += 1
                 replay_t_id = self.replay_unique_tensor_num
                 self.tensors_mapping[(node_id, t_id, input)] = replay_t_id
@@ -488,6 +486,11 @@ class ExgrReplayManager:
                     self.tensor_device[replay_t_id] = device
                 if node_name == "aten::to":
                     self.special_tensors.add(replay_t_id)
+
+            # If we did not see this tensor before, add it as a unique tensor.
+            if t_id not in self.original_unique_tensors:
+                self.original_unique_tensors.add(t_id)
+                add_tensor_mapping()
                 return
 
             # If we saw this tensor before but with a different shape, add it as a unique tensor.
@@ -501,16 +504,7 @@ class ExgrReplayManager:
                         self.special_tensors.add(replay_t_id)
                     return
 
-            self.replay_unique_tensor_num += 1
-            self.tensors_mapping[(node_id, t_id, input)] = self.replay_unique_tensor_num
-            replay_t_id = self.replay_unique_tensor_num
-            self.replay_tensors_shapes[replay_t_id] = shape
-            self.tensor_shapes[t_id].add((replay_t_id, tuple(shape)))
-            self.replay_tensor_id_to_last_node_id_map[replay_t_id] = node_id
-            if self.tensor_with_device:
-                self.tensor_device[replay_t_id] = device
-            if node_name == "aten::to":
-                self.special_tensors.add(replay_t_id)
+            add_tensor_mapping()
 
         def calc_as_strided_max_storage_size(node):
             tensor_id, storage_id, storage_offset, element_num, item_size, device_str = node.inputs[0]
@@ -1580,15 +1574,49 @@ class ExgrReplayManager:
             gc.collect()
             torch.cuda.empty_cache()
 
-        if self.et_profile:
-            et_file = "/tmp/replay_et.json"
-            et = ExecutionTraceObserver()
-            et.register_callback(et_file)
-
         # Print real time qps every # iterations.
         qps_print_interval = 10
 
         prev_iter = self.numWarmupIters
+
+        def run_iter(iter):
+            nonlocal prev_iter
+            nonlocal qps_print_interval
+            nonlocal total_time
+
+            if self.et_profile:
+                if iter == self.numWarmupIters:
+                    et.start()
+                if iter == self.numWarmupIters + 1:
+                    et.stop()
+                    et.unregister_callback()
+            if iter == prev_iter:
+                start_ns = time.time_ns()
+            if iter == prev_iter + qps_print_interval:
+                print(
+                    "Current QPS: ",
+                    int(
+                        self.batch_size
+                        * qps_print_interval
+                        / ((time.time_ns() - start_ns) / 1000000000)
+                    ),
+                )
+                print(
+                    "Replay {} iterations time: {}ms".format(
+                        qps_print_interval,
+                        (time.time_ns() - start_ns) / 1000000.0,
+                    )
+                )
+                prev_iter = iter
+                start_ns = time.time_ns()
+            run_op(event_1, event_2, iter)
+            if iter >= self.numWarmupIters:
+                total_time += event_1.elapsed_time(event_2)
+
+        if self.et_profile:
+            et_file = "/tmp/replay_et.json"
+            et = ExecutionTraceObserver()
+            et.register_callback(et_file)
 
         if not (self.compute_only or self.args.separate):
             self.sorted_nodes = self.sorted_nodes + self.commsBench.comms_trace[: self.commsBench.max_msg_cnt]
@@ -1622,68 +1650,14 @@ class ExgrReplayManager:
                 on_trace_ready=on_trace_ready,
             ) as prof:
                 for iter in range(self.numWarmupIters + self.numIters):
-                    if self.et_profile:
-                        if iter == self.numWarmupIters:
-                            et.start()
-                        if iter == self.numWarmupIters + 1:
-                            et.stop()
-                            et.unregister_callback()
-                    if iter == prev_iter:
-                        start_ns = time.time_ns()
-                    if iter == prev_iter + qps_print_interval:
-                        print(
-                            "Current QPS: ",
-                            int(
-                                self.batch_size
-                                * qps_print_interval
-                                / ((time.time_ns() - start_ns) / 1000000000)
-                            ),
-                        )
-                        print(
-                            "Replay {} iterations time: {}ms".format(
-                                qps_print_interval,
-                                (time.time_ns() - start_ns) / 1000000.0,
-                            )
-                        )
-                        prev_iter = iter
-                        start_ns = time.time_ns()
-                    run_op(event_1, event_2, iter)
+                    run_iter(iter)
                     print("Finished one iteration.")
-
-                    if iter >= self.numWarmupIters:
-                        total_time += event_1.elapsed_time(event_2)
                     prof.step()
                 benchmark_result["execution finished"] = True
                 print("Execution finished!")
         else:
             for iter in range(self.numWarmupIters + self.numIters):
-                if self.et_profile:
-                    if iter == self.numWarmupIters:
-                        et.start()
-                    if iter == self.numWarmupIters + 1:
-                        et.stop()
-                        et.unregister_callback()
-                if iter == prev_iter:
-                    start_ns = time.time_ns()
-                if iter == prev_iter + qps_print_interval:
-                    print(
-                        "Current QPS: ",
-                        int(
-                            self.batch_size
-                            * qps_print_interval
-                            / ((time.time_ns() - start_ns) / 1000000000)
-                        ),
-                    )
-                    print(
-                        "Replay {} iterations time: {}ms".format(
-                            qps_print_interval, (time.time_ns() - start_ns) / 1000000.0
-                        )
-                    )
-                    prev_iter = iter
-                    start_ns = time.time_ns()
-                run_op(event_1, event_2, iter)
-                if iter >= self.numWarmupIters:
-                    total_time += event_1.elapsed_time(event_2)
+                run_iter(iter)
             benchmark_result["execution finished"] = True
             print("Execution finished!")
 
