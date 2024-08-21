@@ -528,22 +528,6 @@ class PyTorchDistBackend(BaseBackend):
             else:
                 self.recv(collectiveArgs, collectiveArgs.srcOrDst)
 
-    def send(self, collectiveArgs, retFlag=False, tag=0):
-        dist.send(
-            tensor=collectiveArgs.ipTensor,
-            dst=collectiveArgs.dst_rank,
-            group=self.get_collective_group(collectiveArgs),
-            tag=tag,
-        )
-
-    def recv(self, collectiveArgs, retFlag=False, tag=0):
-        dist.recv(
-            tensor=collectiveArgs.opTensor,
-            src=collectiveArgs.src_rank,
-            group=self.get_collective_group(collectiveArgs),
-            tag=tag,
-        )
-
     def isend(self, collectiveArgs, retFlag=False, tag=0):
         retObj = dist.isend(
             tensor=collectiveArgs.ipTensor,
@@ -554,8 +538,7 @@ class PyTorchDistBackend(BaseBackend):
 
         collectiveArgs.waitObj.append(retObj)
 
-        if retFlag:
-            return retObj
+        return retObj
 
     def irecv(self, collectiveArgs, retFlag=False, tag=0):
         retObj = dist.irecv(
@@ -567,8 +550,7 @@ class PyTorchDistBackend(BaseBackend):
 
         collectiveArgs.waitObj.append(retObj)
 
-        if retFlag:
-            return retObj
+        return retObj
 
     def P2POp(self, collectiveArgs, retFlag=False, tag=0):
         if collectiveArgs.collective in ("send", "isend"):
@@ -984,10 +966,11 @@ class PyTorchDistBackend(BaseBackend):
         self.collectiveFunc["wait"] = (
             self.wait
         )  # a noop until all collective operations can post a wait operation or specify async vs not async
-        self.collectiveFunc["send"] = self.send
-        self.collectiveFunc["recv"] = self.recv
-        self.collectiveFunc["isend"] = self.isend
-        self.collectiveFunc["irecv"] = self.irecv
+
+        # ExecutionTraceObserver dump records from cpp level, which are always async send/recv.
+        # Then replay in torch.distributed API level, we should use isend/irecv.
+        self.collectiveFunc["send"] = self.isend
+        self.collectiveFunc["recv"] = self.irecv
         self.collectiveFunc["batch_isend_irecv"] = self.batch_isend_irecv
         self.collectiveFunc["pt2pt"] = (
             self.noop
