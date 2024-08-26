@@ -313,7 +313,7 @@ def checkQuantArgs(
             logger.warning(
                 f"begin size {beginSize} must be a multiple of --quant-a2a-embedding-dim {quant_a2a_embedding_dim} for all_to_all operation"
             )
-        if blockingFlag != 1:
+        if not blockingFlag:
             raise NotImplementedError("quantized All_to_all must be synchronous.")
     if dtype != torch.float32:
         raise NotImplementedError(
@@ -690,7 +690,7 @@ class commsParamsHolderBase:
         self.dtype = args.dtype
         self.backend = args.backend
         self.device = args.device
-        self.blockingFlag = args.z
+        self.blockingFlag = args.blocking
         # quantization
         self.bitwidth = args.bitwidth
         self.quant_a2a_embedding_dim = args.quant_a2a_embedding_dim
@@ -1435,12 +1435,10 @@ class paramCommsBench(ABC):
             help="The backend to be used in PyTorch distributed process group",
         )  #  backend used for the network stack
         parser.add_argument(
-            "--z",
+            "-b",
             "--blocking",
-            type=int,
-            default=0,
-            help="use blocking/non-blocking mode for collectives",
-            choices=[0, 1],
+            action="store_true",
+            help="use blocking/non-blocking mode for collectives"
         )  # 'sync/blocking' : 1 , 'async/non-blocking' : 0
         parser.add_argument(
             "--bitwidth",

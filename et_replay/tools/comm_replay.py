@@ -1438,7 +1438,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.is_dry_run = args.dry_run
         self.shrink = args.auto_shrink
         self.max_msg_cnt = args.max_msg_cnt
-        self.is_blocking = args.z
+        self.is_blocking = args.blocking
         self.do_warm_up = args.do_warm_up
         self.reuse_tensors = args.reuse_tensors
         self.allowList = args.allow_ops
