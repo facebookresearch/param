@@ -643,7 +643,7 @@ class commsTraceReplayBench(paramCommsBench):
         regenerateTensors: bool = True,
     ) -> Tuple[torch.Tensor, Union[List[torch.Tensor], torch.Tensor]]:
         """
-        Prepares the appropriate tensors for the current collective communication.
+        Update process group and prepare the appropriate tensors for the current collective communication.
 
         Args:
             curComm: The current communication that we are preparing the correct tensor for.
@@ -652,10 +652,6 @@ class commsTraceReplayBench(paramCommsBench):
         Returns:
             (ipTensor, opTensor) if the current communication requires tensors, None otherwise.
         """
-        commOp = paramToCommName(curComm.comms)
-        if commOp in ("wait", "barrier", "batch_isend_irecv"):
-            return (torch.Tensor(), torch.Tensor())
-
         # prep process group for hard-coded traces
         if curComm.pgId is not None and not self.shrink:
             self.collectiveArgs.group = self.collectiveArgs.groups[curComm.pgId]
@@ -665,6 +661,10 @@ class commsTraceReplayBench(paramCommsBench):
         else:  # use default process group if no pg_id is provided or shrink is enabled
             self.collectiveArgs.group = self.backendFuncs.get_default_group()
             self.world_size = self.backendFuncs.get_world_size()
+        
+        commOp = paramToCommName(curComm.comms)
+        if commOp in ("wait", "barrier", "batch_isend_irecv"):
+            return (torch.Tensor(), torch.Tensor())
 
         # for all_to_allv, we can shrink the size if running on smaller scale
         # this is for sanity test or debug purpose only since we don't always get to run very large scale
