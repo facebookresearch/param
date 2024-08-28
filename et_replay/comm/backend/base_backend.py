@@ -28,8 +28,6 @@ supportedCollectives = [
     "reduce_scatter_v",
     "reduce_scatter_base",
     "all_gather_base",
-    "incast",
-    "multicast",
     "gather",
     "scatter",
 ]
@@ -144,8 +142,6 @@ class BaseBackend(ABC):
             "reduce_scatter_base": self.reduce_scatter_base,  # pyre-ignore[16]:
             "scatter": self.scatter,  # pyre-ignore[16]:
             "barrier": self.barrier,
-            "incast": self.incast,  # pyre-ignore[16]:
-            "multicast": self.multicast,  # pyre-ignore[16]:
             "noop": self.noop,
         }
 

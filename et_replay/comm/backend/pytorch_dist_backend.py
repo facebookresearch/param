@@ -474,28 +474,6 @@ class PyTorchDistBackend(BaseBackend):
         if retFlag:
             return retObj
 
-    # Many-to-one pattern
-    def incast(self, collectiveArgs):
-        if collectiveArgs.global_rank == collectiveArgs.srcOrDst:
-            # root receives tensor from each of user-specified source ranks
-            for idx, src_rank in enumerate(collectiveArgs.src_ranks):
-                retObj = dist.irecv(
-                    tensor=collectiveArgs.opTensor[idx],
-                    src=src_rank,
-                    group=self.get_collective_group(collectiveArgs),
-                    tag=0,
-                )
-                collectiveArgs.waitObj.append(retObj)
-            # complete outstanding irecvs if blocking
-            if not collectiveArgs.asyncOp:
-                self.complete_accel_ops(collectiveArgs, devSync=False)
-        elif collectiveArgs.global_rank in collectiveArgs.src_ranks:
-            # send local tensor to root
-            if collectiveArgs.asyncOp:
-                self.isend(collectiveArgs, collectiveArgs.srcOrDst)
-            else:
-                self.send(collectiveArgs, collectiveArgs.srcOrDst)
-
     def broadcast(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist.broadcast(
             tensor=(
@@ -511,22 +489,6 @@ class PyTorchDistBackend(BaseBackend):
 
         if retFlag:
             return retObj
-
-    # One-to-many pattern
-    def multicast(self, collectiveArgs):
-        if collectiveArgs.global_rank == collectiveArgs.srcOrDst:
-            # root sends tensor to each of user-specified destination ranks
-            for dst_rank in collectiveArgs.dst_ranks:
-                self.isend(collectiveArgs, dst_rank)
-            # complete outstanding isends if blocking
-            if not collectiveArgs.asyncOp:
-                self.complete_accel_ops(collectiveArgs, devSync=False)
-        elif collectiveArgs.global_rank in collectiveArgs.dst_ranks:
-            # recvs tensor from root
-            if collectiveArgs.asyncOp:
-                self.irecv(collectiveArgs, collectiveArgs.srcOrDst)
-            else:
-                self.recv(collectiveArgs, collectiveArgs.srcOrDst)
 
     def isend(self, collectiveArgs, retFlag=False, tag=0):
         retObj = dist.isend(
@@ -727,7 +689,7 @@ class PyTorchDistBackend(BaseBackend):
     # Memory related
     def get_mem_size(self, collectiveArgs, pair=False):
         _sizeBytes = 0
-        # opTensor could be a list of tensor for all_gather/gather/incast, get the aggregated size
+        # opTensor could be a list of tensor for all_gather/gather, get the aggregated size
         if isinstance(collectiveArgs.opTensor, list):
             _sizeBytes = sum(
                 [t.nelement() * t.element_size() for t in collectiveArgs.opTensor]
