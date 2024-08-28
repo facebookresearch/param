@@ -474,6 +474,7 @@ class PyTorchDistBackend(BaseBackend):
         if retFlag:
             return retObj
 
+    '''
     # Many-to-one pattern
     def incast(self, collectiveArgs):
         if collectiveArgs.global_rank == collectiveArgs.srcOrDst:
@@ -495,6 +496,7 @@ class PyTorchDistBackend(BaseBackend):
                 self.isend(collectiveArgs, collectiveArgs.srcOrDst)
             else:
                 self.send(collectiveArgs, collectiveArgs.srcOrDst)
+    '''
 
     def broadcast(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist.broadcast(
@@ -512,6 +514,7 @@ class PyTorchDistBackend(BaseBackend):
         if retFlag:
             return retObj
 
+    '''
     # One-to-many pattern
     def multicast(self, collectiveArgs):
         if collectiveArgs.global_rank == collectiveArgs.srcOrDst:
@@ -527,6 +530,7 @@ class PyTorchDistBackend(BaseBackend):
                 self.irecv(collectiveArgs, collectiveArgs.srcOrDst)
             else:
                 self.recv(collectiveArgs, collectiveArgs.srcOrDst)
+    '''
 
     def send(self, collectiveArgs, retFlag=False, tag=0):
         dist.send(
