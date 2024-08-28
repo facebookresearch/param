@@ -71,6 +71,16 @@ def main():
         help="Set option for CUDA GPU L2 cache between iterations in discrete mode.",
     )
     parser.add_argument(
+        "--pt2-model",
+        action="store_true",
+        help="Compile the model before run.",
+    )
+    parser.add_argument(
+        "--cuda-graph",
+        action="store_true",
+        help="Enable CUDA graph.",
+    )
+    parser.add_argument(
         "--ncu", action="store_true", help="Run NSight Compute to collect metrics."
     )
     parser.add_argument(
@@ -195,6 +205,12 @@ def main():
     args = parser.parse_args()
 
     logger = init_logging(getattr(logging, args.log_level.upper(), logging.INFO))
+    if args.cuda_graph:
+        if "cuda" not in args.device:
+            logger.warning(
+                "Cannot use --cuda-graph when not running on cuda device, cuda-graph is disabled"
+            )
+            args.cuda_graph = False
 
     if args.version:
         logger.info(f"PARAM train compute version: {__version__}")
@@ -214,6 +230,8 @@ def main():
     run_options["iteration"] = args.iteration
     run_options["device"] = args.device
     run_options["cuda_l2_cache"] = args.cuda_l2_cache == "on"
+    run_options["pt2-model"] = args.pt2_model
+    run_options["cuda-graph"] = args.cuda_graph
     run_options["resume_op_run_id"] = args.resume_id
     run_options["stop_op_run_id"] = args.stop_id
     run_options["run_batch_size"] = args.run_batch_size
@@ -316,7 +334,7 @@ def main():
             args.profile,
             use_cuda=use_cuda,
             use_kineto=True,
-            record_shapes=False,
+            record_shapes=True,
             experimental_config=cupti_profiler_config,
             # use_cpu enables profiling and recodring of CPU pytorch operators.
             # This is useful in CUPTI profiler mode if we are measuring per GPU kernel metrics.

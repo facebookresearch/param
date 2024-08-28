@@ -1,3 +1,5 @@
+from typing import Union
+
 from ..init_helper import get_logger
 
 logger = get_logger()
@@ -61,6 +63,40 @@ class OpExecutor:
         )
         self._label_template_fwd_bwd = f"[param|{self.name}|{{op_run_id}}|{{tag}}|{ExecutionPass.FORWARD.value}_{ExecutionPass.BACKWARD.value}]"
 
+        self.op.forward = (
+            torch.compile(self.op.forward)
+            if run_options.get("pt2-model", False)
+            else self.op.forward
+        )
+
+        self.op.backward = (
+            torch.compile(self.op.backward)
+            if run_options.get("pt2-model", False)
+            else self.op.backward
+        )
+
+        self.use_cuda_graph = run_options.get("cuda-graph", False)
+
+        self.fwd_cuda_graph = None
+        self.bwd_cuda_graph = None
+
+    def generate_cuda_graph(self, args: List, kwargs: Dict[str, Any]):
+        s = torch.cuda.Stream(self.torch_device)
+        s.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(s):
+            self.op.forward(*args, **kwargs)
+            self.op.create_grad()
+            self.op.backward()
+
+        self.fwd_cuda_graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(self.fwd_cuda_graph):
+            self.op.forward(*args, **kwargs)
+
+        if self.pass_type == ExecutionPass.BACKWARD:
+            self.bwd_cuda_graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(self.bwd_cuda_graph):
+                self.op.backward()
+
     def run(
         self, input_args: List, input_kwargs: Dict[str, Any], op_run_id: str
     ) -> Dict[str, Any]:
@@ -82,7 +118,12 @@ class OpExecutor:
         return result
 
     def _benchmark_op(
-        self, op: Callable, args: List, kwargs: Dict[str, Any], tag: str, label_str: str
+        self,
+        op: Union[Callable, torch.cuda.CUDAGraph],
+        args: List,
+        kwargs: Dict[str, Any],
+        tag: str,
+        label_str: str,
     ) -> Tuple[float, float]:
         logger.debug(f"benchmarking {label_str}")
         gpu_memory = 0
@@ -99,10 +140,13 @@ class OpExecutor:
             timer.start()
             if self.use_cuda:
                 op_run_id_range = torch.cuda.nvtx.range_start(label_str)
-            op(*args, **kwargs)
+            if isinstance(op, torch.cuda.CUDAGraph):
+                op.replay()
+            elif isinstance(op, Callable):
+                op(*args, **kwargs)
             timer.stop()
             if self.use_cuda:
-                torch.cuda.nvtx.range_end(op_run_id_range)
+                torch.cuda.nvtx.range_end(op_run_id_range)  # pyre-ignore[61]:
                 # Memory size in MB
                 gpu_memory = torch.cuda.max_memory_allocated(self.torch_device) / (
                     1048576
@@ -132,14 +176,32 @@ class OpExecutor:
         if self.use_cuda:
             tag_range = torch.cuda.nvtx.range_start(f"[param|{tag}]")
 
+        if (
+            tag == "warmup"
+            and self.use_cuda_graph
+            and (
+                self.fwd_cuda_graph is None
+                or (
+                    self.pass_type == ExecutionPass.BACKWARD
+                    and self.bwd_cuda_graph is None
+                )
+            )
+        ):
+            self.generate_cuda_graph(args, kwargs)
+
         with record_function(label_str):
             for _ in range(count):
                 label_str = self._label_template_fwd.format(
                     tag=tag, op_run_id=op_run_id
                 )
-                latency, peak_memory = self._benchmark_op(
-                    self.op.forward, args, kwargs, tag, label_str
-                )
+                if self.use_cuda_graph:
+                    latency, peak_memory = self._benchmark_op(
+                        self.fwd_cuda_graph, args, kwargs, tag, label_str
+                    )
+                else:
+                    latency, peak_memory = self._benchmark_op(
+                        self.op.forward, args, kwargs, tag, label_str
+                    )
                 fw_time_records.append(latency)
                 fw_gpu_mem_records.append(peak_memory)
                 if self.pass_type == ExecutionPass.BACKWARD:
@@ -147,14 +209,19 @@ class OpExecutor:
                     label_str = self._label_template_bwd.format(
                         tag=tag, op_run_id=op_run_id
                     )
-                    latency, peak_memory = self._benchmark_op(
-                        self.op.backward, [], {}, tag, label_str
-                    )
+                    if self.use_cuda_graph:
+                        latency, peak_memory = self._benchmark_op(
+                            self.bwd_cuda_graph, [], {}, tag, label_str
+                        )
+                    else:
+                        latency, peak_memory = self._benchmark_op(
+                            self.op.backward, [], {}, tag, label_str
+                        )
                     bw_time_records.append(latency)
                     bw_gpu_mem_records.append(peak_memory)
 
         if self.use_cuda:
-            torch.cuda.nvtx.range_end(tag_range)
+            torch.cuda.nvtx.range_end(tag_range)  # pyre-ignore[61]:
         return (
             fw_time_records,
             fw_gpu_mem_records,
@@ -169,7 +236,7 @@ class OpExecutor:
         kwargs: Dict[str, Any],
         tag: str,
         op_run_id: str,
-    ) -> float:
+    ) -> Tuple[List[float], List[float], List[float], List[float]]:
         """
         Using CUDA events to record is making the assumptions that we are running single stream.
         In this mode, we do not flush cache, assuming benefit from data in warmup.
@@ -192,6 +259,19 @@ class OpExecutor:
 
             return deltas
 
+        if (
+            tag == "warmup"
+            and self.use_cuda_graph
+            and (
+                self.fwd_cuda_graph is None
+                or (
+                    self.pass_type == ExecutionPass.BACKWARD
+                    and self.bwd_cuda_graph is None
+                )
+            )
+        ):
+            self.generate_cuda_graph(args, kwargs)
+
         fw_time_records = []
         bw_time_records = []
         fw_gpu_mem_records = []
@@ -207,7 +287,10 @@ class OpExecutor:
             op_run_id_range = torch.cuda.nvtx.range_start(label_str)
             for i in range(count):
                 fw_events[i][0].record()
-                self.op.forward(*args, **kwargs)
+                if self.use_cuda_graph:
+                    self.fwd_cuda_graph.replay()
+                else:
+                    self.op.forward(*args, **kwargs)
                 fw_events[i][1].record()
 
             torch.cuda.synchronize(self.torch_device)
@@ -230,9 +313,15 @@ class OpExecutor:
                 torch.cuda.synchronize(self.torch_device)
                 op_run_id_range = torch.cuda.nvtx.range_start(label_str)
                 for i in range(count):
-                    self.op.forward(*args, **kwargs)
+                    if self.use_cuda_graph:
+                        self.fwd_cuda_graph.replay()
+                    else:
+                        self.op.forward(*args, **kwargs)
                     bw_events[i][0].record()
-                    self.op.backward()
+                    if self.use_cuda_graph:
+                        self.bwd_cuda_graph.replay()
+                    else:
+                        self.op.backward()
                     bw_events[i][1].record()
 
                 torch.cuda.synchronize(self.torch_device)
@@ -254,9 +343,22 @@ class OpExecutor:
         kwargs: Dict[str, Any],
         tag: str,
         op_run_id: str,
-    ) -> float:
+    ) -> Tuple[List[float], List[float], List[float], List[float]]:
 
         logger.debug(f"benchmarking {self.name}|{op_run_id}|{tag}")
+
+        if (
+            tag == "warmup"
+            and self.use_cuda_graph
+            and (
+                self.fwd_cuda_graph is None
+                or (
+                    self.pass_type == ExecutionPass.BACKWARD
+                    and self.bwd_cuda_graph is None
+                )
+            )
+        ):
+            self.generate_cuda_graph(args, kwargs)
 
         fw_time_records = []
         bw_time_records = []
@@ -275,7 +377,10 @@ class OpExecutor:
             timer.start()
             op_run_id_range = torch.cuda.nvtx.range_start(label_str)
             for _i in range(count):
-                self.op.forward(*args, **kwargs)
+                if self.use_cuda_graph:
+                    self.fwd_cuda_graph.replay()
+                else:
+                    self.op.forward(*args, **kwargs)
             timer.stop()
             torch.cuda.nvtx.range_end(op_run_id_range)
 
@@ -295,8 +400,12 @@ class OpExecutor:
                 timer.start()
                 op_run_id_range = torch.cuda.nvtx.range_start(label_str)
                 for _i in range(count):
-                    self.op.forward(*args, **kwargs)
-                    self.op.backward()
+                    if self.use_cuda_graph:
+                        self.fwd_cuda_graph.replay()
+                        self.bwd_cuda_graph.replay()
+                    else:
+                        self.op.forward(*args, **kwargs)
+                        self.op.backward()
                 timer.stop()
                 torch.cuda.nvtx.range_end(op_run_id_range)
             # Subtract forward time to get backward time.
@@ -320,7 +429,7 @@ class OpExecutor:
         kwargs: Dict[str, Any],
         tag: str,
         op_run_id: str,
-    ) -> float:
+    ) -> Tuple[List[float], List[float], List[float], List[float]]:
         logger.debug(f"benchmarking [{self.name}|{op_run_id}|{tag}]")
 
         fw_time_records = []
@@ -378,7 +487,7 @@ class OpExecutor:
         tag: str,
         op_run_id: str,
         result: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> None:
         logger.info(f"running [{op_run_id}] for {iteration} {tag} iteration")
         fw_time_records = []
         fw_mem_records = []

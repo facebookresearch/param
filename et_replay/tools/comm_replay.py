@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import time
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Set, Tuple, Union
 
 import numpy as np
 import torch
@@ -560,7 +560,7 @@ class commsTraceReplayBench(paramCommsBench):
 
     def getCommGroupInfo(
         self, curComm: commsArgs, commsParams: commsParamsHolderBase
-    ) -> tuple[int, str]:
+    ) -> Tuple[int, str]:
         """
         Return the group infomation of the current process group
         including group rank of the local process, and a description string for logging purpose.
@@ -616,8 +616,7 @@ class commsTraceReplayBench(paramCommsBench):
         self,
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
-        regenerateTensors: bool
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        regenerateTensors: bool,
         # Use exactly specified inMsgSize/outMsgSize if call from trace replay
         # This avoid regenerating sizes such as in _prep_all_gather_base
         commsParams.size_from_trace = True
@@ -738,7 +737,7 @@ class commsTraceReplayBench(paramCommsBench):
             # Pass in curComm to modify it in the trace
             self.rebalanceSplit(curComm)
 
-    def runCompute(self, func, curBlockStack: str) -> tuple[float, float]:
+    def runCompute(self, func, curBlockStack: str) -> Tuple[float, float]:
         """
         Replays a specified compute operation and records metrics for benchmarking.
 
@@ -773,7 +772,7 @@ class commsTraceReplayBench(paramCommsBench):
 
     def runComms(
         self, collName: str, curComm: commsArgs, curBlockStack: str
-    ) -> tuple[float, float]:
+    ) -> Tuple[float, float]:
         """
         Replays collective communication operation and records metrics for benchmarking.
 
@@ -1004,16 +1003,20 @@ class commsTraceReplayBench(paramCommsBench):
         for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
             self.replaySingle(commsParams, curComm, cnt, warmup)
 
-    def replaySingle(self, commsParams: commsParamsHolderBase, curComm: commsArgs, cnt: int, warmup: bool = False):
+    def replaySingle(
+        self,
+        commsParams: commsParamsHolderBase,
+        curComm: commsArgs,
+        cnt: int,
+        warmup: bool = False,
+    ):
         if warmup:
             logLable = "[Warm-up]"
         else:
             logLable = f"[Replay {self.replayIter}]"
 
         curBlocks = curComm.markerStack if curComm.markerStack is not None else []
-        curBlockStack = (
-            " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
-        )
+        curBlockStack = " ".join(curBlocks) if len(curBlocks) > 0 else "Unamed/Unknown"
 
         # Replay compute
         if curComm.compute is not None:
@@ -1061,7 +1064,10 @@ class commsTraceReplayBench(paramCommsBench):
                         f", InSplit={curComm.inSplit}, OutSplit={curComm.outSplit}"
                     )
                 if curComm.comms in supportedP2pOps:
-                    commDesc += f", Src_Rank={curComm.src_rank}, Dst_Rank={curComm.dst_rank}"
+                    commDesc += (
+                        f", Src_Rank={curComm.src_rank}, Dst_Rank={curComm.dst_rank}"
+                    )
+
                 logger.info(
                     f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc}"
                 )
@@ -1080,9 +1086,7 @@ class commsTraceReplayBench(paramCommsBench):
                 self.waitForTimestamp(curComm, self.replay_start_time)
 
             # send comm request to pytorch backend
-            (latency, global_latency) = self.runComms(
-                collName, curComm, curBlockStack
-            )
+            (latency, global_latency) = self.runComms(collName, curComm, curBlockStack)
 
             # perform data validation check on the final opTensor
             if (
@@ -1091,9 +1095,7 @@ class commsTraceReplayBench(paramCommsBench):
                 and collName not in ("wait", "barrier")
             ):
                 commsParams.collective = collName
-                commsParams.srcOrDst = (
-                    curComm.root if curComm.root is not None else 0
-                )
+                commsParams.srcOrDst = curComm.root if curComm.root is not None else 0
                 self.dcheck(
                     commsParams, curComm.outMsgSize, self.collectiveArgs.opTensor
                 )
