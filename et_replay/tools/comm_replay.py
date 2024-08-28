@@ -617,7 +617,6 @@ class commsTraceReplayBench(paramCommsBench):
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         regenerateTensors: bool,
-    ) -> Tuple[torch.Tensor, Union[List[torch.Tensor], torch.Tensor]]:
         # Use exactly specified inMsgSize/outMsgSize if call from trace replay
         # This avoid regenerating sizes such as in _prep_all_gather_base
         commsParams.size_from_trace = True
@@ -1097,7 +1096,6 @@ class commsTraceReplayBench(paramCommsBench):
             ):
                 commsParams.collective = collName
                 commsParams.srcOrDst = curComm.root if curComm.root is not None else 0
-
                 self.dcheck(
                     commsParams, curComm.outMsgSize, self.collectiveArgs.opTensor
                 )

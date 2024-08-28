@@ -368,7 +368,7 @@ def build_torchscript_func(n):
     if (
         n.op_schema == ""
         or n.name == "aten::record_stream"
-        or n.name.startswith("aten::_foreach")
+        #or n.name.startswith("aten::_foreach")
     ):
         return None, None
 
