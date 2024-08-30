@@ -5,14 +5,17 @@ import logging
 import os
 import sys
 import time
+import copy
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Tuple
 
 import numpy as np
 import torch
 
-from et_replay.comm import comms_utils
+
+from et_replay.comm import comms_utils, param_profile
+from et_replay.comm.comms_utils import bootstrap_info_holder, commsParamsHolderBase, commsArgs
 from et_replay.et_replay_utils import (
     build_fbgemm_func,
     build_torchscript_func,
@@ -35,6 +38,7 @@ from et_replay.et_replay_utils import (
 )
 from et_replay.execution_trace import ExecutionTrace
 from et_replay.utils import trace_handler
+from et_replay.tools.comm_replay import commsTraceReplayBench
 from param_bench.train.compute.python.lib import pytorch as lib_pytorch
 from param_bench.train.compute.python.lib.init_helper import load_modules
 from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
@@ -45,6 +49,41 @@ from torch._inductor.codecache import TritonFuture
 from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid  # noqa
 from torch.profiler import ExecutionTraceObserver
 
+class CommsReplayManager(commsTraceReplayBench):
+    def __init__(self):
+        super().__init__()
+
+        self.comp_replay_manager = None
+
+    def generate_io_tensors(
+        self, 
+        curComm: commsArgs, 
+        commsParams: commsParamsHolderBase, 
+        regenerateTensors: bool
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        node = self.comp_replay_manager.et.nodes[curComm.id]
+
+        input_tensors = self.comp_replay_manager.get_inputs(node)
+        output_tensors = self.comp_replay_manager.get_comm_outputs(node)
+
+        ip_tensor = None
+        op_tensor = None
+
+        # a hack to see if the ip/op tensor is a GenericList, if so, get the first element, 
+        # @see _getTensorInfoFromPyTorchETEntry from commsTraceParser.py
+        def extract_tensor_from_list(tensor_list):
+            if isinstance(tensor_list, list):
+                return extract_tensor_from_list(tensor_list[0])
+            else:
+                return tensor_list
+
+        if len(input_tensors) > 0:
+            ip_tensor = extract_tensor_from_list(input_tensors[0])
+
+        if len(output_tensors) > 0:
+            op_tensor = extract_tensor_from_list(output_tensors[0])
+
+        return (ip_tensor, op_tensor)
 
 class ExgrReplayManager:
     def __init__(self):
@@ -240,7 +279,7 @@ class ExgrReplayManager:
                     )
                     self.et = ExecutionTrace(json.load(et))
             else:
-                self.trace_file = f"{self.args.trace_path}/rank{self.comms_env_params['global_rank']}.json"
+                self.trace_file = f"{self.args.trace_path}/rank-{self.comms_env_params['global_rank']}.json"
                 with open(self.trace_file, "r") as f:
                     self.et = ExecutionTrace(json.load(f))
 
@@ -320,6 +359,16 @@ class ExgrReplayManager:
                 ):
                     continue
                 self.input_tensor_ids.add(t_id)
+
+            # output tensors from comm nodes also needs to be allocated
+            if not (self.compute_only or self.args.separate):
+                for _, t_id, _ in get_output_tensors(node):
+                    if self.tensor_with_device:
+                        t_id = tuple(list(t_id)[:5])
+                    if node.name != "record_param_comms":
+                        continue
+                    self.input_tensor_ids.add(t_id)
+
             func, output_count = self.build_func(node)
             self.funcs[node.id] = (func, output_count)
 
@@ -336,6 +385,7 @@ class ExgrReplayManager:
 
                     if is_qualified(child):
                         self.sorted_nodes.append(child)
+                        dfs_traverse(child) # temporaryly, the 'is_qualified' strategy needs to be refactored
                     else:
                         if skip_op(child):
                             self.actual_skip_nodes.append(child.name)
@@ -463,12 +513,13 @@ class ExgrReplayManager:
                     device = list(t_id)[5]
                     t_id = tuple(list(t_id)[:5])
                     if t_id in self.input_tensor_ids:
+                        # fake comm nodes output tensor as input
                         add_unique_tensor(
-                            node.name, node.id, t_id, shape, input=False, device=device
+                            node.name, node.id, t_id, shape, input=(node.name == "record_param_comms"), device=device
                         )
                 else:
                     if t_id in self.input_tensor_ids:
-                        add_unique_tensor(node.name, node.id, t_id, shape, input=False)
+                        add_unique_tensor(node.name, node.id, t_id, shape, input=(node.name == "record_param_comms"))
 
         # Simulate the execution progress and record the output tensors we have seen so far.
         output_set = set()
@@ -490,35 +541,30 @@ class ExgrReplayManager:
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
                 if t_id in self.input_tensor_ids:
-                    output_set.add(self.tensors_mapping[(node.id, t_id, False)])
+                    if node.name == "record_param_comms": # comm op needs alloc output tensors
+                        self.instantiate.add(self.tensors_mapping[(node.id, t_id, True)])
+                    else:
+                        output_set.add(self.tensors_mapping[(node.id, t_id, False)])
 
     def allocate_tensors(self):
         start_ns = time.time_ns()
 
-        for node in self.sorted_nodes:
-            if node.name == "record_param_comms" and (
-                self.compute_only or self.args.separate
-            ):
-                continue
-            if is_fbgemm_forward(node):
-                if self.cpu:
-                    input_args, _ = generate_fbgemm_tensors(
-                        node,
-                        "cpu",
-                        self.args.rows,
-                        self.args.pooling_factor,
-                        self.args.alpha,
-                    )
+        if not (self.compute_only or self.args.separate):
+            for node in self.sorted_nodes:
+                if node.name == "record_param_comms":
+                    self.allocate_comm_tensors(node)
                 else:
-                    input_args, _ = generate_fbgemm_tensors(
-                        node,
-                        self.cuda,
-                        self.args.rows,
-                        self.args.pooling_factor,
-                        self.args.alpha,
-                    )
-            tensor_strides = node.get_input_tensor_strides()
-            for idx, (data_type, t_id, shape) in enumerate(get_input_tensors(node)):
+                    self.allocate_comp_tensors(node)
+        else:
+            for node in self.sorted_nodes:
+                if node.name != "record_param_comms":
+                    self.allocate_comp_tensors(node)
+
+        print(f"Tensor allocation time: {(time.time_ns() - start_ns) / 1000000.0} ms")
+
+    def allocate_comm_tensors(self, node):
+        def add_comm_tensor_registry(tensor_strides, tensors, node_strides):
+            for idx, (data_type, t_id, shape) in enumerate(tensors):
                 device = self.device
                 if self.tensor_with_device:
                     device = t_id[5]
@@ -527,70 +573,127 @@ class ExgrReplayManager:
                 if (
                     t_id in self.input_tensor_ids
                     and replay_t_id not in self.tensor_registry_permanent.keys()
-                    and (
-                        node.name == "aten::embedding_bag"
-                        or "fbgemm::split_embedding_codegen_lookup" in node.name
-                        or replay_t_id in self.instantiate
-                    )
+                    and replay_t_id in self.instantiate
                 ):
                     try:
-                        if is_fbgemm_forward(node):
-                            self.tensor_registry_permanent[replay_t_id] = input_args[
-                                idx
-                            ]
-                            if "fbgemm::split_embedding_codegen_lookup" in node.name:
-                                self.unchangeable_intermediate_tensors.add(replay_t_id)
+                        if data_type == "Tensor(signed char)":
+                            dtype, _ = TORCH_DTYPES_RNG["signed char"]
                         else:
-                            if data_type == "Tensor(signed char)":
-                                dtype, _ = TORCH_DTYPES_RNG["signed char"]
-                            else:
-                                dtype, _ = TORCH_DTYPES_RNG[
-                                    data_type.lstrip("Tensor(").rstrip(")")
-                                ]
+                            dtype, _ = TORCH_DTYPES_RNG[
+                                data_type.lstrip("Tensor(").rstrip(")")
+                            ]
 
-                            strides = None
-                            if node.input_strides is not None:
-                                strides = tensor_strides[idx]
-                            tensor = self.get_tensor_from_storage(
-                                t_id[1],  # storage_id
-                                t_id[2],  # offset
-                                t_id[4],  # number of bytes per element
-                                device,
-                                shape,
-                                dtype,
-                                strides,
-                            )
-                            self.tensor_registry_permanent[replay_t_id] = tensor
-                            if node.name == "aten::embedding_bag":
-                                self.unchangeable_intermediate_tensors.add(replay_t_id)
-                            if node.name == "aten::pin_memory" and idx == 0:
-                                self.cpu_tensor.add(replay_t_id)
+                        strides = None
+                        if node_strides is not None:
+                            strides = tensor_strides[idx]
+                        tensor = self.get_tensor_from_storage(
+                            t_id[1],  # storage_id
+                            t_id[2],  # offset
+                            t_id[4],  # number of bytes per element
+                            device,
+                            shape,
+                            dtype,
+                            strides,
+                        )
+                        self.tensor_registry_permanent[replay_t_id] = tensor
                     except KeyError:
                         if data_type != "Tensor(nullptr (uninitialized))":
                             print("KeyError: ", node.id, t_id, data_type)
                         self.tensor_registry_permanent[replay_t_id] = None
 
-            ######
-            # Workaround to match offsets for embedding table
-            # Currently assume a uniform distribution.
-            if node.name == "aten::embedding_bag":
-                indices_tensor_shape = node.input_shapes[1][0]
-                offsets_tensor_shape = node.input_shapes[2][0]
-                nnz = indices_tensor_shape / offsets_tensor_shape
-                for i in range(offsets_tensor_shape):
-                    if self.tensor_with_device:
-                        self.tensor_registry_permanent[
-                            self.tensors_mapping[
-                                (node.id, tuple(node.inputs[2][:5]), True)
-                            ]
-                        ][i] = (i * nnz)
-                    else:
-                        self.tensor_registry_permanent[
-                            self.tensors_mapping[(node.id, tuple(node.inputs[2]), True)]
-                        ][i] = (i * nnz)
-            ######
+        add_comm_tensor_registry(node.get_input_tensor_strides(), get_input_tensors(node), node.input_strides)
+        add_comm_tensor_registry(node.get_output_tensor_strides(), get_output_tensors(node), node.output_strides)
 
-        print(f"Tensor allocation time: {(time.time_ns() - start_ns) / 1000000.0} ms")
+    def allocate_comp_tensors(self, node):
+        if is_fbgemm_forward(node):
+            if self.cpu:
+                input_args, _ = generate_fbgemm_tensors(
+                    node,
+                    "cpu",
+                    self.args.rows,
+                    self.args.pooling_factor,
+                    self.args.alpha,
+                )
+            else:
+                input_args, _ = generate_fbgemm_tensors(
+                    node,
+                    self.cuda,
+                    self.args.rows,
+                    self.args.pooling_factor,
+                    self.args.alpha,
+                )
+        tensor_strides = node.get_input_tensor_strides()
+        for idx, (data_type, t_id, shape) in enumerate(get_input_tensors(node)):
+            device = self.device
+            if self.tensor_with_device:
+                device = t_id[5]
+                t_id = tuple(list(t_id)[:5])
+            replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
+            if (
+                t_id in self.input_tensor_ids
+                and replay_t_id not in self.tensor_registry_permanent.keys()
+                and (
+                    node.name == "aten::embedding_bag"
+                    or "fbgemm::split_embedding_codegen_lookup" in node.name
+                    or replay_t_id in self.instantiate
+                )
+            ):
+                try:
+                    if is_fbgemm_forward(node):
+                        self.tensor_registry_permanent[replay_t_id] = input_args[
+                            idx
+                        ]
+                        if "fbgemm::split_embedding_codegen_lookup" in node.name:
+                            self.unchangeable_intermediate_tensors.add(replay_t_id)
+                    else:
+                        if data_type == "Tensor(signed char)":
+                            dtype, _ = TORCH_DTYPES_RNG["signed char"]
+                        else:
+                            dtype, _ = TORCH_DTYPES_RNG[
+                                data_type.lstrip("Tensor(").rstrip(")")
+                            ]
+
+                        strides = None
+                        if node.input_strides is not None:
+                            strides = tensor_strides[idx]
+                        tensor = self.get_tensor_from_storage(
+                            t_id[1],  # storage_id
+                            t_id[2],  # offset
+                            t_id[4],  # number of bytes per element
+                            device,
+                            shape,
+                            dtype,
+                            strides,
+                        )
+                        self.tensor_registry_permanent[replay_t_id] = tensor
+                        if node.name == "aten::embedding_bag":
+                            self.unchangeable_intermediate_tensors.add(replay_t_id)
+                        if node.name == "aten::pin_memory" and idx == 0:
+                            self.cpu_tensor.add(replay_t_id)
+                except KeyError:
+                    if data_type != "Tensor(nullptr (uninitialized))":
+                        print("KeyError: ", node.id, t_id, data_type)
+                    self.tensor_registry_permanent[replay_t_id] = None
+
+        ######
+        # Workaround to match offsets for embedding table
+        # Currently assume a uniform distribution.
+        if node.name == "aten::embedding_bag":
+            indices_tensor_shape = node.input_shapes[1][0]
+            offsets_tensor_shape = node.input_shapes[2][0]
+            nnz = indices_tensor_shape / offsets_tensor_shape
+            for i in range(offsets_tensor_shape):
+                if self.tensor_with_device:
+                    self.tensor_registry_permanent[
+                        self.tensors_mapping[
+                            (node.id, tuple(node.inputs[2][:5]), True)
+                        ]
+                    ][i] = (i * nnz)
+                else:
+                    self.tensor_registry_permanent[
+                        self.tensors_mapping[(node.id, tuple(node.inputs[2]), True)]
+                    ][i] = (i * nnz)
+        ######
 
     def build_func(self, node):
         if is_fbgemm_forward(node):
@@ -1103,106 +1206,175 @@ class ExgrReplayManager:
         except Exception as e:
             print(f"Inputs error: {e} at node: {node.id}")
 
-    def run_op(self, node, iter):
-        if node.name == "record_param_comms" and not self.compute_only:
-            return
-
-        if self.debug and iter >= self.numWarmupIters:
-            start_ns = time.time_ns()
-
-        func, output_count = self.funcs[node.id]
-        if not func:
-            return
-        inputs = self.get_inputs(node)
-
-        # Workaround to eliminate the "strides() called on undefined Tensor" error.
-        if node.name == "aten::convolution_backward":
-            inputs[-1] = [True, True, True]
-
-        # Workaround to handle tensor with same id but different data types (ads_cmf10x_single_iter_512_newest_eg.json).
-        if node.name == "aten::index_add_":
-            inputs[3] = inputs[3].to(torch.float64)
-            inputs[2] = inputs[2].to(torch.int)
-        if node.name == "aten::index_copy_":
-            if node.input_types[3] == "Tensor(double)":
-                inputs[3] = inputs[3].to(torch.float64)
-            if node.input_types[2] == "Tensor(long)":
-                inputs[2] = inputs[2].to(torch.int64)
-        if node.name == "aten::index_select":
-            inputs[2] = inputs[2].to(torch.int)
-
-        if self.debug and iter >= self.numWarmupIters:
-            before_execution = time.time_ns()
-
+    def get_comm_outputs(self, node):
         try:
             outputs = []
-            if output_count == 0:
-                if node.kernel_backend == "triton":
-                    exec(
-                        f"func.run(*inputs[:-2], grid={inputs[-2]}, stream={inputs[-1]})"
+            for idx, item in enumerate(node.outputs):
+                if is_tensor(node, idx):
+                    self.lookup_cnt += 1
+                    if self.tensor_with_device:
+                        item = tuple(item[:5])
+                    outputs.append(
+                        self.tensor_registry[
+                            self.tensors_mapping[(node.id, tuple(item), True)]
+                        ]
                     )
+                elif is_tensor_list(node, idx):
+                    self.lookup_cnt += len(item)
+                    if self.tensor_with_device:
+                        outputs.append(
+                            [
+                                self.tensor_registry[
+                                    self.tensors_mapping[
+                                        (node.id, tuple(t_id[:5]), True)
+                                    ]
+                                ]
+                                for t_id in item
+                            ]
+                        )
+                    else:
+                        outputs.append(
+                            [
+                                self.tensor_registry[
+                                    self.tensors_mapping[
+                                        (node.id, tuple(t_id), True)
+                                    ]
+                                ]
+                                for t_id in item
+                            ]
+                        )
+                elif item == "<None>" or item == "<Generator>":
+                    outputs.append(None)
+                elif item == "inf" or item == "-inf":
+                    outputs.append(float(item))
+                elif node.input_types[idx] == "Device" and "cuda" in item:
+                    if self.cpu:
+                        outputs.append("cpu")
+                    else:
+                        outputs.append(self.cuda)
                 else:
-                    func(*inputs)
-            else:
-                if output_count == 1:
-                    tmp = (func(*inputs),)
-                else:
-                    tmp = func(*inputs)
-                # Flatten any tensor lists
-                # TODO: Simplify this
-                if not tmp:
-                    print(f"Not expect that {node.id} has no output.")
-                    return
-                for x in tmp:
-                    if isinstance(x, list) and isinstance(x[0], torch.Tensor):
-                        outputs.extend(x)
-                    elif isinstance(x, torch.Tensor):
-                        outputs.append(x)
+                    outputs.append(item)
+            return outputs
         except Exception as e:
-            print(
-                f"Run op exception Error: {e}, node id: {node.id}, func: {func}, inputs: {inputs}"
-            )
-            exit(1)
+            print(f"Outputs error: {e} at node: {node.id}")
 
-        if node.name == "aten::repeat_interleave":
-            current_len = node.input_shapes[0][0]
-            target_len = node.output_shapes[0][0]
-            if current_len < target_len:
-                dtype, _ = TORCH_DTYPES_RNG[
-                    node.output_types[0].lstrip("Tensor(").rstrip(")")
-                ]
-                tmp = torch.zeros(target_len - current_len).to(dtype).cuda(self.device)
-                outputs[0] = torch.cat((tmp, outputs[0]))
-
-        if self.debug and iter >= self.numWarmupIters:
-            after_execution = time.time_ns()
-
-        for _, t_id, _ in get_input_tensors(node):
-            if self.tensor_with_device:
-                t_id = tuple(list(t_id)[:5])
-            replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
-            if (
-                node.id >= self.replay_tensor_id_to_last_node_id_map[replay_t_id]
-                and replay_t_id not in self.instantiate
-            ):
-                del self.tensor_registry[replay_t_id]
-
-        for (_, t_id, _), output in zip(get_output_tensors(node), outputs):
-            if self.tensor_with_device:
-                t_id = tuple(list(t_id)[:5])
-
-            if t_id in self.input_tensor_ids:
-                replay_t_id = self.tensors_mapping[(node.id, t_id, False)]
+    def run_op(self, node, iter, cnt):
+        if isinstance(node, commsArgs):
+            et_node = self.et.nodes[node.id]
+            self.commsBench.replaySingle(self.commsParams, node, cnt)
+            for _, t_id, _ in get_input_tensors(et_node) + get_output_tensors(et_node):
+                tensor_id, storage_id, storage_offset, element_num, item_size, device_str = t_id
+                if self.tensor_with_device:
+                    t_id = tuple(list(t_id)[:5])
+                    device = torch.device(device_str)
+                else:
+                    device = self.device
+                replay_t_id = self.tensors_mapping[(et_node.id, t_id, True)]
                 if (
-                    replay_t_id not in self.unchangeable_intermediate_tensors
+                    et_node.id >= self.replay_tensor_id_to_last_node_id_map[replay_t_id]
                     and replay_t_id not in self.instantiate
                 ):
-                    if node.id < self.replay_tensor_id_to_last_node_id_map[replay_t_id]:
-                        self.tensor_registry[replay_t_id] = output
+                    del self.tensor_registry[replay_t_id]
+        else:
+            if node.name == "record_param_comms":
+                return
+
+            if self.debug and iter >= self.numWarmupIters:
+                start_ns = time.time_ns()
+
+            func, output_count = self.funcs[node.id]
+            if not func:
+                return
+            inputs = self.get_inputs(node)
+
+            # Workaround to eliminate the "strides() called on undefined Tensor" error.
+            if node.name == "aten::convolution_backward":
+                inputs[-1] = [True, True, True]
+
+            # Workaround to handle tensor with same id but different data types (ads_cmf10x_single_iter_512_newest_eg.json).
+            if node.name == "aten::index_add_":
+                inputs[3] = inputs[3].to(torch.float64)
+                inputs[2] = inputs[2].to(torch.int)
+            if node.name == "aten::index_copy_":
+                if node.input_types[3] == "Tensor(double)":
+                    inputs[3] = inputs[3].to(torch.float64)
+                if node.input_types[2] == "Tensor(long)":
+                    inputs[2] = inputs[2].to(torch.int64)
+            if node.name == "aten::index_select":
+                inputs[2] = inputs[2].to(torch.int)
+
+            if self.debug and iter >= self.numWarmupIters:
+                before_execution = time.time_ns()
+
+            try:
+                outputs = []
+                if output_count == 0:
+                    if node.kernel_backend == "triton":
+                        exec(
+                            f"func.run(*inputs[:-2], grid={inputs[-2]}, stream={inputs[-1]})"
+                        )
                     else:
-                        del output
-            else:
-                del output
+                        func(*inputs)
+                else:
+                    if output_count == 1:
+                        tmp = (func(*inputs),)
+                    else:
+                        tmp = func(*inputs)
+                    # Flatten any tensor lists
+                    # TODO: Simplify this
+                    if not tmp:
+                        print(f"Not expect that {node.id} has no output.")
+                        return
+                    for x in tmp:
+                        if isinstance(x, list) and isinstance(x[0], torch.Tensor):
+                            outputs.extend(x)
+                        elif isinstance(x, torch.Tensor):
+                            outputs.append(x)
+            except Exception as e:
+                print(
+                    f"Run op exception Error: {e}, node id: {node.id}, func: {func}, inputs: {inputs}"
+                )
+                exit(1)
+
+            if node.name == "aten::repeat_interleave":
+                current_len = node.input_shapes[0][0]
+                target_len = node.output_shapes[0][0]
+                if current_len < target_len:
+                    dtype, _ = TORCH_DTYPES_RNG[
+                        node.output_types[0].lstrip("Tensor(").rstrip(")")
+                    ]
+                    tmp = torch.zeros(target_len - current_len).to(dtype).cuda(self.device)
+                    outputs[0] = torch.cat((tmp, outputs[0]))
+
+            if self.debug and iter >= self.numWarmupIters:
+                after_execution = time.time_ns()
+
+            for _, t_id, _ in get_input_tensors(node):
+                if self.tensor_with_device:
+                    t_id = tuple(list(t_id)[:5])
+                replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
+                if (
+                    node.id >= self.replay_tensor_id_to_last_node_id_map[replay_t_id]
+                    and replay_t_id not in self.instantiate
+                ):
+                    del self.tensor_registry[replay_t_id]
+
+            for (_, t_id, _), output in zip(get_output_tensors(node), outputs):
+                if self.tensor_with_device:
+                    t_id = tuple(list(t_id)[:5])
+
+                if t_id in self.input_tensor_ids:
+                    replay_t_id = self.tensors_mapping[(node.id, t_id, False)]
+                    if (
+                        replay_t_id not in self.unchangeable_intermediate_tensors
+                        and replay_t_id not in self.instantiate
+                    ):
+                        if node.id < self.replay_tensor_id_to_last_node_id_map[replay_t_id]:
+                            self.tensor_registry[replay_t_id] = output
+                        else:
+                            del output
+                else:
+                    del output
 
         if self.profile_memory:
             self.op_allocated_mem[node] = (
@@ -1221,7 +1393,33 @@ class ExgrReplayManager:
             self.exec_time.append(after_execution - before_execution)
 
     def init_comms(self):
-        pass
+        comms_env_params = comms_utils.read_comms_env_vars()
+        print(comms_env_params, self.cuda)
+
+        self.commsBench = CommsReplayManager()
+        self.commsBench.comp_replay_manager = self
+        self.commsBench.trace_file = self.trace_file
+        if "://" in self.trace_file:
+            self.commsBench.use_remote_trace = True
+
+        parser = argparse.ArgumentParser(description="Execution Trace Comms Replay")
+        comms_args = self.commsBench.readArgs(parser)
+
+        self.commsBench.checkArgs(comms_args)
+
+        bootstrap_info = bootstrap_info_holder(
+            comms_args.master_ip,
+            comms_args.master_port,
+            comms_args.num_tpu_cores,
+            comms_env_params,
+        )
+        self.commsParams = commsParamsHolderBase(comms_args)
+
+        self.commsBench.trace_type = "et"
+
+        self.commsBench.initBackend(bootstrap_info, self.commsParams)
+        self.commsBench.initBench(self.commsParams, comms_args)
+        self.commsBench.replayInit(self.commsParams)
 
     def preprocess_graph(self):
         if not self.compute_only and not self.generator:
@@ -1276,15 +1474,74 @@ class ExgrReplayManager:
         event_1 = torch.cuda.Event(enable_timing=True)
         event_2 = torch.cuda.Event(enable_timing=True)
 
-        if self.et_profile:
-            et_file = "/tmp/replay_et.json"
-            et = ExecutionTraceObserver()
-            et.register_callback(et_file)
+        def run_op(event_1, event_2, iter):
+            if not (self.compute_only or self.args.separate):
+                self.commsBench.replayIter = iter
+            event_1.record()
+            for cnt, node in enumerate(self.sorted_nodes):
+                self.run_op(node, iter, cnt)
+            event_2.record()
+            if not (self.compute_only or self.args.separate):
+                self.commsBench.resetComms()
+                # make sure all ops are completed
+                with param_profile.paramProfile(
+                    description=f"# PARAM replay {self.commsBench.replayIter} post-replay global sync"
+                ):
+                    self.commsBench.backendFuncs.sync_barrier(self.commsBench.collectiveArgs)
+            torch.cuda.synchronize(self.device)
+            if not (self.compute_only or self.args.separate):
+                self.commsBench.backendFuncs.clear_memory(self.commsBench.collectiveArgs)
+            gc.collect()
+            torch.cuda.empty_cache()
 
         # Print real time qps every # iterations.
         qps_print_interval = 10
 
         prev_iter = self.numWarmupIters
+
+        def run_iter(iter):
+            nonlocal prev_iter
+            nonlocal qps_print_interval
+            nonlocal total_time
+
+            if self.et_profile:
+                if iter == self.numWarmupIters:
+                    et.start()
+                if iter == self.numWarmupIters + 1:
+                    et.stop()
+                    et.unregister_callback()
+            if iter == prev_iter:
+                start_ns = time.time_ns()
+            if iter == prev_iter + qps_print_interval:
+                print(
+                    "Current QPS: ",
+                    int(
+                        self.batch_size
+                        * qps_print_interval
+                        / ((time.time_ns() - start_ns) / 1000000000)
+                    ),
+                )
+                print(
+                    "Replay {} iterations time: {}ms".format(
+                        qps_print_interval,
+                        (time.time_ns() - start_ns) / 1000000.0,
+                    )
+                )
+                prev_iter = iter
+                start_ns = time.time_ns()
+            run_op(event_1, event_2, iter)
+            if iter >= self.numWarmupIters:
+                total_time += event_1.elapsed_time(event_2)
+
+        if self.et_profile:
+            et_file = "/tmp/replay_et.json"
+            et = ExecutionTraceObserver()
+            et.register_callback(et_file)
+
+        if not (self.compute_only or self.args.separate):
+            self.sorted_nodes = self.sorted_nodes + self.commsBench.comms_trace[: self.commsBench.max_msg_cnt]
+            self.sorted_nodes.sort(key=lambda x: x.id)
+            self.commsBench.replay_start_time = time.monotonic_ns()
 
         if self.profile_replay:
             try:
@@ -1313,75 +1570,13 @@ class ExgrReplayManager:
                 on_trace_ready=on_trace_ready,
             ) as prof:
                 for iter in range(self.numWarmupIters + self.numIters):
-                    if self.et_profile:
-                        if iter == self.numWarmupIters:
-                            et.start()
-                        if iter == self.numWarmupIters + 1:
-                            et.stop()
-                            et.unregister_callback()
-                    if iter == prev_iter:
-                        start_ns = time.time_ns()
-                    if iter == prev_iter + qps_print_interval:
-                        print(
-                            "Current QPS: ",
-                            int(
-                                self.batch_size
-                                * qps_print_interval
-                                / ((time.time_ns() - start_ns) / 1000000000)
-                            ),
-                        )
-                        print(
-                            "Replay {} iterations time: {}ms".format(
-                                qps_print_interval,
-                                (time.time_ns() - start_ns) / 1000000.0,
-                            )
-                        )
-                        prev_iter = iter
-                        start_ns = time.time_ns()
-                    event_1.record()
-                    for node in self.sorted_nodes:
-                        self.run_op(node, iter)
-                    print("Finished one iteration.")
-                    event_2.record()
-                    torch.cuda.synchronize(self.device)
-                    if iter >= self.numWarmupIters:
-                        total_time += event_1.elapsed_time(event_2)
+                    run_iter(iter)
                     prof.step()
                 benchmark_result["execution finished"] = True
                 print("Execution finished!")
         else:
             for iter in range(self.numWarmupIters + self.numIters):
-                if self.et_profile:
-                    if iter == self.numWarmupIters:
-                        et.start()
-                    if iter == self.numWarmupIters + 1:
-                        et.stop()
-                        et.unregister_callback()
-                if iter == prev_iter:
-                    start_ns = time.time_ns()
-                if iter == prev_iter + qps_print_interval:
-                    print(
-                        "Current QPS: ",
-                        int(
-                            self.batch_size
-                            * qps_print_interval
-                            / ((time.time_ns() - start_ns) / 1000000000)
-                        ),
-                    )
-                    print(
-                        "Replay {} iterations time: {}ms".format(
-                            qps_print_interval, (time.time_ns() - start_ns) / 1000000.0
-                        )
-                    )
-                    prev_iter = iter
-                    start_ns = time.time_ns()
-                event_1.record()
-                for node in self.sorted_nodes:
-                    self.run_op(node, iter)
-                event_2.record()
-                torch.cuda.synchronize(self.device)
-                if iter >= self.numWarmupIters:
-                    total_time += event_1.elapsed_time(event_2)
+                run_iter(iter)
             benchmark_result["execution finished"] = True
             print("Execution finished!")
 
@@ -1438,6 +1633,9 @@ class ExgrReplayManager:
                     np.percentile(self.exec_time, 95) / 1000.0,
                 )
             )
+
+        if not (self.compute_only or self.args.separate):
+            self.commsBench.reportBenchTime()
 
         return benchmark_result
 
@@ -1521,7 +1719,7 @@ class ExgrReplayManager:
             "-s",
             "--separate",
             action="store_true",
-            default=True,
+            default=False,
             help="Separate compute and comms tensors.",
         )
         parser.add_argument(
