@@ -222,6 +222,8 @@ class ExgrReplayManager:
         # Replay on CPU.
         self.cpu = False
 
+        self.run_local = False
+
     def initBench(self):
         self.numWarmupIters = self.args.warmup_iter
         self.numIters = self.args.iter
@@ -238,6 +240,7 @@ class ExgrReplayManager:
         self.wait_delay = self.args.delay
         self.cpu = self.args.cpu
         self.tf32 = self.args.tf32
+        self.run_local = self.args.run_local
 
         # Single trace.
         if not self.args.trace_path:
@@ -1394,6 +1397,14 @@ class ExgrReplayManager:
 
     def init_comms(self):
         comms_env_params = comms_utils.read_comms_env_vars()
+
+        if self.run_local:
+            print("run local, config rank 0")
+            comms_env_params["world_size"] = 1
+            comms_env_params["local_size"] = 1
+            comms_env_params["global_rank"] = 0
+            comms_env_params["local_rank"] = 0
+
         print(comms_env_params, self.cuda)
 
         self.commsBench = CommsReplayManager()
@@ -1786,13 +1797,19 @@ class ExgrReplayManager:
             default=True,
             help="when a et_id is being replayed multiple times, setting this to false will use temsors from previous runs.",
         )
+        parser.add_argument(
+            "--run_local",
+            action="store_true",
+            default=False,
+            help="run with out slurm or mpirun, config 1 rank and run local",
+        )
+
         self.args, _ = parser.parse_known_args()
 
         # Check if both 'input' and 'trace_path' are not provided
         if check_args and self.args.input is None and self.args.trace_path is None:
             parser.print_help(sys.stderr)
             sys.exit(1)
-
 
 def main():
     # Load PyTorch implementations for data generator and operators.
