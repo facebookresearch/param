@@ -160,7 +160,7 @@ class ExgrReplayManager:
         # This is used to pick out a single iteration when trace contains multiple iterations.
         # Basically this label should be captured at the beginning of each iteration so that one iteration
         # is between two consecutive label nodes.
-        self.label = ""
+        self.label = "ProfilerStep#"
 
         try:
             from param_bench.et_replay.fb.internals import (
@@ -1539,7 +1539,16 @@ class ExgrReplayManager:
             et.register_callback(et_file)
 
         if not (self.compute_only or self.args.separate):
-            self.sorted_nodes = self.sorted_nodes + self.commsBench.comms_trace[: self.commsBench.max_msg_cnt]
+            # since the comp replay will pick the 2nd iteration nodes, comm replay also needs
+            if len(self.operators_count) > 1:
+                commNodes = []
+                for node in self.commsBench.comms_trace[: self.commsBench.max_msg_cnt]:
+                    if node.id > self.operators_count[0] and node.id < self.operators_count[1]:
+                        commNodes.append(node)
+            else:
+                commNodes = self.commsBench.comms_trace[: self.commsBench.max_msg_cnt]
+
+            self.sorted_nodes = self.sorted_nodes + commNodes
             self.sorted_nodes.sort(key=lambda x: x.id)
             self.commsBench.replay_start_time = time.monotonic_ns()
 
@@ -1710,7 +1719,7 @@ class ExgrReplayManager:
             help="Path to dump generated benchmark file.",
         )
         parser.add_argument(
-            "--trace_path",
+            "--trace-path",
             type=str,
             required=False,
             help="File path to read the trace. All rank read their own trace file.",
