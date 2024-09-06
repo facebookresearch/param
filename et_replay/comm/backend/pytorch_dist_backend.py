@@ -827,8 +827,12 @@ class PyTorchDistBackend(BaseBackend):
         return torch.empty(sizeArr, device=curRankDevice, dtype=dtype)
 
     def clear_memory(self, collectiveArgs):
-        del collectiveArgs.ipTensor
-        del collectiveArgs.opTensor
+        if collectiveArgs.ipTensor is not None:
+            del collectiveArgs.ipTensor
+
+        if collectiveArgs.opTensor is not None:
+            del collectiveArgs.opTensor
+
         if collectiveArgs.ipTensor_pair is not None:
             del collectiveArgs.ipTensor_pair
             del collectiveArgs.opTensor_pair

@@ -326,6 +326,12 @@ class Node:
         else:
             return self.get_tensor_strides(self.get_inputs(), self.input_strides)
 
+    def get_output_tensor_strides(self) -> Optional[List[tuple]]:
+        if self.output_strides is None:
+            return None
+        else:
+            return self.get_tensor_strides(self.get_outputs(), self.output_strides)
+
     def get_output_tensors(self) -> List[tuple]:
         return self.get_tensors(self.get_outputs())
 
