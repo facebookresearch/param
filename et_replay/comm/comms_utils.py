@@ -196,7 +196,7 @@ def read_comms_env_vars() -> Dict[str, int]:
             "WORLD_SIZE",
             "SLURM_NTASKS",
         ],
-        -1,
+        1,
     )
 
     local_size = env2int(
@@ -207,7 +207,7 @@ def read_comms_env_vars() -> Dict[str, int]:
             "OMPI_COMM_WORLD_LOCAL_SIZE",
             "SLURM_NTASKS_PER_NODE",
         ],
-        -1,
+        1,
     )
 
     global_rank = env2int(
@@ -218,7 +218,7 @@ def read_comms_env_vars() -> Dict[str, int]:
             "RANK",
             "SLURM_PROCID",
         ],
-        -1,
+        0,
     )
 
     local_rank = env2int(
@@ -229,7 +229,7 @@ def read_comms_env_vars() -> Dict[str, int]:
             "OMPI_COMM_WORLD_LOCAL_RANK",
             "SLURM_LOCALID",
         ],
-        -1,
+        0,
     )
 
     comms_env_params = {}
