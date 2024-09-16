@@ -566,28 +566,14 @@ class PyTorchDistBackend(BaseBackend):
         if devSync:
             self.device_sync(collectiveArgs)
 
-    # retFlag not used
-    def complete_single_op(self, collectiveArgs, retFlag=False):
-        """only wait on the first op in the queue"""
-        if len(collectiveArgs.waitObj) > 0:
-            waitReq = collectiveArgs.waitObj.pop(0)
-            if waitReq is not None:
-                waitReq.wait()
-
-            # to ensure GPU collective is completed
-            self.device_sync(collectiveArgs)
-
     def wait(self, collectiveArgs, retFlag=False):
-        # for backwards compatibility, use old wait functionality.
-        if len(collectiveArgs.waitObjIds) == 0:
-            self.complete_single_op(collectiveArgs)
-            return
-
-        """wait on op with the matching reqID"""
-        if collectiveArgs.collectiveId in collectiveArgs.waitObjIds:
-            waitObj = collectiveArgs.waitObjIds[collectiveArgs.collectiveId]
-            if waitObj is not None:
-                waitObj.wait()
+        # wait on op with the matching (pg_id, req_id, is_p2p)
+        if collectiveArgs.wait_obj_key in collectiveArgs.waitObjIds:
+            work = collectiveArgs.waitObjIds.pop(collectiveArgs.wait_obj_key)
+            for i,w in enumerate(collectiveArgs.waitObj):
+                if w is work:
+                    collectiveArgs.waitObj.pop(i)
+            work.wait()
 
     def barrier(self, collectiveArgs, name="dummy", retFlag=False):
         my_dev = self.get_device()

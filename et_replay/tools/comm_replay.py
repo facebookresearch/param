@@ -115,7 +115,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.shrink = False
         self.max_msg_cnt = 0  # 0 means no limit
         self.num_msg = 0
-        self.is_blocking = True
+        self.is_blocking = False
         self.do_warm_up = False
         self.reuse_tensors = False
 
@@ -803,9 +803,11 @@ class commsTraceReplayBench(paramCommsBench):
             description=f"# PARAM replay {self.replayIter}:" + curBlockStack,
         ):
             if collName in self.backendFuncs.collectiveFunc.keys():
-                # record collectiveID for wait ops
-                if curComm.req is not None:
-                    self.collectiveArgs.collectiveId = curComm.req
+                # record wait_obj_key for wait ops
+                if curComm.req is not None and curComm.pgId is not None:
+                    self.collectiveArgs.wait_obj_key = (curComm.pgId, curComm.req[0], curComm.req[1])
+                else:
+                    self.collectiveArgs.wait_obj_key = None
 
                 # handle point-to-point separately
                 if collName in supportedP2pOps:
@@ -833,10 +835,10 @@ class commsTraceReplayBench(paramCommsBench):
             if self.is_blocking:
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
-            # if nonblocking, then store the pair {reqID, future} so that we can wait on it later
+            # if nonblocking, then store the pair {(pg_id, reqID, isP2P), future} so that we can wait on it later
             # check if req id is recorded in trace for backwards compatibility
-            if curComm.req is not None and not self.is_blocking and collName != "wait":
-                self.collectiveArgs.waitObjIds[curComm.req] = retObj
+            if not self.is_blocking and collName != "wait" and self.collectiveArgs.wait_obj_key is not None:
+                self.collectiveArgs.waitObjIds[self.collectiveArgs.wait_obj_key] = retObj
 
         # For non-blocking, latency and global_latency are the same
         global_latency = latency = collTimer.getTimeUS()
