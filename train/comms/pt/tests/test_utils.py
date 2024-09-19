@@ -3,7 +3,7 @@ This file contains test classes with default values for comms unit tests.
 Feel free to add additional classes or modify existing ones as needed for new tests.
 """
 
-from comms_utils import commsArgs
+from param_bench.train.comms.pt.comms_utils import commsArgs
 
 
 class testArgs:  # default args to run tests with
