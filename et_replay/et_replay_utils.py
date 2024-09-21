@@ -23,7 +23,7 @@ TORCH_DTYPES_RNG = {
     "float": (torch.float32, torch.randn),
     "double": (torch.float64, torch.randn),
     "signed char": (torch.int8, torch.ones),
-    "unsigned char": (torch.int8, torch.ones),
+    "unsigned char": (torch.uint8, torch.ones),
     "c10::Half": (torch.half, torch.ones),
     "c10::BFloat16": (torch.bfloat16, torch.ones),
 }
@@ -38,7 +38,7 @@ TORCH_DTYPES_RNG_str = {
     "float": ("torch.float32", "torch.randn"),
     "double": ("torch.float64", "torch.randn"),
     "signed char": ("torch.int8", "torch.ones"),
-    "unsigned char": ("torch.int8", "torch.ones"),
+    "unsigned char": ("torch.uint8", "torch.ones"),
     "c10::Half": ("torch.half", "torch.ones"),
     "c10::BFloat16": ("torch.bfloat16", "torch.ones"),
 }
@@ -59,16 +59,26 @@ TORCH_DTYPES_BYTES = {
 }
 
 
-def is_tensor_list(n, idx):
-    return isinstance(idx, int) and "GenericList[Tensor" in n.input_types[idx]
+def is_tensor_list(n, idx, is_input):
+    if is_input:
+        return isinstance(idx, int) and "GenericList[Tensor" in n.input_types[idx]
+    else:
+        return isinstance(idx, int) and "GenericList[Tensor" in n.output_types[idx]
 
 
-def is_tensor(n, idx):
-    return (
-        isinstance(idx, int)
-        and "Tensor" in n.input_types[idx]
-        and "GenericList" not in n.input_types[idx]
-    )
+def is_tensor(n, idx, is_input):
+    if is_input:
+        return (
+            isinstance(idx, int)
+            and "Tensor" in n.input_types[idx]
+            and "GenericList" not in n.input_types[idx]
+        )
+    else:
+        return (
+            isinstance(idx, int)
+            and "Tensor" in n.output_types[idx]
+            and "GenericList" not in n.output_types[idx]
+        )
 
 
 def is_op(node, strict=False):
@@ -166,22 +176,10 @@ def is_qualified(op):
 
 
 def get_input_tensors(n):
-    if is_fbgemm_forward(n):
-        idx_list = fbgemm_input_args_indices(n)
-        return zip(
-            [n.input_types[x] for x in idx_list],
-            [
-                tuple(n.inputs[x]) if isinstance(n.inputs[x], list) else n.inputs[x]
-                for x in idx_list
-            ],
-            [n.input_shapes[x] for x in idx_list],
-        )
     return n.get_input_tensors()
 
 
 def get_output_tensors(n):
-    if is_fbgemm_forward(n):
-        return list(zip(n.output_types, [tuple(x) for x in n.outputs], n.output_shapes))
     return n.get_output_tensors()
 
 
