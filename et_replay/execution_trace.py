@@ -35,37 +35,6 @@ class NodeType(Enum):
     LABEL = 2
 
 
-# Label markers
-LABEL_MARKERS = [
-    "##",
-    "__",
-    "module::",
-    "DLRM ",
-    "DistributedDataParallel",
-    "Profiler",
-    "[pytorch|",
-    "forward",
-    "backward",
-    "Optimizer.zero_grad",
-    "[param",
-    "<forward op>",
-    "reduce-grads",
-    "multiply-grads",
-    "clip-grads",
-    "optimizer",
-    "gans_torchscript_ops::",
-    "split_with_sizes",
-    "chunk",
-    "All2All_Pooled_ReqBackward",
-    "All2All_Pooled_Req",
-    "All2All_Pooled_Wait",
-    "c10d::",
-    "TorchDynamo Cache Lookup",
-    "CompiledFunction",
-    "Torch-Compiled Region",
-]
-
-
 """
 TensorNode
 
@@ -180,7 +149,7 @@ class Node:
         self.fw_parent_id: int = fw_parent_id
         self.seq_id: int = seq_id
         self.scope: int = scope
-        self.type: NodeType = self.detect_type(name, inputs, outputs)
+        self.type: NodeType = self.detect_type()
         # self.inputs: List[Any] = [tuple(i) if isinstance(i, list) else i for i in inputs]
         self.inputs: List[Any] = inputs
         self.input_types: List[str] = input_types
@@ -280,16 +249,19 @@ class Node:
                 return node
         return None
 
-    def detect_type(self, name: str, inputs: List[Any], outputs: List[Any]) -> NodeType:
+    def detect_type(self) -> NodeType:
         if (
-            any(name.startswith(x) for x in LABEL_MARKERS)
-            # and not outputs
+            # for collectives, ET records both c10d::collective_function and
+            # record_param_comms. Only record_param_comms is used for replay
+            self.name == "record_param_comms"
+            or (
+                self.op_schema != "" and not self.name.startswith("c10d::")
+            )  # for aten ops
+            or self.kernel_backend == "triton"  # for PT2 triton kernels
         ):
-            # if outputs:
-            #     print(f"{name} has outputs, not expected.")
-            return NodeType.LABEL
-        else:
             return NodeType.OPERATOR
+        else:
+            return NodeType.LABEL
 
     def get_tensors(self, param_list: Iterable) -> List[tuple]:
         tensors = []
