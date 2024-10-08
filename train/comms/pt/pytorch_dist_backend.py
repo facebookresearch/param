@@ -733,6 +733,12 @@ class PyTorchDistBackend(backendFunctions):
     def copy(self, collectiveArgs):
         collectiveArgs.compIn1.copy_(collectiveArgs.compOut)
 
+    def d2h(self, collectiveArgs):
+        collectiveArgs.compIn1 = collectiveArgs.compOut.to("cpu", non_blocking=True)
+
+    def h2d(self, collectiveArgs):
+        collectiveArgs.compIn1 = collectiveArgs.compOut.to("cuda", non_blocking=True)
+
     def emb_lookup(self, collectiveArgs):
         # If we are using the batched embedding lookup with alltoall, don't do the embedding
         # lookup here, but pool it with the alltoalls in the collective
@@ -1009,6 +1015,8 @@ class PyTorchDistBackend(backendFunctions):
         self.computeFunc["add_num"] = self.add_num
         self.computeFunc["sub_num"] = self.sub_num
         self.computeFunc["copy"] = self.copy
+        self.computeFunc["d2h"] = self.d2h
+        self.computeFunc["h2d"] = self.h2d
 
         backend = (
             self.commsParams["backend"]

@@ -1409,6 +1409,10 @@ class paramCommsBench(ABC):
             compOut = self.backendFuncs.alloc_empty(
                 [mm_dim0, mm_dim1], curDevice, dtype
             )
+        elif kernel in ["h2d", "d2h"]:
+            device = torch.device("cpu") if kernel == "h2d" else curDevice
+            compOut = self.backendFuncs.alloc_random([mm_dim0, mm_dim1], device, dtype)
+            compOut = compOut.pin_memory() if kernel == "h2d" else compOut
         else:
             compOut = self.backendFuncs.alloc_empty(
                 [mm_dim0, mm_dim1], curDevice, dtype

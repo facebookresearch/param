@@ -149,6 +149,8 @@ class commsCollBench(paramCommsBench):
                 "add_num",
                 "sub_num",
                 "copy",
+                "d2h",
+                "h2d",
             ],
         )  # Compute kernel: "gemm"
         parser.add_argument(
@@ -1021,7 +1023,15 @@ class commsCollBench(paramCommsBench):
                         f"[Rank {global_rank:>3}] mode: {commsParams.mode}, num_coll: {commsParams.num_coll}, kernel: {commsParams.kernel}, num_compute {commsParams.num_compute}, "
                         f"emb_dim {commsParams.emb_dim}, num_embs {commsParams.num_embs}, batch_size {commsParams.batch_size}"
                     )
-            elif commsParams.kernel in ["add", "sub", "add_num", "sub_num", "copy"]:
+            elif commsParams.kernel in [
+                "add",
+                "sub",
+                "add_num",
+                "sub_num",
+                "copy",
+                "d2h",
+                "h2d",
+            ]:
                 if len(commsParams.mm_dim) == 2:
                     # make the third element be 1 to calculate BW correctly for add/sub
                     commsParams.mm_dim.append(1)
