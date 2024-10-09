@@ -122,10 +122,12 @@ def _parse_comms_op_node(  # noqa: C901
     comm_nodes = (
         node for node in in_trace.nodes.values() if node.name == "record_param_comms"
     )
+    is_seq = lambda x: isinstance(x, list) and len(x) == 2 and isinstance(x[0], int) and isinstance(x[1], bool)
     for node in comm_nodes:
         # according to macro RECORD_PARAM_COMMS and RECORD_PARAM_COMMS_DATA in torch/csrc/distributed/c10d/ParamCommsUtils.hpp
-        # ["wait", "barrier", "init"] record 1st element as seq, others record starting from input tensor
-        index_base = 0 if isinstance(node.inputs[0], int) else 1
+        # ["wait", "barrier", "init"] record 1st element as seq, whose 1st element is sequence number as int, 2nd element is isP2P as bool
+        # others record starting from input tensor
+        index_base = 0 if is_seq(node.inputs[0]) else 1
         req_id = node.inputs[index_base]
         recorded_rank = node.inputs[index_base + 2]
 

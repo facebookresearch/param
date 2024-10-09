@@ -474,6 +474,7 @@ class PyTorchDistBackend(BaseBackend):
         if retFlag:
             return retObj
 
+    '''
     # Many-to-one pattern
     def incast(self, collectiveArgs):
         if collectiveArgs.global_rank == collectiveArgs.srcOrDst:
@@ -495,6 +496,7 @@ class PyTorchDistBackend(BaseBackend):
                 self.isend(collectiveArgs, collectiveArgs.srcOrDst)
             else:
                 self.send(collectiveArgs, collectiveArgs.srcOrDst)
+    '''
 
     def broadcast(self, collectiveArgs, retFlag=False, pair=False):
         retObj = dist.broadcast(
@@ -512,6 +514,7 @@ class PyTorchDistBackend(BaseBackend):
         if retFlag:
             return retObj
 
+    '''
     # One-to-many pattern
     def multicast(self, collectiveArgs):
         if collectiveArgs.global_rank == collectiveArgs.srcOrDst:
@@ -527,6 +530,7 @@ class PyTorchDistBackend(BaseBackend):
                 self.irecv(collectiveArgs, collectiveArgs.srcOrDst)
             else:
                 self.recv(collectiveArgs, collectiveArgs.srcOrDst)
+    '''
 
     def send(self, collectiveArgs, retFlag=False, tag=0):
         dist.send(
@@ -554,8 +558,7 @@ class PyTorchDistBackend(BaseBackend):
 
         collectiveArgs.waitObj.append(retObj)
 
-        if retFlag:
-            return retObj
+        return retObj
 
     def irecv(self, collectiveArgs, retFlag=False, tag=0):
         retObj = dist.irecv(
@@ -567,8 +570,7 @@ class PyTorchDistBackend(BaseBackend):
 
         collectiveArgs.waitObj.append(retObj)
 
-        if retFlag:
-            return retObj
+        return retObj
 
     def P2POp(self, collectiveArgs, retFlag=False, tag=0):
         if collectiveArgs.collective in ("send", "isend"):
@@ -622,28 +624,14 @@ class PyTorchDistBackend(BaseBackend):
         if devSync:
             self.device_sync(collectiveArgs)
 
-    # retFlag not used
-    def complete_single_op(self, collectiveArgs, retFlag=False):
-        """only wait on the first op in the queue"""
-        if len(collectiveArgs.waitObj) > 0:
-            waitReq = collectiveArgs.waitObj.pop(0)
-            if waitReq is not None:
-                waitReq.wait()
-
-            # to ensure GPU collective is completed
-            self.device_sync(collectiveArgs)
-
     def wait(self, collectiveArgs, retFlag=False):
-        # for backwards compatibility, use old wait functionality.
-        if len(collectiveArgs.waitObjIds) == 0:
-            self.complete_single_op(collectiveArgs)
-            return
-
-        """wait on op with the matching reqID"""
-        if collectiveArgs.collectiveId in collectiveArgs.waitObjIds:
-            waitObj = collectiveArgs.waitObjIds[collectiveArgs.collectiveId]
-            if waitObj is not None:
-                waitObj.wait()
+        # wait on op with the matching (pg_id, req_id, is_p2p)
+        if collectiveArgs.wait_obj_key in collectiveArgs.waitObjIds:
+            work = collectiveArgs.waitObjIds.pop(collectiveArgs.wait_obj_key)
+            for i,w in enumerate(collectiveArgs.waitObj):
+                if w is work:
+                    collectiveArgs.waitObj.pop(i)
+            work.wait()
 
     def barrier(self, collectiveArgs, name="dummy", retFlag=False):
         my_dev = self.get_device()
@@ -984,10 +972,11 @@ class PyTorchDistBackend(BaseBackend):
         self.collectiveFunc["wait"] = (
             self.wait
         )  # a noop until all collective operations can post a wait operation or specify async vs not async
-        self.collectiveFunc["send"] = self.send
-        self.collectiveFunc["recv"] = self.recv
-        self.collectiveFunc["isend"] = self.isend
-        self.collectiveFunc["irecv"] = self.irecv
+
+        # ExecutionTraceObserver dump records from cpp level, which are always async send/recv.
+        # Then replay in torch.distributed API level, we should use isend/irecv.
+        self.collectiveFunc["send"] = self.isend
+        self.collectiveFunc["recv"] = self.irecv
         self.collectiveFunc["batch_isend_irecv"] = self.batch_isend_irecv
         self.collectiveFunc["pt2pt"] = (
             self.noop
