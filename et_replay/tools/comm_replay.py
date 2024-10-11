@@ -36,6 +36,7 @@ except ImportError:
     pass
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # sleep for 20ms to wait for next collective
 LOOP_TIMER_S = 0.02
@@ -640,7 +641,7 @@ class commsTraceReplayBench(paramCommsBench):
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         regenerateTensors: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, Union[List[torch.Tensor], torch.Tensor]]:
         """
         Prepares the appropriate tensors for the current collective communication.
 
