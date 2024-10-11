@@ -30,7 +30,7 @@ class TestTraceLoadAndValidate(unittest.TestCase):
         )
         t, et = self._test_and_validate_trace(et_file)
         self.assertGreater(t.num_ops(), 1000)
-        self.assertEqual(t.num_comm_ops(), 12)
+        self.assertEqual(t.num_comm_ops(), 27)
         self.assertEqual(t.num_triton_ops(), 0)
 
     def test_trace_load_resnet_2gpu_ptorch_1_1_0(self):
@@ -39,7 +39,7 @@ class TestTraceLoadAndValidate(unittest.TestCase):
         )
         t, et = self._test_and_validate_trace(et_file)
         self.assertGreater(t.num_ops(), 1000)
-        self.assertEqual(t.num_comm_ops(), 12)
+        self.assertEqual(t.num_comm_ops(), 27)
         self.assertEqual(t.num_triton_ops(), 0)
 
 
