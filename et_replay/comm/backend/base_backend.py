@@ -28,8 +28,6 @@ supportedCollectives = [
     "reduce_scatter_v",
     "reduce_scatter_base",
     "all_gather_base",
-    "incast",
-    "multicast",
     "gather",
     "scatter",
 ]
@@ -61,7 +59,7 @@ class collectiveArgsHolder:
         self.global_rank = -1
         self.backendFuncs = {}
         self.collective = ""
-        self.collectiveId = 0
+        self.wait_obj_key = (0, 0, False)  # (pg_id, req_id, is_p2p)
         self.pt2pt = ""
         self.src_rank = -1
         self.dst_rank = -1
@@ -102,7 +100,9 @@ class collectiveArgsHolder:
         self.dataSize = 0
         self.numElements = 0
         self.waitObj = []
-        self.waitObjIds = {}  # mapping of reqID to future of async collectives
+        self.waitObjIds = (
+            {}
+        )  # mapping of (pg_id, req_id, is_p2p) to future of async collectives
 
         self.ipTensor_split_pair = []
         self.opTensor_split_pair = []
@@ -144,8 +144,6 @@ class BaseBackend(ABC):
             "reduce_scatter_base": self.reduce_scatter_base,  # pyre-ignore[16]:
             "scatter": self.scatter,  # pyre-ignore[16]:
             "barrier": self.barrier,
-            "incast": self.incast,  # pyre-ignore[16]:
-            "multicast": self.multicast,  # pyre-ignore[16]:
             "noop": self.noop,
         }
 

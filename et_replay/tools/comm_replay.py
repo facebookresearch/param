@@ -17,7 +17,7 @@ from typing import Dict, List, Set, Tuple, Union
 import numpy as np
 import torch
 
-from et_replay.comm import comms_utils
+from et_replay.comm import comms_utils, commsTraceParser
 from et_replay.comm.backend.base_backend import supportedP2pOps
 from et_replay.comm.comms_utils import (
     bootstrap_info_holder,
@@ -114,7 +114,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.shrink = False
         self.max_msg_cnt = 0  # 0 means no limit
         self.num_msg = 0
-        self.is_blocking = True
+        self.is_blocking = False
         self.do_warm_up = False
         self.reuse_tensors = False
 
@@ -643,7 +643,7 @@ class commsTraceReplayBench(paramCommsBench):
         regenerateTensors: bool = True,
     ) -> Tuple[torch.Tensor, Union[List[torch.Tensor], torch.Tensor]]:
         """
-        Prepares the appropriate tensors for the current collective communication.
+        Update process group and prepare the appropriate tensors for the current collective communication.
 
         Args:
             curComm: The current communication that we are preparing the correct tensor for.
@@ -652,10 +652,6 @@ class commsTraceReplayBench(paramCommsBench):
         Returns:
             (ipTensor, opTensor) if the current communication requires tensors, None otherwise.
         """
-        commOp = paramToCommName(curComm.comms)
-        if commOp in ("wait", "barrier", "batch_isend_irecv"):
-            return (torch.Tensor(), torch.Tensor())
-
         # prep process group for hard-coded traces
         if curComm.pgId is not None and not self.shrink:
             self.collectiveArgs.group = self.collectiveArgs.groups[curComm.pgId]
@@ -665,6 +661,10 @@ class commsTraceReplayBench(paramCommsBench):
         else:  # use default process group if no pg_id is provided or shrink is enabled
             self.collectiveArgs.group = self.backendFuncs.get_default_group()
             self.world_size = self.backendFuncs.get_world_size()
+
+        commOp = paramToCommName(curComm.comms)
+        if commOp in ("wait", "barrier", "batch_isend_irecv"):
+            return (torch.Tensor(), torch.Tensor())
 
         # for all_to_allv, we can shrink the size if running on smaller scale
         # this is for sanity test or debug purpose only since we don't always get to run very large scale
@@ -802,9 +802,15 @@ class commsTraceReplayBench(paramCommsBench):
             description=f"# PARAM replay {self.replayIter}:" + curBlockStack,
         ):
             if collName in self.backendFuncs.collectiveFunc.keys():
-                # record collectiveID for wait ops
-                if curComm.req is not None:
-                    self.collectiveArgs.collectiveId = curComm.req
+                # record wait_obj_key for wait ops
+                if curComm.req is not None and curComm.pgId is not None:
+                    self.collectiveArgs.wait_obj_key = (
+                        curComm.pgId,
+                        curComm.req[0],
+                        curComm.req[1],
+                    )
+                else:
+                    self.collectiveArgs.wait_obj_key = None
 
                 # handle point-to-point separately
                 if collName in supportedP2pOps:
@@ -832,10 +838,16 @@ class commsTraceReplayBench(paramCommsBench):
             if self.is_blocking:
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
-            # if nonblocking, then store the pair {reqID, future} so that we can wait on it later
+            # if nonblocking, then store the pair {(pg_id, reqID, isP2P), future} so that we can wait on it later
             # check if req id is recorded in trace for backwards compatibility
-            if curComm.req is not None and not self.is_blocking and collName != "wait":
-                self.collectiveArgs.waitObjIds[curComm.req] = retObj
+            if (
+                not self.is_blocking
+                and collName != "wait"
+                and self.collectiveArgs.wait_obj_key is not None
+            ):
+                self.collectiveArgs.waitObjIds[self.collectiveArgs.wait_obj_key] = (
+                    retObj
+                )
 
         # For non-blocking, latency and global_latency are the same
         global_latency = latency = collTimer.getTimeUS()
@@ -1438,7 +1450,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.is_dry_run = args.dry_run
         self.shrink = args.auto_shrink
         self.max_msg_cnt = args.max_msg_cnt
-        self.is_blocking = args.z
+        self.is_blocking = args.blocking
         self.do_warm_up = args.do_warm_up
         self.reuse_tensors = args.reuse_tensors
         self.allowList = args.allow_ops
@@ -1548,69 +1560,17 @@ class commsTraceReplayBench(paramCommsBench):
             self.readRawTrace(remotePath=remotePath, rank=rank)
 
         # Convert trace to comms trace.
-        try:
-            from et_replay.comm import commsTraceParser
-        except ImportError:
-            logger.info("FB internals not present, using base parser.")
-            self.comms_trace = extractCommsInfo(self.comms_trace)
-        else:
-            self.comms_trace = commsTraceParser.parseTrace(
-                self.comms_trace,
-                self.trace_type,
-                (
-                    self.trace_file
-                    if not os.path.isdir(self.trace_file)
-                    else f"{self.trace_file}/rank-{rank}.json"
-                ),
-                rank,
-                self.backendFuncs.get_world_size(),
-            )
-
-
-def extractCommsInfo(in_trace: List[Dict]) -> List[commsArgs]:
-    """
-    Convert Basic Trace to comms trace format.
-    """
-    # print("in extract comms info")
-    # exit(1)
-    newCommsTrace = []
-    for cnt, curComm in enumerate(in_trace):
-        newComm = commsArgs()
-        newComm.comms = paramToCommName(curComm["comms"].lower())
-        logger.info(f"in extract comms info of {newComm.comms}: {curComm}")
-        newComm.id = cnt
-        if "req" in curComm:
-            newComm.req = curComm["req"]
-        if "startTime_ns" in curComm:
-            newComm.startTimeNs = curComm["startTime_ns"]
-        if "markers" in curComm:
-            newComm.markerStack = curComm["markers"]
-        if "world_size" in curComm:
-            newComm.worldSize = curComm["world_size"]
-        if "root" in curComm:
-            newComm.root = curComm["root"]
-        if "pg_id" in curComm:
-            newComm.pgId = curComm["pg_id"]
-        if "global_ranks" in curComm:
-            newComm.groupRanks = curComm["global_ranks"]
-
-        if newComm.comms not in ("wait", "barrier", "init"):
-            newComm.inMsgSize = curComm["in_msg_size"]
-            newComm.outMsgSize = curComm["out_msg_size"]
-            newComm.dtype = curComm["dtype"]
-
-        if newComm.comms in ("all_to_allv"):
-            newComm.inSplit = curComm["in_split"]
-            newComm.outSplit = curComm["out_split"]
-
-        if newComm.comms in supportedP2pOps:
-            newComm.src_rank = curComm["src_rank"]
-            newComm.dst_rank = curComm["dst_rank"]
-            newComm.batch_p2p = curComm["use_batch"]
-
-        newCommsTrace.append(newComm)
-
-    return newCommsTrace
+        self.comms_trace = commsTraceParser.parseTrace(
+            self.comms_trace,
+            self.trace_type,
+            (
+                self.trace_file
+                if not os.path.isdir(self.trace_file)
+                else f"{self.trace_file}/rank-{rank}.json"
+            ),
+            rank,
+            self.backendFuncs.get_world_size(),
+        )
 
 
 def main() -> None:
