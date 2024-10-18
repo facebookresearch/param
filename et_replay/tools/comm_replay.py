@@ -1069,6 +1069,7 @@ class commsTraceReplayBench(paramCommsBench):
                     and curComm.dst_rank != self.backendFuncs.get_global_rank()
                 )
             ):
+                logger.warn(f"Skip collective {collName} id = {curComm.id}")
                 return
 
             if groupRank >= 0:
