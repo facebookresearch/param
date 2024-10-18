@@ -6,10 +6,11 @@
 import json
 import logging
 import os
+from collections import defaultdict
 
 from itertools import cycle
 from time import sleep
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -1014,28 +1015,41 @@ class PyTorchDistBackend(BaseBackend):
         world_size = self.get_world_size()
         global_rank = self.get_global_rank()
 
+        # map from group_rank to pgId, pgId of the groups in current rank is the pgId defined in
+        # ET, pgId of the groups from other ranks is -1.
+        group_rank_to_pgId: Dict[Tuple[int], List[int]] = defaultdict(list)
+        for pg_id, group_ranks in self.commsParams.groupRanks.items():
+            if group_ranks is None or len(group_ranks) == 0:
+                group_ranks = list(range(world_size))
+            group_ranks.sort()
+            rank_tuple = tuple(group_ranks)
+            group_rank_to_pgId[rank_tuple].append(pg_id)
+
         # sync pgs across ranks to fix hang with multiple comm groups
-        # because new_group() functions requires that all processes in the main group enter,
+        # because new_group() function requires that all processes in the default group call it,
         # even if they are not going to be members of the group.
-        # Assumption: pg_name is unique and consistent for all ranks
         sync_store = dist.PrefixStore("pg_sync_r", self.tcp_store)
         sync_store.set(str(global_rank), json.dumps(self.commsParams.groupRanks))
         torch.distributed.barrier()
-        group_ranks_sync = self.commsParams.groupRanks.copy()
         for i in range(self.get_world_size()):
             if i == global_rank:
                 continue
             json_data = sync_store.get(str(i))
 
             # convert pg_id in json_data to int
-            pg_id2group_ranks = {
+            pg_id_to_group_ranks = {
                 int(pg_id): rank for pg_id, rank in json.loads(json_data).items()
             }
 
-            group_ranks_sync.update(pg_id2group_ranks)
+            for _, group_ranks in pg_id_to_group_ranks.items():
+                if group_ranks is None or len(group_ranks) == 0:
+                    group_ranks = list(range(world_size))
+                group_ranks.sort()
+                rank_tuple = tuple(group_ranks)
+                group_rank_to_pgId[rank_tuple].append(-1)
 
-        # create additional groups
-        for pg_id, group_ranks in dict(sorted(group_ranks_sync.items())).items():
+        # create additional groups, sort it to make sure pg are created in the same order for all ranks
+        for group_ranks, pg_ids in dict(sorted(group_rank_to_pgId.items())).items():
             if (
                 len(group_ranks) > world_size
             ):  # this means that --auto-shrink is enabled, only use default pg
@@ -1046,11 +1060,13 @@ class PyTorchDistBackend(BaseBackend):
             ):  # this is the default group, it has already been created
                 pg = self.get_default_group()
             else:
-                pg = self.get_new_pg(group_ranks=group_ranks, backend=backend)
+                pg = self.get_new_pg(group_ranks=list(group_ranks), backend=backend)
                 logger.info(
-                    f"initialized_group: create new group, pg_id = {pg_id}, group_ranks = {group_ranks}"
+                    f"initialized_group: create new group, pg_ids = {pg_ids}, group_ranks = {group_ranks}"
                 )
-            groups[pg_id] = pg
+            for pg_id in pg_ids:
+                if pg_id != -1:
+                    groups[pg_id] = pg
 
         # if additional groups are created, overwrite the default groups list
         if len(groups):
