@@ -313,7 +313,7 @@ def checkQuantArgs(
             logger.warning(
                 f"begin size {beginSize} must be a multiple of --quant-a2a-embedding-dim {quant_a2a_embedding_dim} for all_to_all operation"
             )
-        if blockingFlag != 1:
+        if not blockingFlag:
             raise NotImplementedError("quantized All_to_all must be synchronous.")
     if dtype != torch.float32:
         raise NotImplementedError(
@@ -690,7 +690,7 @@ class commsParamsHolderBase:
         self.dtype = args.dtype
         self.backend = args.backend
         self.device = args.device
-        self.blockingFlag = args.z
+        self.blockingFlag = args.blocking
         # quantization
         self.bitwidth = args.bitwidth
         self.quant_a2a_embedding_dim = args.quant_a2a_embedding_dim
@@ -839,18 +839,16 @@ class paramCommsBench(ABC):
             )
 
         if (
-            # Check results for incast only on root
-            commsParams.collective in ("incast", "reduce", "gather")
+            commsParams.collective in ("reduce", "gather")
             and self.backendFuncs.get_global_rank() != commsParams.srcOrDst
         ) or (
-            # Check results of multicast only for dst_ranks
-            commsParams.collective in ("multicast", "pt2pt")
+            commsParams.collective in ("pt2pt",)
             and self.backendFuncs.get_global_rank() not in commsParams.dst_ranks
         ):
             return
 
         if isinstance(tensor, list):
-            # for allgather and incast, it's a list of tensors:
+            # for allgather, it's a list of tensors:
             for rank, t in enumerate(tensor):
                 if not torch.all(torch.eq(t, expRes)):
                     for index, val in enumerate(t):
@@ -884,7 +882,7 @@ class paramCommsBench(ABC):
         if self.collectiveArgs.collective in ("all_reduce", "reduce"):
             # all processes use initVal to have predictable results
             newVal = self.initVal
-        elif self.collectiveArgs.collective in ("broadcast", "multicast"):
+        elif self.collectiveArgs.collective in ("broadcast",):
             # root process uses initVal and others use random values
             newVal = (
                 self.initVal
@@ -1092,31 +1090,6 @@ class paramCommsBench(ABC):
                 dtype,
                 scaleFactor,
             )
-        return (ipTensor, opTensor)
-
-    def _prep_incast(
-        self,
-        ipTensor: torch.Tensor,
-        curComm: commsArgs,
-        commsParams: commsParamsHolderBase,
-        numElementsIn: int,
-        numElementsOut: int,
-        world_size: int,
-        curDevice: str,
-        dtype: torch.dtype,
-        scaleFactor: float,
-        allocate: bool = True,
-    ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
-        # incast requires a tensor list with length of src_ranks, e.g., List[torch.Tensor]
-        opTensor = []
-
-        if allocate:
-            for _ in self.collectiveArgs.src_ranks:
-                opTensor.append(
-                    self.backendFuncs.alloc_random(
-                        [numElementsOut], curDevice, dtype, scaleFactor
-                    )
-                )
         return (ipTensor, opTensor)
 
     def _prep_reduce_scatter(
@@ -1332,7 +1305,6 @@ class paramCommsBench(ABC):
             "all_gather": self._prep_all_gather,
             "gather": self._prep_all_gather,
             "all_gather_base": self._prep_all_gather_base,
-            "incast": self._prep_incast,
             "reduce_scatter": self._prep_reduce_scatter,
             "reduce_scatter_base": self._prep_reduce_scatter_base,
             "scatter": self._prep_reduce_scatter,
@@ -1435,12 +1407,10 @@ class paramCommsBench(ABC):
             help="The backend to be used in PyTorch distributed process group",
         )  #  backend used for the network stack
         parser.add_argument(
-            "--z",
+            "-b",
             "--blocking",
-            type=int,
-            default=0,
+            action="store_true",
             help="use blocking/non-blocking mode for collectives",
-            choices=[0, 1],
         )  # 'sync/blocking' : 1 , 'async/non-blocking' : 0
         parser.add_argument(
             "--bitwidth",
