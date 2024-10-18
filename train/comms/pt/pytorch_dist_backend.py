@@ -309,6 +309,8 @@ class PyTorchDistBackend(backendFunctions):
         work = dist.all_to_all_single(
             collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
             collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
+            output_split_sizes=collectiveArgs.opTensor_split,
+            input_split_sizes=collectiveArgs.ipTensor_split,
             group=collectiveArgs.group,
             async_op=collectiveArgs.asyncOp,
         )

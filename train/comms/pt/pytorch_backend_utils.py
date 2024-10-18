@@ -125,6 +125,8 @@ class collectiveArgsHolder:
         self.compute_stream = None
         self.use_ext_dist = False
 
+        self.include_0B = False
+
 
 class backendFunctions(ABC):
     """Abstract base class, provides common abstraction for all the backends."""

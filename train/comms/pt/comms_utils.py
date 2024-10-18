@@ -894,6 +894,8 @@ class commsParamsHolder(commsParamsHolderBase):
 
         self.size_start_profiler = args.size_start_profiler
 
+        self.include_0B = args.include_0B
+
 
 class paramCommsBench(ABC):
     """Abstract class for any param comms benchmark."""
@@ -1096,6 +1098,51 @@ class paramCommsBench(ABC):
             opTensor = self.backendFuncs.alloc_random(
                 [numElementsOut], curDevice, dtype, scaleFactor
             )
+
+        # To select ranks send/recv 0B, for each rank i, it sends 0 Bytes to
+        # rank (i+1)%world_size and hence recv 0 Bytes from rank (i-1).
+        # The extra (unsent) bytes are sent to rank i.
+        # For example, for a 4-rank cases, where each rank contains 4 elements,
+        # the input_splits is:
+        # [2, 0, 1, 1]  rank 0
+        # [1, 2, 0, 1]  rank 1
+        # [1, 1, 2, 0]  rank 2
+        # [0, 1, 1, 2]  rank 3
+        # The output_splits is:
+        # [2, 1, 1, 0]  rank 0
+        # [0, 2, 1, 1]  rank 1
+        # [1, 0, 2, 1]  rank 2
+        # [1, 1, 0, 2]  rank 3
+        if self.collectiveArgs.include_0B:
+            input_splits_all = {}
+            for i in range(world_size):
+                input_splits_all[i] = [0] * world_size
+                send_0B_rank = (i + 1) % world_size
+
+                for j in range(world_size):
+                    if j != send_0B_rank:
+                        input_splits_all[i][j] = numElementsIn // (world_size - 1)
+
+                input_splits_all[i][i] += numElementsIn % (world_size - 1)
+
+            self.collectiveArgs.ipTensor_split = input_splits_all[
+                self.collectiveArgs.global_rank
+            ]
+
+            self.collectiveArgs.opTensor_split = [0] * world_size
+            for i in range(world_size):
+                self.collectiveArgs.opTensor_split[i] = input_splits_all[i][
+                    self.collectiveArgs.global_rank
+                ]
+
+        else:
+            self.collectiveArgs.ipTensor_split = [
+                (numElementsIn // world_size) for _ in range(world_size)
+            ]
+            self.collectiveArgs.opTensor_split = [
+                (numElementsIn // world_size) for _ in range(world_size)
+            ]
+
         return (ipTensor, opTensor)
 
     def _prep_all_to_all(

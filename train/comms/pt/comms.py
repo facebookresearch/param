@@ -303,6 +303,12 @@ class commsCollBench(paramCommsBench):
             default=None,
             help="customized tag or keyword to be added into final output lines",
         )  # execute pytorch profiler at specified size if applicable
+        parser.add_argument(
+            "--include-0B",
+            action="store_true",
+            default=False,
+            help="Select some ranks to send/receive 0B messages",
+        )
         return parser.parse_known_args()
 
     def _checkPt2Pt(self, args):
@@ -977,6 +983,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.numComputePerIter = commsParams.num_compute
         self.collectiveArgs.numCollPerIter = commsParams.num_coll
         self.collectiveArgs.use_triton = commsParams.use_triton
+        self.collectiveArgs.include_0B = commsParams.include_0B
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
