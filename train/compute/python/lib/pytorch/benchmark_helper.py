@@ -129,6 +129,7 @@ class BenchmarkHelper:
         self.cupti_profiler_measure_per_kernel: bool = getattr(
             config, "cupti_profiler_measure_per_kernel", True
         )
+        self.upload_to_manifold: bool = getattr(config, "upload_to_manifold", False)
 
     def eval(self, evaluate_file_path: str) -> Dict:
         self.logger.info("Microbenchmarking started")
@@ -208,10 +209,36 @@ class BenchmarkHelper:
                 file=out_file,
             )
             if self.profile and prof:
-                self.trace_file = f"{self.out_file_prefix}_trace.json"
-                self.logger.info(f"trace: {self.trace_file}")
-                prof.export_chrome_trace(self.trace_file)
-                ret_files["trace_file"] = self.trace_file
+                if self.upload_to_manifold is True:
+                    try:
+                        import os
+                        import socket
+                        from datetime import datetime
+
+                        import aiplatform.monitoring.unitrace.upload_manifold as unitrace_upload_manifold
+
+                        def trace_handler_save_manifold(prof):
+                            trace_file_prefix = "{}.{}.{}".format(
+                                "component-db",
+                                datetime.now().strftime(
+                                    unitrace_upload_manifold.TIME_FORMAT_STR
+                                ),
+                                os.getpid(),
+                            )
+                            file_name = trace_file_prefix + ".pt.trace.json"
+                            kineto_manifold_target_name = f"manifold://gpu_traces/{unitrace_upload_manifold.DEFAULT_ROOT_MANIFOLD_PATH}/{socket.gethostname()}/{file_name}"
+                            prof.export_chrome_trace(kineto_manifold_target_name)
+                            return kineto_manifold_target_name
+
+                        mainfold_file_path = trace_handler_save_manifold(prof)
+                        ret_files["trace_file"] = mainfold_file_path
+                    except Exception as e:
+                        self.logger.error(f"Failed to upload trace to manifold: {e}")
+                else:
+                    self.trace_file = f"{self.out_file_prefix}_trace.json"
+                    self.logger.info(f"trace: {self.trace_file}")
+                    prof.export_chrome_trace(self.trace_file)
+                    ret_files["trace_file"] = self.trace_file
 
             ret_files["benchmark_file"] = self.out_file_name
 
