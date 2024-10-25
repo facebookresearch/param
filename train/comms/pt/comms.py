@@ -19,6 +19,7 @@ import torch
 from param_bench.train.comms.pt import comms_utils
 from param_bench.train.comms.pt.comms_utils import (
     bootstrap_info_holder,
+    commsParamsHolder,
     commsParamsHolderBase,
     ensureTensorFlush,
     paramCommsBench,
@@ -1823,7 +1824,7 @@ class commsCollBench(paramCommsBench):
                     f"PARAM COMMS Rank {global_rank} created group {pgId} with ranks {groupRanks[pgId]}"
                 )
             self.backendFuncs.groupRanks = groupRanks
-            self.backendFuncs.initialize_groups(backend)
+            self.backendFuncs.initialize_groups(backend, force_new_group=True)
 
         else:
             # default is single group including all ranks.

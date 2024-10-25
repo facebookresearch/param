@@ -1108,9 +1108,10 @@ class PyTorchDistBackend(backendFunctions):
         self.num_pgs = len(self.groups)
         self.round_robin_group = cycle(list(self.groups.values()))
 
-    def initialize_groups(self, backend="gloo"):
+    def initialize_groups(self, backend="gloo", force_new_group=False):
         groups = {}
         world_size = self.get_world_size()
+        first_global_pg = True
 
         # create additional groups
         for pg_id, group_ranks in self.commsParams.groupRanks.items():
@@ -1119,10 +1120,12 @@ class PyTorchDistBackend(backendFunctions):
             ):  # this means that --auto-shrink is enabled, only use default pg
                 groups.clear()
                 break
-            if (
-                len(group_ranks) == world_size
-            ):  # this is the default group, it has already been created
+
+            if (len(group_ranks) == world_size) and (
+                first_global_pg or not force_new_group
+            ):
                 pg = self.get_default_group()
+                first_global_pg = False
             else:
                 pg = self.get_new_pg(group_ranks=group_ranks, backend=backend)
                 global_rank = self.get_global_rank()
