@@ -843,6 +843,7 @@ class commsParamsHolder(commsParamsHolderBase):
         bootstrap_info: bootstrap_info_holder,
         element_size: int,
         benchTime: Callable,
+        groupRanks: Dict[int, List[int]] = None,  # pyre-ignore
     ) -> None:
         super().__init__(args)
 
@@ -893,6 +894,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.bootstrap_info = bootstrap_info
 
         self.size_start_profiler = args.size_start_profiler
+        self.groupRanks = groupRanks
 
         self.include_0B = args.include_0B
 
