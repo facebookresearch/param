@@ -1114,7 +1114,7 @@ class PyTorchDistBackend(backendFunctions):
         first_global_pg = True
 
         # create additional groups
-        for pg_id, group_ranks in self.commsParams.groupRanks.items():
+        for pg_id, group_ranks in self.groupRanks.items():
             if (
                 len(group_ranks) > world_size
             ):  # this means that --auto-shrink is enabled, only use default pg
