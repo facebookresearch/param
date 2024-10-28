@@ -804,10 +804,16 @@ class commsTraceReplayBench(paramCommsBench):
             if collName in self.backendFuncs.collectiveFunc.keys():
                 # record wait_obj_key for wait ops
                 if curComm.req is not None and curComm.pgId is not None:
+                    if isinstance(curComm.req, list):
+                        seq_id = curComm.req[0]
+                        is_p2p_op = curComm.req[1]
+                    else:
+                        seq_id = curComm.req
+                        is_p2p_op = False
                     self.collectiveArgs.wait_obj_key = (
                         curComm.pgId,
-                        curComm.req[0],
-                        curComm.req[1],
+                        seq_id,
+                        is_p2p_op,
                     )
                 else:
                     self.collectiveArgs.wait_obj_key = None
