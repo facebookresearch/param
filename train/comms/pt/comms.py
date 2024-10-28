@@ -1792,49 +1792,49 @@ class commsCollBench(paramCommsBench):
         # wait rank 0 reports results to avoid other ranks mess up the output
         self.backendFuncs.sync_barrier(self.collectiveArgs, "benchtime")
 
-    def genMultiCommGroups(self, multi_comms, backend, pair, overlap_pair_pgs):
+    def genMultiCommGroups(self, commsParams: commsParamsHolderBase):
         self.collectiveArgs.pgId = 0  # default group id
         global_rank = self.backendFuncs.get_global_rank()
         world_size = self.backendFuncs.get_world_size()
-        groupRanks = {}
-        if multi_comms > 1:
-            self.collectiveArgs.pgId = global_rank % multi_comms
-            for pgId in range(multi_comms):
-                groupRanks[pgId] = []
+        commsParams.groupRanks = {}
+        if commsParams.multi_comms > 1:
+            self.collectiveArgs.pgId = global_rank % commsParams.multi_comms
+            for pgId in range(commsParams.multi_comms):
+                commsParams.groupRanks[pgId] = []
             for rank in range(world_size):
-                pgId = rank % multi_comms
-                groupRanks[pgId].append(rank)
-            for pgId in range(multi_comms):
+                pgId = rank % commsParams.multi_comms
+                commsParams.groupRanks[pgId].append(rank)
+            for pgId in range(commsParams.multi_comms):
                 logger.info(
-                    f"PARAM COMMS Rank {global_rank} created group {pgId} with ranks {groupRanks[pgId]}"
+                    f"PARAM COMMS Rank {global_rank} created group {pgId} with ranks {commsParams.groupRanks[pgId]}"
                 )
 
             # FIXME: how to proper generate groupRanks before initializing backend?
-            self.backendFuncs.groupRanks = groupRanks
-            self.backendFuncs.initialize_groups(backend)
+            self.backendFuncs.commsParams.groupRanks = commsParams.groupRanks
+            self.backendFuncs.initialize_groups(commsParams.backend)
 
-        elif pair and overlap_pair_pgs:
+        elif commsParams.pair and commsParams.overlap_pair_pgs:
             # create two communicators each including all ranks
-            num_pgs = 2
-            for pgId in range(0, num_pgs):
-                groupRanks[pgId] = []
+            commsParams.num_pgs = 2
+            for pgId in range(0, commsParams.num_pgs):
+                commsParams.groupRanks[pgId] = []
                 for rank in range(0, world_size):
-                    groupRanks[pgId].append(rank)
+                    commsParams.groupRanks[pgId].append(rank)
                 logger.info(
-                    f"PARAM COMMS Rank {global_rank} created group {pgId} with ranks {groupRanks[pgId]}"
+                    f"PARAM COMMS Rank {global_rank} created group {pgId} with ranks {commsParams.groupRanks[pgId]}"
                 )
-            self.backendFuncs.groupRanks = groupRanks
-            self.backendFuncs.initialize_groups(backend, force_new_group=True)
+            self.backendFuncs.commsParams.groupRanks = commsParams.groupRanks
+            self.backendFuncs.initialize_groups(
+                commsParams.backend, force_new_group=True
+            )
 
         else:
             # default is single group including all ranks.
             # create the same groupRanks argument for simple
             # query in later logic no matter the group splitting
-            groupRanks[0] = []
+            commsParams.groupRanks[0] = []
             for rank in range(0, world_size):
-                groupRanks[0].append(rank)
-
-        return groupRanks
+                commsParams.groupRanks[0].append(rank)
 
     def initBackend(
         self, bootstrap_info: bootstrap_info_holder, commsParams: commsParamsHolderBase
@@ -1932,10 +1932,6 @@ def main():
     # Dedupes and syncs value for args.data_types based on args.data_type/args.dtype if not passed in args.
     collBenchObj.syncCommBenchDataTypes(args)
 
-    groupRanks = collBenchObj.genMultiCommGroups(
-        args.multi_comms, args.backend, args.pair, args.overlap_pair_pgs
-    )
-
     for data_type in args.data_types:
         args.data_type = data_type.lower()
 
@@ -1943,8 +1939,11 @@ def main():
         element_size = torch.ones([1], dtype=args.dtype).element_size()
 
         commsParams = comms_utils.commsParamsHolder(
-            args, bootstrap_info, element_size, collBenchObj.benchTime, groupRanks
+            args, bootstrap_info, element_size, collBenchObj.benchTime
         )
+
+        # FIXME: this should be outside dtype loop
+        collBenchObj.genMultiCommGroups(commsParams)
 
         collBenchObj.runBench(commsParams)
 
