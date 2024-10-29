@@ -121,6 +121,13 @@ class commsCollBench(paramCommsBench):
             help="benchmark only specified sizes, comma-separated",
         )  # COMMS mode, use specified sizes instead of increasing from small to large
         parser.add_argument(
+            "--ssp",
+            "--sizes-pair",
+            type=lambda s: [int(item) for item in s.split(",") if item],
+            default=None,
+            help="benchmark only specified sizes, comma-separated",
+        )  # COMMS mode, use specified sizes instead of increasing from small to large
+        parser.add_argument(
             "--data-types",
             "--data-type",
             type=lambda s: [str(item) for item in s.split(",") if item],
@@ -255,6 +262,23 @@ class commsCollBench(paramCommsBench):
             "The default value of multicast includes all ranks, pt2pt includes rank 1.",
         )  # optional: group of dst ranks in one-to-many multicast or pt2pt
         parser.add_argument(
+            "--process-group",
+            type=str,
+            default=None,
+            help="Set the process group to use for the collective."
+            "For example, for a communication pattern like this: \n"
+            "    0 - 1           0   1    "
+            "                    |   |    "
+            "    2 - 3           2   3    "
+            "Collective 1     Collective 2"
+            "                             "
+            "Use the following arguments to specify the process group for each collective: \n"
+            "Rank 0: --process-group [0,1] --process-group-pair [0,2]"
+            "Rank 1: --process-group [0,1] --process-group-pair [1,3]"
+            "Rank 2: --process-group [2,3] --process-group-pair [0,2]"
+            "Rank 3: --process-group [2,3] --process-group-pair [1,3]",
+        )
+        parser.add_argument(
             "--pair",
             action="store_true",
             default=False,
@@ -267,6 +291,12 @@ class commsCollBench(paramCommsBench):
             help="Collective pair operation to be evaluated",
             choices=supportedCollectives,
         )  # collective op to pair with the other collective, --collective should be non-empty
+        parser.add_argument(
+            "--process-group-pair",
+            type=str,
+            default=None,
+            help="Set the process group to use for the collective. ",
+        )
         parser.add_argument(
             "--multi-comms",
             type=int,
@@ -405,7 +435,99 @@ class commsCollBench(paramCommsBench):
         self.tag = f"-{args.tag}" if args.tag is not None else ""
 
     # Check arguments that may be custmized per benchmark in a single run
+    # does not depend on data type
     def checkArgs(self, args):  # noqa: C901
+        reduce_ops = ["all_reduce", "reduce", "reduce_scatter", "reduce_scatter_v"]
+        if (
+            args.c == 1
+            and args.z == 0
+            and any(coll in args.collective.split(",") for coll in reduce_ops)
+        ):
+            logger.warning(
+                f"Data validation is not supported for {reduce_ops} in non-blocking mode, disabled and continue"
+            )
+            args.c = 0
+
+        world_size = self.backendFuncs.get_world_size()
+        if args.i is not None and (world_size != len(args.i)):
+            logger.error("An input split must be provided for all participating ranks")
+            comms_utils.gracefulExit()
+
+        if args.o is not None and (world_size != len(args.o)):
+            logger.error("An output split must be provided for all participating ranks")
+            comms_utils.gracefulExit()
+
+        if args.src_ranks:
+            args.src_ranks = comms_utils.parseRankList(args.src_ranks)
+            if len(args.src_ranks) == 0 or any(
+                r < 0 or r >= world_size for r in args.src_ranks
+            ):
+                logger.error(f"wrong src_ranks ({args.src_ranks})")
+                comms_utils.gracefulExit()
+
+        if args.dst_ranks:
+            args.dst_ranks = comms_utils.parseRankList(args.dst_ranks)
+            if len(args.dst_ranks) == 0 or any(
+                r < 0 or r >= world_size for r in args.dst_ranks
+            ):
+                logger.error(f"wrong dst_ranks ({args.dst_ranks})")
+                comms_utils.gracefulExit()
+        if args.multi_comms > 1 and args.overlap_pair_pgs:
+            logger.error("--overlap-pair-pgs is not supported with --multi-comms > 1")
+            comms_utils.gracefulExit()
+
+        if args.process_group or args.process_group_pair:
+            if not args.process_group or not args.process_group_pair:
+                comms_utils.gracefulExit(
+                    "--process-group and --process-group_pair should always be used together"
+                )
+
+            if args.multi_comms > 1:
+                comms_utils.gracefulExit(
+                    "--process-group is not supported with --multi-comms > 1"
+                )
+
+            if args.overlap_pair_pgs:
+                comms_utils.gracefulExit(
+                    "--process-group and --process-group-pair are not supported with --overlap-pair-pgs > 1"
+                )
+
+            if (
+                "[" not in args.process_group
+                or "]" not in args.process_group
+                or "[" not in args.process_group_pair
+                or "]" not in args.process_group_pair
+            ):
+                comms_utils.gracefulExit(
+                    "--process-group/--process-group-pair should be a list of ranks separated by comma e.g. [0,1,2,3]"
+                )
+
+            if len(args.process_group.strip("[]").split(",")) > world_size:
+                comms_utils.gracefulExit(
+                    f"Number of process groups {len(args.process_group.strip('[]').split(','))} cannot be greater than world size {world_size}"
+                )
+
+            if len(args.process_group_pair.strip("[]").split(",")) > world_size:
+                logger.error(
+                    f"Number of process groups {len(args.process_group_pair.strip('[]').split(','))} cannot be greater than world size {world_size}"
+                )
+                comms_utils.gracefulExit()
+
+        if args.mode in ("compute", "comms-compute") and (
+            len(args.mm_dim) > 3
+            or len(args.mm_dim) == 0
+            or (args.kernel == "gemm" and len(args.mm_dim) == 2)
+            or (args.kernel in ("add", "sub") and len(args.mm_dim) == 3)
+        ):
+            logger.error(
+                "mm_dim should have either 1 input argument, "
+                "or 3 input arguments for gemm, or 2 input arguments for add/sub, "
+                f"but got {len(args.mm_dim)} for {args.kernel}"
+            )
+            comms_utils.gracefulExit()
+
+    # depnds on data type
+    def checkArgsdataType(self, args):  # noqa: C901
         args.b = comms_utils.parsesize(args.b)
         args.e = comms_utils.parsesize(args.e)
 
@@ -440,60 +562,8 @@ class commsCollBench(paramCommsBench):
             logger.error("Step size bytes must be a multiple of element size")
             comms_utils.gracefulExit()
 
-        reduce_ops = ["all_reduce", "reduce", "reduce_scatter", "reduce_scatter_v"]
-        if (
-            args.c == 1
-            and args.z == 0
-            and any(coll in args.collective.split(",") for coll in reduce_ops)
-        ):
-            logger.warning(
-                f"Data validation is not supported for {reduce_ops} in non-blocking mode, disabled and continue"
-            )
-            args.c = 0
-
         # run a few sanity checks
         self._check_bitwidth(args)
-
-        world_size = self.backendFuncs.get_world_size()
-        if args.i is not None and (world_size != len(args.i)):
-            logger.error("An input split must be provided for all participating ranks")
-            comms_utils.gracefulExit()
-
-        if args.o is not None and (world_size != len(args.o)):
-            logger.error("An output split must be provided for all participating ranks")
-            comms_utils.gracefulExit()
-
-        if args.src_ranks:
-            args.src_ranks = comms_utils.parseRankList(args.src_ranks)
-            if len(args.src_ranks) == 0 or any(
-                r < 0 or r >= world_size for r in args.src_ranks
-            ):
-                logger.error(f"wrong src_ranks ({args.src_ranks})")
-                comms_utils.gracefulExit()
-
-        if args.dst_ranks:
-            args.dst_ranks = comms_utils.parseRankList(args.dst_ranks)
-            if len(args.dst_ranks) == 0 or any(
-                r < 0 or r >= world_size for r in args.dst_ranks
-            ):
-                logger.error(f"wrong dst_ranks ({args.dst_ranks})")
-                comms_utils.gracefulExit()
-        if args.multi_comms > 1 and args.overlap_pair_pgs:
-            logger.error("--overlap-pair-pgs is not supported with --multi-comms > 1")
-            comms_utils.gracefulExit()
-
-        if args.mode in ("compute", "comms-compute") and (
-            len(args.mm_dim) > 3
-            or len(args.mm_dim) == 0
-            or (args.kernel == "gemm" and len(args.mm_dim) == 2)
-            or (args.kernel in ("add", "sub") and len(args.mm_dim) == 3)
-        ):
-            logger.error(
-                "mm_dim should have either 1 input argument, "
-                "or 3 input arguments for gemm, or 2 input arguments for add/sub, "
-                f"but got {len(args.mm_dim)} for {args.kernel}"
-            )
-            comms_utils.gracefulExit()
 
     def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None, dcheck=False):
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
@@ -957,6 +1027,15 @@ class commsCollBench(paramCommsBench):
                 commsParams.stepBytes,
             )  # Given the begin-size, end-size, step-factor what are the message sizes to iterate on.
 
+        if commsParams.sizes_pair is not None:
+            allSizes_pair = commsParams.sizes_pair
+            if self.report:
+                logger.info(
+                    f"Benchmarking with user-specified pair message sizes {allSizes_pair}"
+                )
+        else:
+            allSizes_pair = allSizes
+
         self.collectiveArgs.group = group
         self.collectiveArgs.groups = groups
         self.collectiveArgs.num_pgs = num_pgs
@@ -974,9 +1053,6 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.src_ranks = commsParams.src_ranks
         self.collectiveArgs.dst_ranks = commsParams.dst_ranks
         self.collectiveArgs.pair = commsParams.pair
-        self.collectiveArgs.pairPgId = (
-            1 if commsParams.overlap_pair_pgs else self.collectiveArgs.pgId
-        )
         self.collectiveArgs.collective_pair = commsParams.collective_pair
         self.collectiveArgs.pt2pt = commsParams.pt2pt
         self.collectiveArgs.window = commsParams.window
@@ -1092,6 +1168,7 @@ class commsCollBench(paramCommsBench):
             curDevice,
             curHwDevice,
             allSizes,
+            allSizes_pair,
             computeFunc,
         )
 
@@ -1602,6 +1679,7 @@ class commsCollBench(paramCommsBench):
             curDevice,
             curHwDevice,
             allSizes,
+            allSizes_pair,
             computeFunc,
         ) = self.initCollectiveArgs(commsParams)
 
@@ -1609,7 +1687,7 @@ class commsCollBench(paramCommsBench):
         if self.report:
             self.printPreamble(commsParams)
 
-        for curSize in allSizes:
+        for curSize, curSize_pair in zip(allSizes, allSizes_pair):
             results = {}
             timeUsElapsedList = []
             quantTimeElapsedList = []
@@ -1658,7 +1736,7 @@ class commsCollBench(paramCommsBench):
                 ]
                 # TODO: allow user to set specific size
                 # Setup the arguments.
-                self.collectiveArgs.dataSize_pair = curSize
+                self.collectiveArgs.dataSize_pair = curSize_pair
                 self.collectiveArgs.numElements_pair = int(
                     self.collectiveArgs.dataSize_pair // commsParams.element_size
                 )
@@ -1792,12 +1870,30 @@ class commsCollBench(paramCommsBench):
         # wait rank 0 reports results to avoid other ranks mess up the output
         self.backendFuncs.sync_barrier(self.collectiveArgs, "benchtime")
 
-    def genMultiCommGroups(self, multi_comms, backend, pair, overlap_pair_pgs):
+    def genMultiCommGroups(
+        self,
+        multi_comms,
+        backend,
+        pair,
+        overlap_pair_pgs,
+        process_group,
+        process_group_pair,
+    ):
         self.collectiveArgs.pgId = 0  # default group id
+        self.collectiveArgs.pairPgId = 1
+
         global_rank = self.backendFuncs.get_global_rank()
         world_size = self.backendFuncs.get_world_size()
         groupRanks = {}
-        if multi_comms > 1:
+
+        if process_group and process_group_pair:
+            groupRanks[0] = [int(p) for p in process_group.strip("[]").split(",")]
+            groupRanks[1] = [int(p) for p in process_group_pair.strip("[]").split(",")]
+
+            self.backendFuncs.groupRanks = groupRanks
+            self.backendFuncs.initialize_groups(backend, force_new_group=True)
+
+        elif multi_comms > 1:
             self.collectiveArgs.pgId = global_rank % multi_comms
             for pgId in range(multi_comms):
                 groupRanks[pgId] = []
@@ -1932,14 +2028,21 @@ def main():
     # Dedupes and syncs value for args.data_types based on args.data_type/args.dtype if not passed in args.
     collBenchObj.syncCommBenchDataTypes(args)
 
+    collBenchObj.checkArgs(args)
+
     groupRanks = collBenchObj.genMultiCommGroups(
-        args.multi_comms, args.backend, args.pair, args.overlap_pair_pgs
+        args.multi_comms,
+        args.backend,
+        args.pair,
+        args.overlap_pair_pgs,
+        args.process_group,
+        args.process_group_pair,
     )
 
     for data_type in args.data_types:
         args.data_type = data_type.lower()
 
-        collBenchObj.checkArgs(args)
+        collBenchObj.checkArgsdataType(args)
         element_size = torch.ones([1], dtype=args.dtype).element_size()
 
         commsParams = comms_utils.commsParamsHolder(

@@ -696,7 +696,7 @@ class paramStreamGuard(ContextDecorator):
 
     def __init__(
         self,
-        stream: Optional[torch.cuda.Stream],
+        stream: Optional[torch.cuda.Stream],  # TODO: MAKE Generic Stream
         curDevice: torch.device,
         backendFuncs: backendFunctions,
         is_blocking: bool = True,
@@ -885,6 +885,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.overlap_pair_pgs = args.overlap_pair_pgs
         self.collective_pair = args.collective_pair
         self.multi_comms = args.multi_comms
+        self.sizes_pair = args.ssp
 
         self.pt2pt = args.pt2pt
         self.window = args.window
