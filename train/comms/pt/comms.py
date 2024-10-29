@@ -629,10 +629,11 @@ class commsCollBench(paramCommsBench):
                     ]
                     comm_fn(self.collectiveArgs)
                     # post another collecitve if on comms pair mode, otherwise it's noop
-                    self.collectiveArgs.group = self.collectiveArgs.groups[
-                        self.collectiveArgs.pairPgId
-                    ]
-                    comm_fn_pair(self.collectiveArgs, pair=enable_comms_pair)
+                    if enable_comms_pair:
+                        self.collectiveArgs.group = self.collectiveArgs.groups[
+                            self.collectiveArgs.pairPgId
+                        ]
+                        comm_fn_pair(self.collectiveArgs, pair=enable_comms_pair)
 
             if enable_compute:
                 with paramStreamGuard(
