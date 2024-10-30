@@ -38,6 +38,7 @@ except ImportError:
         has_ext_dist = False
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def _downcast(input, bitwidth):
@@ -832,12 +833,6 @@ class PyTorchDistBackend(BaseBackend):
     def get_groups(self):
         return self.groups
 
-    def get_num_pgs(self):
-        return self.num_pgs
-
-    def get_next_group(self):
-        return next(self.round_robin_group)
-
     def set_device(self, local_rank, global_rank):
         """set current device: 'cpu' or 'cuda'"""
         dev_str = (
@@ -944,14 +939,14 @@ class PyTorchDistBackend(BaseBackend):
             except ImportError:
                 raise RuntimeError("Unable to import Fairring")
 
-    def get_new_pg(self, group_ranks, backend):
+    def get_new_pg(self, group_ranks, backend, pg_desc=''):
         if self.use_ext_dist:
             return extend_distributed.new_extend_process_group(
                 ranks=group_ranks, backend=backend
             )
         else:
-            pg = dist.new_group(ranks=group_ranks, backend=backend)
-            return pg
+            pg = dist.new_group(ranks=group_ranks, backend=backend, group_desc=pg_desc)
+            return pg if pg is not dist.GroupMember.NON_GROUP_MEMBER else None
 
     def tensor_list_to_numpy(self, tensorList):
         if isinstance(tensorList, list):
@@ -1007,8 +1002,6 @@ class PyTorchDistBackend(BaseBackend):
         # default 1 group, maybe overwritten by user created groups via initialize_groups
         self.groups = {}
         self.groups[0] = self.get_default_group()
-        self.num_pgs = len(self.groups)
-        self.round_robin_group = cycle(list(self.groups.values()))
 
     def initialize_groups(self, backend="gloo"):
         groups = {}
@@ -1060,7 +1053,7 @@ class PyTorchDistBackend(BaseBackend):
             ):  # this is the default group, it has already been created
                 pg = self.get_default_group()
             else:
-                pg = self.get_new_pg(group_ranks=list(group_ranks), backend=backend)
+                pg = self.get_new_pg(group_ranks=list(group_ranks), backend=backend, pg_desc=self.commsParams.pgsDesc.get(pg_id, ''))
                 logger.info(
                     f"initialized_group: create new group, pg_ids = {pg_ids}, group_ranks = {group_ranks}"
                 )
@@ -1071,10 +1064,6 @@ class PyTorchDistBackend(BaseBackend):
         # if additional groups are created, overwrite the default groups list
         if len(groups):
             self.groups = groups
-
-        self.num_pgs = len(self.groups)
-
-        self.round_robin_group = cycle(list(self.groups.values()))
 
     def benchmark_comms(self, benchTime, commsParams):
         index = 0  # used in TPU, where it is not initialized!

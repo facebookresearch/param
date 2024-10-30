@@ -491,6 +491,7 @@ class commsArgs:
         self.outSplit = kwargs["outSplit"] if "outSplit" in kwargs else None
         self.startTimeNs = kwargs["startTimeNs"] if "startTimeNs" in kwargs else None
         self.pgId = kwargs["pgId"] if "pgId" in kwargs else None
+        self.pgDesc = kwargs["pgDesc"] if "pgDesc" in kwargs else None
         self.groupRanks = kwargs["groupRanks"] if "groupRanks" in kwargs else None
         self.worldSize = kwargs["worldSize"] if "worldSize" in kwargs else None
         self.markerStack = kwargs["markerStack"] if "markerStack" in kwargs else None
@@ -699,6 +700,7 @@ class commsParamsHolderBase:
         self.groupRanks = (
             {}
         )  # record what ranks each process group will work on {pg_id, ranks}
+        self.pgsDesc = {} # {pg_id: pg_desc}
         self.use_ext_dist = args.use_ext_dist
         self.size_from_trace = False
         self.init_method = args.init_method
