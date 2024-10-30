@@ -623,17 +623,26 @@ class commsCollBench(paramCommsBench):
                 timer=self.collectiveArgs.comm_dev_time,
                 is_blocking=False,
             ):
+                self.collectiveArgs.group = self.collectiveArgs.groups[
+                    self.collectiveArgs.pgId
+                ]
                 for _ in range(self.collectiveArgs.numCollPerIter):
-                    self.collectiveArgs.group = self.collectiveArgs.groups[
-                        self.collectiveArgs.pgId
-                    ]
                     comm_fn(self.collectiveArgs)
-                    # post another collecitve if on comms pair mode, otherwise it's noop
-                    if enable_comms_pair:
+
+                if enable_comms_pair:
+                    with paramStreamGuard(
+                        stream=self.collectiveArgs.pair_stream,
+                        curDevice=self.collectiveArgs.device,
+                        backendFuncs=self.backendFuncs,
+                        timer=self.collectiveArgs.comm_dev_time,
+                        is_blocking=False,
+                    ):
+                        # post another collecitve if on comms pair mode, otherwise it's noop
                         self.collectiveArgs.group = self.collectiveArgs.groups[
                             self.collectiveArgs.pairPgId
                         ]
-                        comm_fn_pair(self.collectiveArgs, pair=enable_comms_pair)
+                        for _ in range(self.collectiveArgs.numCollPerIter):
+                            comm_fn_pair(self.collectiveArgs, pair=enable_comms_pair)
 
             if enable_compute:
                 with paramStreamGuard(
@@ -1054,6 +1063,9 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.src_ranks = commsParams.src_ranks
         self.collectiveArgs.dst_ranks = commsParams.dst_ranks
         self.collectiveArgs.pair = commsParams.pair
+        if self.collectiveArgs.pair:
+            self.collectiveArgs.pair_stream = self.backendFuncs.get_new_stream()
+
         self.collectiveArgs.collective_pair = commsParams.collective_pair
         self.collectiveArgs.pt2pt = commsParams.pt2pt
         self.collectiveArgs.window = commsParams.window

@@ -123,6 +123,7 @@ class collectiveArgsHolder:
         self.enable_profiler = False
 
         self.compute_stream = None
+        self.pair_stream = None
         self.use_ext_dist = False
 
         self.include_0B = False
