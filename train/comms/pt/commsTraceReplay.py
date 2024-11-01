@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import time
-from os import path
 from typing import Dict, List, Set
 
 import numpy as np

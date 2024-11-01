@@ -19,9 +19,9 @@ import torch
 from param_bench.train.comms.pt import comms_utils
 from param_bench.train.comms.pt.comms_utils import (
     bootstrap_info_holder,
-    commsParamsHolder,
     commsParamsHolderBase,
     ensureTensorFlush,
+    MultilineFormatter,
     paramCommsBench,
     paramDeviceTimer,
     paramStreamGuard,
@@ -43,14 +43,6 @@ from param_bench.train.comms.pt.pytorch_backend_utils import (
 logger = logging.getLogger(__name__)
 
 
-class MultilineFormatter(argparse.ArgumentDefaultsHelpFormatter):
-    def _split_lines(self, text, width):
-        if text.startswith("R|"):
-            return text[2:].splitlines()
-        # this is the RawTextHelpFormatter._split_lines
-        return argparse.ArgumentDefaultsHelpFormatter._split_lines(self, text, width)
-
-
 # define the collective benchmark
 class commsCollBench(paramCommsBench):
     def __init__(self):
@@ -58,7 +50,6 @@ class commsCollBench(paramCommsBench):
         self.tag = ""
         self.backendFuncs = None
 
-    # def readCollArgs(self, parser):
     def readArgs(self, parser):
         # read the common/basic arguments
         super().readArgs(parser)
@@ -74,8 +65,8 @@ class commsCollBench(paramCommsBench):
             type=str,
             default="comms",
             help="benchmark mode",
-            choices=["comms", "compute", "dlrm", "comms-compute"],
-        )  # alternative is DLRM mode or comm-compute mode
+            choices=["comms", "compute", "comms-compute"],
+        )  # alternative is comm-compute mode
         parser.add_argument(
             "--b",
             "--begin-size",
@@ -1174,12 +1165,8 @@ class commsCollBench(paramCommsBench):
             self.checkCollectiveRanks()
 
         return (
-            local_rank,
             global_rank,
             world_size,
-            group,
-            curDevice,
-            curHwDevice,
             allSizes,
             allSizes_pair,
             computeFunc,
@@ -1346,8 +1333,6 @@ class commsCollBench(paramCommsBench):
                 str("%.1f" % (p95 - quant_p95 - dequant_p95)),
                 str("%.1f" % (dequant_p95)),
                 str("%.1f" % (p95)),
-                # str("%.3f" % (algBW)),
-                # str("%.3f" % (busBW)),
             )
         )
 
@@ -1685,12 +1670,8 @@ class commsCollBench(paramCommsBench):
     def benchComm(self, index, commsParams, backendFuncs):
         # Get NW stack specific parameters
         (
-            local_rank,
             global_rank,
             world_size,
-            group,
-            curDevice,
-            curHwDevice,
             allSizes,
             allSizes_pair,
             computeFunc,
@@ -1949,6 +1930,7 @@ class commsCollBench(paramCommsBench):
         self, bootstrap_info: bootstrap_info_holder, commsParams: commsParamsHolderBase
     ):
         # Init the desired backend
+        backendObj = None
         if (
             commsParams.nw_stack == "pytorch-dist"
             and commsParams.backend in supportedC10dBackends
@@ -2007,7 +1989,7 @@ def main():
         formatter_class=MultilineFormatter,
         allow_abbrev=False,
     )
-    args, leftovers = collBenchObj.readArgs(parser)
+    args, _ = collBenchObj.readArgs(parser)
 
     comms_env_params = comms_utils.read_comms_env_vars()
     if comms_env_params["global_rank"] == 0 or (

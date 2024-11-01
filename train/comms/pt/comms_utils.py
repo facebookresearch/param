@@ -11,6 +11,8 @@ from __future__ import (
     unicode_literals,
 )
 
+import argparse
+
 import logging
 import os
 import random
@@ -36,7 +38,6 @@ except ImportError:
     has_internal_libs = False
 
 
-import numpy as np
 import torch
 from param_bench.train.comms.pt.param_profile import paramTimer
 from param_bench.train.comms.pt.pytorch_backend_utils import (
@@ -54,6 +55,14 @@ logger = logging.getLogger(__name__)
 
 default_master_ip = "127.0.0.1"
 default_master_port = "29500"
+
+
+class MultilineFormatter(argparse.ArgumentDefaultsHelpFormatter):
+    def _split_lines(self, text, width):
+        if text.startswith("R|"):
+            return text[2:].splitlines()
+        # this is the RawTextHelpFormatter._split_lines
+        return argparse.ArgumentDefaultsHelpFormatter._split_lines(self, text, width)
 
 
 def gracefulExit(args: Any = 0) -> None:
