@@ -20,7 +20,7 @@ from param_bench.train.comms.pt.pytorch_backend_utils import (
 )
 
 try:
-    from triton.ops.matmul import matmul as triton_matmul
+    from triton_kernels.matmul import matmul as triton_matmul
 
     has_triton = True
 except ImportError:
