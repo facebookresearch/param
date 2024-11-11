@@ -151,7 +151,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         self.embLookupReuse = {}
 
-    def readArgs(self, parser: argparse.ArgumentParser) -> None:
+    def readArgs(self, parser: argparse.ArgumentParser):
         """
         Reads command line args to set runtime parameters for replay.
 
@@ -787,7 +787,7 @@ class commsTraceReplayBench(paramCommsBench):
             if collName in self.backendFuncs.collectiveFunc.keys():
                 # record collectiveID for wait ops
                 if curComm.req is not None:
-                    self.collectiveArgs.collectiveId = curComm.req
+                    self.collectiveArgs.collectiveId = str(curComm.req)
 
                 # handle point-to-point separately
                 if collName in supportedP2pOps:
@@ -817,7 +817,7 @@ class commsTraceReplayBench(paramCommsBench):
             # if nonblocking, then store the pair {reqID, future} so that we can wait on it later
             # check if req id is recorded in trace for backwards compatibility
             if curComm.req is not None and not self.is_blocking and collName != "wait":
-                self.collectiveArgs.waitObjIds[curComm.req] = retObj
+                self.collectiveArgs.waitObjIds[str(curComm.req)] = retObj
 
         # For non-blocking, latency and global_latency are the same
         global_latency = latency = collTimer.getTimeUS()
@@ -1480,7 +1480,14 @@ class commsTraceReplayBench(paramCommsBench):
         self.is_dry_run = args.dry_run
         self.shrink = args.auto_shrink
         self.max_msg_cnt = args.max_msg_cnt
+        # FIXME: blocking mode is not supported for ET replay anymore
         self.is_blocking = args.z
+        if args.z and self.trace_type == "et":
+            logger.warning(
+                "Blocking mode is not supported for ET replay anymore. Fall back to non-blocking mode to avoid non-deterministic behavior."
+            )
+            self.is_blocking = False
+
         self.do_warm_up = args.do_warm_up
         self.reuse_tensors = args.reuse_tensors
         self.allowList = args.allow_ops

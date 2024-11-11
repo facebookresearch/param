@@ -46,9 +46,16 @@ def parseTrace(
     if trace_type == "basic":  # Basic Trace
         parsed_trace = _parseBasicTrace(in_trace)
     elif trace_type == "et":  # Execution Trace (e.g. PyTorch ET, Chakra)
-        parsed_trace = _parseExecutionTrace(
-            ExecutionTrace(in_trace), target_rank, total_ranks
-        )
+        et_in_trace = ExecutionTrace(in_trace)
+        if et_in_trace.schema_pytorch() >= (1, 0, 3):
+            # use latest ET parser for newer schema
+            import et_replay.comm.commsTraceParser as et_parser
+
+            parsed_trace = et_parser._parseExecutionTrace(
+                et_in_trace, target_rank, total_ranks
+            )
+        else:
+            parsed_trace = _parseExecutionTrace(et_in_trace, target_rank, total_ranks)
     elif trace_type == "kineto":  # Kineto Unitrace
         parsed_trace = _parseKinetoUnitrace(in_trace, target_rank)
     else:
@@ -215,6 +222,7 @@ def _parseExecutionTrace(
 ) -> List:
     """
     Convert the Execution Trace comms metadata to the common trace format for replay.
+    This is legacy ET parser for backward compatibility, will be deprecated soon.
 
     """
     # Execution Trace PG_ID types availability
