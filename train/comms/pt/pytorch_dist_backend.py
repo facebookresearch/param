@@ -7,7 +7,7 @@ import logging
 import os
 from itertools import cycle
 from time import sleep
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch
@@ -998,6 +998,7 @@ class PyTorchDistBackend(backendFunctions):
         self.use_ext_dist = commsParams.use_ext_dist
         self.bootstrap_info = bootstrap_info
         self.commsParams = commsParams
+        self.groupRanks = {}
         # extra ops supported (Note these are not supported in pytorch_tpu_backend.py)
         self.collectiveFunc["wait"] = (
             self.wait
@@ -1108,16 +1109,32 @@ class PyTorchDistBackend(backendFunctions):
         self.num_pgs = len(self.groups)
         self.round_robin_group = cycle(list(self.groups.values()))
 
-    def initialize_groups(self, backend="gloo", force_new_group=False):
+    def initialize_groups(
+        self,
+        groupRanks: Optional[Dict[int, List[int]]] = None,
+        backend="gloo",
+        force_new_group=False,
+    ):
+        """
+        Initialize additional process groups if additional groups of ranks are provided.
+
+        Args:
+            groupRanks: a dictionary of group id to list of ranks to form new groups
+            backend: backend to use for the new groups
+            force_new_group: if True, always create a new group instead of reuse default group when possbile.
+        """
         groups = {}
         world_size = self.get_world_size()
         first_global_pg = True
 
-        # create additional groups
+        if groupRanks is not None:
+            self.groupRanks = groupRanks
+
+        # create additional groups if provided
         for pg_id, group_ranks in self.groupRanks.items():
             if (
                 len(group_ranks) > world_size
-            ):  # this means that --auto-shrink is enabled, only use default pg
+            ):  # cannot create new group larger than default pg
                 groups.clear()
                 break
 

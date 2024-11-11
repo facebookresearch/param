@@ -590,8 +590,8 @@ class commsTraceReplayBench(paramCommsBench):
                 commsOp.pgId,
                 commsOp.inMsgSize,
                 commsOp.outMsgSize,
-                commsOp.inSplit,
-                commsOp.outSplit,
+                tuple(commsOp.inSplit),
+                tuple(commsOp.outSplit),
             )
         else:
             op = (
@@ -1424,7 +1424,11 @@ class commsTraceReplayBench(paramCommsBench):
             # record process group info
             if curComm.comms == "init":
                 commsParams.groupRanks[curComm.pgId] = curComm.groupRanks
-        self.backendFuncs.initialize_groups(commsParams.backend)
+        self.backendFuncs.initialize_groups(
+            groupRanks=commsParams.groupRanks,
+            backend=commsParams.backend,
+            force_new_group=True,
+        )
 
         # set basic collective info
         (
