@@ -1901,7 +1901,7 @@ class commsCollBench(paramCommsBench):
 
             # FIXME: how to proper generate groupRanks before initializing backend?
             self.backendFuncs.groupRanks = groupRanks
-            self.backendFuncs.initialize_groups(backend)
+            self.backendFuncs.initialize_groups(backend=backend)
 
         elif pair and overlap_pair_pgs:
             # create two communicators each including all ranks
@@ -1914,7 +1914,7 @@ class commsCollBench(paramCommsBench):
                     f"PARAM COMMS Rank {global_rank} created group {pgId} with ranks {groupRanks[pgId]}"
                 )
             self.backendFuncs.groupRanks = groupRanks
-            self.backendFuncs.initialize_groups(backend, force_new_group=True)
+            self.backendFuncs.initialize_groups(backend=backend, force_new_group=True)
 
         else:
             # default is single group including all ranks.
