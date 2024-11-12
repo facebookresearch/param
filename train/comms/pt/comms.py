@@ -1885,7 +1885,7 @@ class commsCollBench(paramCommsBench):
             groupRanks[1] = [int(p) for p in process_group_pair.strip("[]").split(",")]
 
             self.backendFuncs.groupRanks = groupRanks
-            self.backendFuncs.initialize_groups(backend, force_new_group=True)
+            self.backendFuncs.initialize_groups(backend=backend, force_new_group=True)
 
         elif multi_comms > 1:
             self.collectiveArgs.pgId = global_rank % multi_comms
