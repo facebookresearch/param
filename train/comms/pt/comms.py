@@ -277,16 +277,24 @@ class commsCollBench(paramCommsBench):
         )
         parser.add_argument(
             "--collective-pair",
+            "--collectives-pair",
+            action="extend",
+            nargs="+",
             type=str,
-            default="all_reduce",
-            help="Collective pair operation to be evaluated",
-            choices=supportedCollectives,
+            default=[],
+            help="Collective/s pair operation to be evaluated. It can be a single collective or a space-separated list of collectives. "
+            "if there are multiple collectives, they will be executed in parallel. ",
         )  # collective op to pair with the other collective, --collective should be non-empty
         parser.add_argument(
             "--process-group-pair",
+            action="extend",
             type=str,
-            default=None,
-            help="Set the process group to use for the collective. ",
+            nargs="+",
+            default=[],
+            help="Set the process group to use for the pair collective/s.\n"
+            "For example\n:"
+            "--collective-pair all_gather --process-group-pair [0,1,2,3]\n"
+            "--collective-pair all_gather,reduce_scatter --process-group-pair [0,1] [0,3]\n",
         )
         parser.add_argument(
             "--multi-comms",
@@ -483,26 +491,42 @@ class commsCollBench(paramCommsBench):
                     "--process-group and --process-group-pair are not supported with --overlap-pair-pgs > 1"
                 )
 
-            if (
-                "[" not in args.process_group
-                or "]" not in args.process_group
-                or "[" not in args.process_group_pair
-                or "]" not in args.process_group_pair
-            ):
+            if "[" not in args.process_group or "]" not in args.process_group:
                 comms_utils.gracefulExit(
-                    "--process-group/--process-group-pair should be a list of ranks separated by comma e.g. [0,1,2,3]"
+                    "--process-group should be a list of ranks separated by comma e.g. [0,1,2,3]"
                 )
 
             if len(args.process_group.strip("[]").split(",")) > world_size:
                 comms_utils.gracefulExit(
-                    f"Number of process groups {len(args.process_group.strip('[]').split(','))} cannot be greater than world size {world_size}"
+                    f"Number of ranks in --process-group {len(args.process_group.strip('[]').split(','))} cannot be greater than world size {world_size}"
                 )
 
-            if len(args.process_group_pair.strip("[]").split(",")) > world_size:
-                logger.error(
-                    f"Number of process groups {len(args.process_group_pair.strip('[]').split(','))} cannot be greater than world size {world_size}"
+            if len(args.collective_pair) != len(args.process_group_pair):
+                comms_utils.gracefulExit(
+                    f"Number of pair collectives ({args.collective_pair}) and number of pair process groups ({len(args.process_group_pair)}) must be equal"
                 )
-                comms_utils.gracefulExit()
+
+            for pgIdx in range(len(args.process_group_pair)):
+                if (
+                    "[" not in args.process_group_pair[pgIdx]
+                    or "]" not in args.process_group_pair[pgIdx]
+                ):
+                    comms_utils.gracefulExit(
+                        "--process-group-pair should be composed of list of process groups separated by a space.\n"
+                        "Each process groups is a list of ranks inside square brackets separated by comma\n"
+                        "e.g. --process-group-pair [0,1] [2,3]\n"
+                        f"process group {pgIdx}: {args.process_group_pair[pgIdx]} is missing the square brackets"
+                    )
+                number_of_ranks_in_pg = len(
+                    args.process_group_pair[pgIdx].strip("[]").split(",")
+                )
+
+                if number_of_ranks_in_pg > world_size:
+                    logger.error(
+                        f"Number of ranks in --process-group-pair number {pgIdx}: {args.process_group_pair[pgIdx]} size:{number_of_ranks_in_pg}"
+                        "cannot be greater than world size:{world_size}"
+                    )
+                    comms_utils.gracefulExit()
 
         if args.mode in ("compute", "comms-compute") and (
             len(args.mm_dim) > 3
@@ -556,7 +580,9 @@ class commsCollBench(paramCommsBench):
         # run a few sanity checks
         self._check_bitwidth(args)
 
-    def runColl(self, comm_fn=None, compute_fn=None, comm_fn_pair=None, dcheck=False):
+    def runColl(
+        self, comm_fn=None, compute_fn=None, comm_fn_pair_list=None, dcheck=False
+    ):
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
         elapsedTimeNS = 0.0
@@ -570,9 +596,7 @@ class commsCollBench(paramCommsBench):
             else True
         )
         enable_comms_pair = (
-            False
-            if (comm_fn_pair is None or comm_fn_pair == self.backendFuncs.noop)
-            else True
+            False if (comm_fn_pair_list is None or comm_fn_pair_list == []) else True
         )
 
         # for comms pair mode, force async comms for overlapping evaluation
@@ -588,7 +612,8 @@ class commsCollBench(paramCommsBench):
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
                 ensureTensorFlush(self.collectiveArgs.opTensor)
                 if enable_comms_pair:
-                    ensureTensorFlush(self.collectiveArgs.opTensor_pair)
+                    for opTensor_pair in self.collectiveArgs.opTensor_pair:
+                        ensureTensorFlush(opTensor_pair)
                 # Start measuring time after warmup iterations
                 elapsedTimeNS = 0.0
                 self.collectiveArgs.quant_time.reset()
@@ -620,9 +645,12 @@ class commsCollBench(paramCommsBench):
                 for _ in range(self.collectiveArgs.numCollPerIter):
                     comm_fn(self.collectiveArgs)
 
-                if enable_comms_pair:
+            if enable_comms_pair:
+                for pairIdx in range(len(comm_fn_pair_list)):
+                    comm_fn_pair = comm_fn_pair_list[pairIdx]
+
                     with paramStreamGuard(
-                        stream=self.collectiveArgs.pair_stream,
+                        stream=self.collectiveArgs.pair_stream_list[pairIdx],
                         curDevice=self.collectiveArgs.device,
                         backendFuncs=self.backendFuncs,
                         timer=self.collectiveArgs.comm_dev_time,
@@ -630,7 +658,7 @@ class commsCollBench(paramCommsBench):
                     ):
                         # post another collecitve if on comms pair mode, otherwise it's noop
                         self.collectiveArgs.group = self.collectiveArgs.groups[
-                            self.collectiveArgs.pairPgId
+                            self.collectiveArgs.pairPgId[pairIdx]
                         ]
                         for _ in range(self.collectiveArgs.numCollPerIter):
                             comm_fn_pair(self.collectiveArgs, pair=enable_comms_pair)
@@ -667,7 +695,8 @@ class commsCollBench(paramCommsBench):
 
         ensureTensorFlush(self.collectiveArgs.opTensor)
         if enable_comms_pair:
-            ensureTensorFlush(self.collectiveArgs.opTensor_pair)
+            for opTensor_pair in self.collectiveArgs.opTensor_pair:
+                ensureTensorFlush(opTensor_pair)
 
         elapsedTimeNS += (
             end - start
@@ -698,11 +727,12 @@ class commsCollBench(paramCommsBench):
             )
             algBW += algBW_pair
 
-            busBW += self.backendFuncs.getBusBW(
-                self.collectiveArgs.collective_pair,
-                algBW_pair,
-                self.collectiveArgs,
-            )
+            for pair_idx in range(len(self.collectiveArgs.collective_pair)):
+                busBW += self.backendFuncs.getBusBW(
+                    self.collectiveArgs.collective_pair[pair_idx],
+                    algBW_pair,
+                    self.collectiveArgs,
+                )
 
         # reset group to sync among all global ranks
         self.collectiveArgs.group = self.backendFuncs.get_default_group()
@@ -1054,10 +1084,13 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.src_ranks = commsParams.src_ranks
         self.collectiveArgs.dst_ranks = commsParams.dst_ranks
         self.collectiveArgs.pair = commsParams.pair
-        if self.collectiveArgs.pair:
-            self.collectiveArgs.pair_stream = self.backendFuncs.get_new_stream()
-
         self.collectiveArgs.collective_pair = commsParams.collective_pair
+        if self.collectiveArgs.pair:
+            self.collectiveArgs.pair_stream_list = [
+                self.backendFuncs.get_new_stream()
+                for _ in self.collectiveArgs.collective_pair
+            ]
+
         self.collectiveArgs.pt2pt = commsParams.pt2pt
         self.collectiveArgs.window = commsParams.window
         self.collectiveArgs.asyncOp = False if commsParams.blockingFlag == 1 else True
@@ -1688,7 +1721,7 @@ class commsCollBench(paramCommsBench):
             dequantTimeElapsedList = []
             numElements = int(curSize // commsParams.element_size)
             collectiveFunc = self.backendFuncs.noop
-            collectiveFunc_pair = self.backendFuncs.noop
+            collectiveFunc_pair_list = []
             commUsElapsedList = []
             computeUsElapsedList = []
 
@@ -1725,9 +1758,11 @@ class commsCollBench(paramCommsBench):
                 commsParams.pair and commsParams.mode != "compute"
             ):  # comms-pair specific initializations if not in compute-only mode:
                 # set corresponding function pointers
-                collectiveFunc_pair = backendFuncs.collectiveFunc[
-                    commsParams.collective_pair
-                ]
+                for collective in commsParams.collective_pair:
+                    collectiveFunc_pair_list.append(
+                        backendFuncs.collectiveFunc[collective]
+                    )
+
                 # TODO: allow user to set specific size
                 # Setup the arguments.
                 self.collectiveArgs.dataSize_pair = curSize_pair
@@ -1739,14 +1774,22 @@ class commsCollBench(paramCommsBench):
                 commsArgs.inMsgSize = self.collectiveArgs.numElements_pair
                 commsArgs.outMsgSize = self.collectiveArgs.numElements_pair
                 commsArgs.worldSize = world_size
-                commsArgs.comms = commsParams.collective_pair
-                (
-                    self.collectiveArgs.ipTensor_pair,
-                    self.collectiveArgs.opTensor_pair,
-                ) = self.prepComm(
-                    curComm=commsArgs,
-                    commsParams=commsParams,
-                )
+
+                for pairIdx in range(len(commsParams.collective_pair)):
+                    commsArgs.comms = commsParams.collective_pair[pairIdx]
+                    (
+                        ipTensor_pair,
+                        opTensor_pair,
+                    ) = self.prepComm(
+                        curComm=commsArgs,
+                        commsParams=commsParams,
+                    )
+                if len(self.collectiveArgs.ipTensor_pair) < pairIdx + 1:
+                    self.collectiveArgs.ipTensor_pair.append(ipTensor_pair)
+                    self.collectiveArgs.opTensor_pair.append(opTensor_pair)
+                else:
+                    self.collectiveArgs.ipTensor_pair[pairIdx] = ipTensor_pair
+                    self.collectiveArgs.opTensor_pair[pairIdx] = opTensor_pair
 
             self.collectiveArgs.data_type = commsParams.data_type
             if commsParams.size_start_profiler == curSize:
@@ -1777,7 +1820,7 @@ class commsCollBench(paramCommsBench):
                     self.runColl(
                         comm_fn=collectiveFunc,
                         compute_fn=computeFunc,
-                        comm_fn_pair=collectiveFunc_pair,
+                        comm_fn_pair_list=collectiveFunc_pair_list,
                         dcheck=commsParams.dcheck,
                     )
                 )
@@ -1869,21 +1912,31 @@ class commsCollBench(paramCommsBench):
         multi_comms,
         backend,
         pair,
+        pair_collectives_list,
         overlap_pair_pgs,
         process_group,
-        process_group_pair,
+        process_groups_pair,
     ):
         self.collectiveArgs.pgId = 0  # default group id
-        self.collectiveArgs.pairPgId = 1
+        self.collectiveArgs.pairPgId = []
 
         global_rank = self.backendFuncs.get_global_rank()
         world_size = self.backendFuncs.get_world_size()
         groupRanks = {}
 
-        if process_group and process_group_pair:
+        if process_group and process_groups_pair:
             groupRanks[0] = [int(p) for p in process_group.strip("[]").split(",")]
-            groupRanks[1] = [int(p) for p in process_group_pair.strip("[]").split(",")]
 
+            groupRanks = groupRanks | {
+                i + 1: list(map(int, val.replace("[", "").replace("]", "").split(",")))
+                for i, val in enumerate(process_groups_pair)
+            }
+
+            self.collectiveArgs.pairPgId = [
+                i + 1 for i in range(len(pair_collectives_list))
+            ]
+
+            print(f"groupRanks {groupRanks}")
             self.backendFuncs.groupRanks = groupRanks
             self.backendFuncs.initialize_groups(backend=backend, force_new_group=True)
 
@@ -1905,8 +1958,10 @@ class commsCollBench(paramCommsBench):
 
         elif pair and overlap_pair_pgs:
             # create two communicators each including all ranks
-            num_pgs = 2
+            num_pgs = 1 + len(pair_collectives_list)
             for pgId in range(0, num_pgs):
+                if pgId > 0:
+                    self.collectiveArgs.pairPgId.append(pgId)
                 groupRanks[pgId] = []
                 for rank in range(0, world_size):
                     groupRanks[pgId].append(rank)
@@ -2029,6 +2084,7 @@ def main():
         args.multi_comms,
         args.backend,
         args.pair,
+        args.collective_pair,
         args.overlap_pair_pgs,
         args.process_group,
         args.process_group_pair,

@@ -105,11 +105,11 @@ class collectiveArgsHolder:
         self.waitObj = []
         self.waitObjIds = {}  # mapping of reqID to future of async collectives
 
-        self.ipTensor_split_pair = []
-        self.opTensor_split_pair = []
+        self.ipTensor_split_pair = []  # TODO: This does not seem to be used anywhere
+        self.opTensor_split_pair = []  # TODO: This does not seem to be used anywhere
 
-        self.ipTensor_pair = None
-        self.opTensor_pair = None
+        self.ipTensor_pair = []
+        self.opTensor_pair = []
         self.dataSize_pair = 0
         self.numElements_pair = 0
 
@@ -123,7 +123,7 @@ class collectiveArgsHolder:
         self.enable_profiler = False
 
         self.compute_stream = None
-        self.pair_stream = None
+        self.pair_stream_list = None
         self.use_ext_dist = False
 
         self.include_0B = False
