@@ -876,11 +876,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.collective = args.collective
         self.collective_list = args.collective.split(",")
 
-        self.pair = args.pair
-        self.overlap_pair_pgs = args.overlap_pair_pgs
-        self.collective_pair = args.collective_pair
         self.multi_comms = args.multi_comms
-        self.sizes_pair = args.ssp
 
         self.pt2pt = args.pt2pt
         self.window = args.window
@@ -894,6 +890,25 @@ class commsParamsHolder(commsParamsHolderBase):
 
         self.include_0B = args.include_0B
         self.num_coll = args.num_coll
+
+
+class commsOverlapParamsHolder(commsParamsHolder):
+    """Class holding object for the input parameters from collective benchmark."""
+
+    def __init__(
+        self,
+        args,
+        bootstrap_info: bootstrap_info_holder,
+        element_size: int,
+        benchTime: Callable,
+        groupRanks: Dict[int, List[int]] = None,  # pyre-ignore
+    ) -> None:
+        super().__init__(args, bootstrap_info, element_size, benchTime, groupRanks)
+
+        self.pair = args.pair
+        self.overlap_pair_pgs = args.overlap_pair_pgs
+        self.collective_pair = args.collective_pair
+        self.sizes_pair = args.ssp
 
 
 class commsComputParamsHolder(commsParamsHolder):
