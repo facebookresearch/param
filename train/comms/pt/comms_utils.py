@@ -864,7 +864,6 @@ class commsParamsHolder(commsParamsHolderBase):
         self.inSplit = args.i
         self.outSplit = args.o
         self.data_type = args.data_type
-        self.comp_data_type = args.comp_data_type
         self.stepFactor = args.f
         self.stepBytes = args.sb
         self.srcOrDst = args.root
@@ -876,19 +875,6 @@ class commsParamsHolder(commsParamsHolderBase):
         self.numIters = args.n
         self.collective = args.collective
         self.collective_list = args.collective.split(",")
-        self.mode = args.mode
-
-        self.kernel = args.kernel
-        self.use_triton = args.use_triton
-        self.num_compute = args.num_compute
-        self.num_coll = args.num_coll
-        self.mm_dim = args.mm_dim
-        self.emb_dim = args.emb_dim
-        self.batch_size = args.batch_size
-        self.num_embs = args.num_embs
-        self.num_emb_tables_per_device = args.num_emb_tables_per_device
-        self.num_emb_tables_batched = args.num_emb_tables_batched
-        self.bag_size = args.bag_size
 
         self.pair = args.pair
         self.overlap_pair_pgs = args.overlap_pair_pgs
@@ -907,6 +893,35 @@ class commsParamsHolder(commsParamsHolderBase):
         self.groupRanks = groupRanks
 
         self.include_0B = args.include_0B
+        self.num_coll = args.num_coll
+
+
+class commsComputParamsHolder(commsParamsHolder):
+    """Class holding object for the input parameters from collective benchmark."""
+
+    def __init__(
+        self,
+        args,
+        bootstrap_info: bootstrap_info_holder,
+        element_size: int,
+        benchTime: Callable,
+        groupRanks: Dict[int, List[int]] = None,  # pyre-ignore
+    ) -> None:
+        super().__init__(args, bootstrap_info, element_size, benchTime, groupRanks)
+
+        self.comp_data_type = args.comp_data_type
+        self.mode = args.mode
+
+        self.kernel = args.kernel
+        self.use_triton = args.use_triton
+        self.num_compute = args.num_compute
+        self.mm_dim = args.mm_dim
+        self.emb_dim = args.emb_dim
+        self.batch_size = args.batch_size
+        self.num_embs = args.num_embs
+        self.num_emb_tables_per_device = args.num_emb_tables_per_device
+        self.num_emb_tables_batched = args.num_emb_tables_batched
+        self.bag_size = args.bag_size
 
 
 class paramCommsBench(ABC):
