@@ -49,7 +49,6 @@ class collectiveArgsHolder:
     def __init__(self) -> None:
         self.group = None
         self.groups = {}  # {pg_id, pg}
-        self.num_pgs = 0
         self.device = {}
         self.world_size = 0
         self.data_type = ""
@@ -292,10 +291,6 @@ class BaseBackend(ABC):
 
     @abstractmethod
     def get_groups(self) -> List[ProcessGroup]:
-        pass
-
-    @abstractmethod
-    def get_num_pgs(self) -> int:
         pass
 
     # Init functions
