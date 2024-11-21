@@ -1,4 +1,5 @@
-from typing import Callable, List
+from collections.abc import Callable
+from typing import List
 
 from ..init_helper import get_logger
 
@@ -22,7 +23,7 @@ class UnaryOp(OperatorInterface):
         self,
         func_name: str,
     ):
-        super(UnaryOp, self).__init__()
+        super().__init__()
         self.func_name: str = func_name
         self.fwd_out: torch.tensor = None
         self.grad_in: torch.tensor = None
@@ -50,7 +51,7 @@ class CallableOp(OperatorInterface):
         self,
         func: Callable,
     ):
-        super(CallableOp, self).__init__()
+        super().__init__()
         self.func: Callable = func
         self.fwd_out: torch.tensor = None
         self.grad_in = None
@@ -89,7 +90,7 @@ class BuildableOp(OperatorInterface):
         self,
         constructor: Callable,
     ):
-        super(BuildableOp, self).__init__()
+        super().__init__()
         self.constructor: Callable = constructor
         self.func: Callable = None
         self.fwd_out: torch.tensor = None
@@ -135,7 +136,7 @@ class TorchScriptOp(OperatorInterface):
         self,
         func_name: str,
     ):
-        super(TorchScriptOp, self).__init__()
+        super().__init__()
         self.func_name: str = func_name
         self.func: Callable = None
         self.fwd_out: torch.tensor = None

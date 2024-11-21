@@ -33,13 +33,11 @@ logger = get_logger()
 class SplitTableBatchedEmbeddingBagsCodegenInputIterator(ConfigIterator):
     def __init__(
         self,
-        configs: Dict[str, Any],
+        configs: dict[str, Any],
         key: str,
         device: str,
     ):
-        super(SplitTableBatchedEmbeddingBagsCodegenInputIterator, self).__init__(
-            configs, key, device
-        )
+        super().__init__(configs, key, device)
         logger.debug(f"build_input_config: {configs}")
         build_config = configs["build"]
         logger.debug(f"build_config: {build_config}")
@@ -101,7 +99,7 @@ def generate_requests(
     # alpha > 1.0: use zjpf distribution
     alpha: float = 1.0,
     weighted: bool = False,
-) -> List[Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
+) -> list[tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]]:
     indices_size = B * L
     # indices
     if alpha == 0:
@@ -242,7 +240,7 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
     def __init__(
         self,
     ):
-        super(SplitTableBatchedEmbeddingBagsCodegenOp, self).__init__()
+        super().__init__()
         self.op = None
         self.fwd_out: torch.tensor = None
         self.grad_in: torch.tensor = None
@@ -250,8 +248,8 @@ class SplitTableBatchedEmbeddingBagsCodegenOp(OperatorInterface):
     def build(
         self,
         num_tables: int,
-        rows: Union[int, list],
-        dims: Union[int, list],
+        rows: int | list,
+        dims: int | list,
         pooling: int,
         weighted: bool,
         weights_precision: str,

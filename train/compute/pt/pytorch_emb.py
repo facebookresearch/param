@@ -19,7 +19,7 @@ class XlaEmbeddingBag(nn.Module):
     """
 
     def __init__(self, n, m, mode, offset, *args, **kwargs):
-        super(XlaEmbeddingBag, self).__init__()
+        super().__init__()
         self.n = n
         self.m = m
         self.mode = mode
@@ -228,7 +228,7 @@ def run(args, dataset):
         elap /= args.steps
         total_bytes /= 1.0e6
         print(
-            "{0:10},  {1:6},  {2:6},  {3:8},    {4:10.6f}, {5:10.1f},  {6:8.3f}".format(
+            "{:10},  {:6},  {:6},  {:8},    {:10.6f}, {:10.1f},  {:8.3f}".format(
                 features,
                 embdim,
                 nnz,

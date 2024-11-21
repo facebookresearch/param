@@ -28,8 +28,8 @@ tensorDtypeMap = {
 
 
 def parseTrace(
-    in_trace: List, trace_type: str, target_rank: int, total_ranks: int
-) -> List:
+    in_trace: list, trace_type: str, target_rank: int, total_ranks: int
+) -> list:
     """
     Parse trace files to be compatible with PARAM replay-mode.
     Currently supports: Basic Trace, Kineto Unitrace, and PyTorch ET trace.
@@ -64,7 +64,7 @@ def parseTrace(
     return parsed_trace
 
 
-def _parseBasicTrace(in_trace: List):
+def _parseBasicTrace(in_trace: list):
     """
     Convert Basic Trace to comms trace format.
     """
@@ -156,7 +156,7 @@ def _parseBasicTraceCompute(curComm, newComm: commsArgs) -> None:
         )
 
 
-def _parseKinetoUnitrace(in_trace: List, target_rank: int) -> List:
+def _parseKinetoUnitrace(in_trace: list, target_rank: int) -> list:
     """
     Convert the Kineto unitrace w/ comms metadata to the clean common trace format for replay.
     """
@@ -190,8 +190,8 @@ def _parseKinetoUnitrace(in_trace: List, target_rank: int) -> List:
 
 
 def _getTensorInfoFromPyTorchETEntry(
-    tensor_container: List, container_type: str
-) -> Tuple[int, int, str]:
+    tensor_container: list, container_type: str
+) -> tuple[int, int, str]:
     """
     Extract message size, tensor count, type from PyTorch ET entry inputs/outputs field.
     NOTE: This format can be changed at anytime. TODO: When an extract/parsing tool is available in ATC, switch to it.
@@ -219,7 +219,7 @@ def _getTensorInfoFromPyTorchETEntry(
 
 def _parseExecutionTrace(
     in_trace: ExecutionTrace, target_rank: int, total_ranks: int
-) -> List:
+) -> list:
     """
     Convert the Execution Trace comms metadata to the common trace format for replay.
     This is legacy ET parser for backward compatibility, will be deprecated soon.
@@ -360,7 +360,7 @@ def _parseExecutionTrace(
     return initOps + newCommsTrace
 
 
-def create_pg_init_node(pg_id: int, ranks: List[int], world_size: int):
+def create_pg_init_node(pg_id: int, ranks: list[int], world_size: int):
     newComm = commsArgs()
     newComm.comms = "init"
     newComm.pgId = pg_id

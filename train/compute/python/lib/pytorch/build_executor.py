@@ -64,7 +64,7 @@ class BuildExecutor(metaclass=abc.ABCMeta):
     def run(
         self,
         op_config: OperatorConfig,
-        build_input_config: Dict[str, Any],
+        build_input_config: dict[str, Any],
         config_build_id: str,
     ):
         raise NotImplementedError
@@ -112,8 +112,8 @@ class OpBuildExecutor(BuildExecutor):
     benchmarks till the matching op_run_id is found.
     """
 
-    def __init__(self, run_options: Dict[str, Any]):
-        super(OpBuildExecutor, self).__init__()
+    def __init__(self, run_options: dict[str, Any]):
+        super().__init__()
         self.run_options = run_options
         self.out_stream = run_options["out_stream"]
 
@@ -128,7 +128,7 @@ class OpBuildExecutor(BuildExecutor):
     def run(
         self,
         op_config: OperatorConfig,
-        build_input_config: Dict[str, Any],
+        build_input_config: dict[str, Any],
         config_build_id: str,
     ):
         def _run_nsight():
@@ -199,7 +199,7 @@ class OpBuildExecutor(BuildExecutor):
         if transition_state == BenchmarkTransitionState.STOP:
             raise StopBenchmarkException(f"Benchmark stopped at [{config_run_id}]")
 
-    def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
+    def _run_for_input(self, input_id: str, input_config: dict[str, Any]):
         run_id = f"{self.config_build_id}|{input_id}"
 
         logger.info(f"input_id: [{input_id}]")
@@ -404,8 +404,8 @@ class MaterializedBuildExecutor(BuildExecutor):
     OpExecutor on each config.
     """
 
-    def __init__(self, run_options: Dict[str, Any]):
-        super(MaterializedBuildExecutor, self).__init__()
+    def __init__(self, run_options: dict[str, Any]):
+        super().__init__()
         self.run_options = run_options
         self.out_stream = run_options["out_stream"]
 
@@ -416,7 +416,7 @@ class MaterializedBuildExecutor(BuildExecutor):
     def run(
         self,
         op_config: OperatorConfig,
-        build_input_config: Dict[str, Any],
+        build_input_config: dict[str, Any],
         config_build_id: str,
     ):
         self.build_input_config = build_input_config
@@ -462,7 +462,7 @@ class MaterializedBuildExecutor(BuildExecutor):
         if transition_state == BenchmarkTransitionState.STOP:
             raise StopBenchmarkException(f"Benchmark stopped at [{config_run_id}]")
 
-    def _run_for_input(self, input_id: str, input_config: Dict[str, Any]):
+    def _run_for_input(self, input_id: str, input_config: dict[str, Any]):
         run_id = f"{self.config_build_id}|{input_id}"
 
         logger.info(f"run_id: [{run_id}]")
@@ -509,8 +509,8 @@ def output_stats(
     out_stream: TextIO,
     name: str,
     run_id: str,
-    metrics: Dict[str, Any],
-    config: Dict[str, Any],
+    metrics: dict[str, Any],
+    config: dict[str, Any],
 ):
     for pass_name, metric in metrics.items():
         logger.info(f"pass: {pass_name}")
@@ -541,6 +541,6 @@ def output_stats(
     out_stream.flush()
 
 
-def format_float_val_list(time_records: List[float], decimals: int = 3):
+def format_float_val_list(time_records: list[float], decimals: int = 3):
     format_str = f"{{0:.{decimals}f}}"
     return f"[{', '.join([format_str.format(i) for i in time_records])}]"

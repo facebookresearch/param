@@ -1,10 +1,4 @@
-from __future__ import (
-    absolute_import,
-    annotations,
-    division,
-    print_function,
-    unicode_literals,
-)
+from __future__ import annotations
 
 import gzip
 import json
@@ -111,7 +105,7 @@ def main():
     with (
         gzip.open(execution_json, "rb")
         if execution_json.endswith("gz")
-        else open(execution_json, "r")
+        else open(execution_json)
     ) as execution_data:
         execution_trace: ExecutionTrace = ExecutionTrace(json.load(execution_data))
         t = TraceValidator(execution_trace)

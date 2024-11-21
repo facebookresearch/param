@@ -44,7 +44,7 @@ class Benchmark:
     """
 
     def __init__(
-        self, bench_config: BenchmarkConfig, build_executor: Type[BuildExecutor]
+        self, bench_config: BenchmarkConfig, build_executor: type[BuildExecutor]
     ):
         init_pytorch(bench_config.run_options)
         self.bench_config = bench_config
@@ -73,7 +73,7 @@ class Benchmark:
         except StopBenchmarkException as stop_event:
             logger.info(stop_event)
 
-    def run_op(self, op_config: OperatorConfig) -> List[str]:
+    def run_op(self, op_config: OperatorConfig) -> list[str]:
         logger.info(f"### op: {op_config.name}")
         config_id = 0
         for config in op_config.info["config"]:

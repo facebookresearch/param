@@ -188,7 +188,7 @@ def get_optimizer_from_fbgemm_function_name(s):
     opt = s[39:-9]
     if "rowwise" in opt:
         opt = opt.replace("rowwise", "row_wise")
-    return "exact_{}".format(opt)  # Workaround, should be more accurate
+    return f"exact_{opt}"  # Workaround, should be more accurate
 
 
 def get_fbgemm_info(n, rows_per_table):
@@ -400,27 +400,22 @@ def build_torchscript_func(n):
             {}
     """.format(
         # Input arguments
-        ", ".join(["%{}: {}".format(idx, t) for idx, t in enumerate(input_types)]),
+        ", ".join([f"%{idx}: {t}" for idx, t in enumerate(input_types)]),
         # Op
         (
             "%output: {}".format(output_types[0] if output_count == 1 else "NoneType")
             if output_count <= 1
             else ", ".join(
-                [
-                    "%{}: {}".format(idx + input_count, t)
-                    for idx, t in enumerate(output_types)
-                ]
+                [f"%{idx + input_count}: {t}" for idx, t in enumerate(output_types)]
             )
         ),
         n.name,
-        ", ".join(["%{}".format(idx) for idx in range(input_count)]),
+        ", ".join([f"%{idx}" for idx in range(input_count)]),
         # Tuple handling
         (
             "%output : ({}) = prim::TupleConstruct({})".format(
                 ", ".join(["Tensor" for _ in range(output_count)]),
-                ", ".join(
-                    ["%{}".format(idx + input_count) for idx in range(output_count)]
-                ),
+                ", ".join([f"%{idx + input_count}" for idx in range(output_count)]),
             )
             if output_count > 1
             else ""
@@ -443,7 +438,7 @@ def build_torchscript_func(n):
 
 
 def build_triton_func(n, resources_dir, async_compile, device):
-    with open(os.path.join(resources_dir, n.kernel_file), "r") as f:
+    with open(os.path.join(resources_dir, n.kernel_file)) as f:
         code = f.read()
 
     func = None

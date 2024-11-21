@@ -1,4 +1,5 @@
-from typing import Callable, List, Optional, Type, Union
+from collections.abc import Callable
+from typing import List, Optional, Type, Union
 
 import torch
 import torch.nn as nn
@@ -39,11 +40,11 @@ class BasicBlock(nn.Module):
         inplanes: int,
         planes: int,
         stride: int = 1,
-        downsample: Optional[nn.Module] = None,
+        downsample: nn.Module | None = None,
         groups: int = 1,
         base_width: int = 64,
         dilation: int = 1,
-        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        norm_layer: Callable[..., nn.Module] | None = None,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -94,11 +95,11 @@ class Bottleneck(nn.Module):
         inplanes: int,
         planes: int,
         stride: int = 1,
-        downsample: Optional[nn.Module] = None,
+        downsample: nn.Module | None = None,
         groups: int = 1,
         base_width: int = 64,
         dilation: int = 1,
-        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        norm_layer: Callable[..., nn.Module] | None = None,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -141,14 +142,14 @@ class Bottleneck(nn.Module):
 class ResNet(nn.Module):
     def __init__(
         self,
-        block: Type[Union[BasicBlock, Bottleneck]] = Bottleneck,
-        layers: List[int] = [3, 4, 6, 3],
+        block: type[BasicBlock | Bottleneck] = Bottleneck,
+        layers: list[int] = [3, 4, 6, 3],
         num_classes: int = 1000,
         zero_init_residual: bool = False,
         groups: int = 1,
         width_per_group: int = 64,
-        replace_stride_with_dilation: Optional[List[bool]] = None,
-        norm_layer: Optional[Callable[..., nn.Module]] = None,
+        replace_stride_with_dilation: list[bool] | None = None,
+        norm_layer: Callable[..., nn.Module] | None = None,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -206,7 +207,7 @@ class ResNet(nn.Module):
 
     def _make_layer(
         self,
-        block: Type[Union[BasicBlock, Bottleneck]],
+        block: type[BasicBlock | Bottleneck],
         planes: int,
         blocks: int,
         stride: int = 1,

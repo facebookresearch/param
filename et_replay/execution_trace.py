@@ -1,10 +1,4 @@
-from __future__ import (
-    absolute_import,
-    annotations,
-    division,
-    print_function,
-    unicode_literals,
-)
+from __future__ import annotations
 
 import argparse
 import copy
@@ -12,9 +6,10 @@ import gzip
 import json
 import logging
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Iterable, List, Optional, Set, TextIO, Tuple
+from typing import Any, Dict, List, Optional, Set, TextIO, Tuple
 
 import pydot
 
@@ -56,9 +51,9 @@ class TensorNode:
     def __init__(self, id: tuple, dtype: str):
         self.id: tuple = id
         self.dtype = dtype
-        self.sources: Set = set()
-        self.sinks: Set = set()
-        self.shapes: Set = set()
+        self.sources: set = set()
+        self.sinks: set = set()
+        self.shapes: set = set()
 
     def add_source(self, id: int):
         self.sources.add(id)
@@ -66,7 +61,7 @@ class TensorNode:
     def add_sink(self, id: int):
         self.sinks.add(id)
 
-    def add_shape(self, shape: List[Any]):
+    def add_shape(self, shape: list[Any]):
         self.shapes.add(tuple(shape))
 
     def is_leaf_tensor(self):
@@ -121,27 +116,27 @@ class Node:
         fw_tid: int,
         op_schema: str,
         scope: int,
-        inputs: List[Any],
-        input_types: List[str],
-        input_shapes: List[Any],
-        outputs: List[Any],
-        output_types: List[str],
-        output_shapes: List[Any],
-        rf_id: Optional[int] = None,
-        kernel_backend: Optional[str] = None,
-        kernel_file: Optional[str] = None,
-        comm_args: Optional[_CommArgs] = None,
-        input_strides: Optional[List[Any]] = None,
-        output_strides: Optional[List[Any]] = None,
+        inputs: list[Any],
+        input_types: list[str],
+        input_shapes: list[Any],
+        outputs: list[Any],
+        output_types: list[str],
+        output_shapes: list[Any],
+        rf_id: int | None = None,
+        kernel_backend: str | None = None,
+        kernel_file: str | None = None,
+        comm_args: _CommArgs | None = None,
+        input_strides: list[Any] | None = None,
+        output_strides: list[Any] | None = None,
     ):
         self.name: str = name
         self.parent_id: int = parent_id
-        self.parent: Optional[Node] = None
-        self.children: List[Node] = []
+        self.parent: Node | None = None
+        self.children: list[Node] = []
         self.id: int = id
-        self.rf_id: Optional[int] = rf_id
-        self.kernel_backend: Optional[str] = kernel_backend
-        self.kernel_file: Optional[str] = kernel_file
+        self.rf_id: int | None = rf_id
+        self.kernel_backend: str | None = kernel_backend
+        self.kernel_file: str | None = kernel_file
         self.pid: int = pid
         self.tid: int = tid
         self.fw_tid: int = fw_tid
@@ -151,16 +146,16 @@ class Node:
         self.scope: int = scope
         self.type: NodeType = self.detect_type()
         # self.inputs: List[Any] = [tuple(i) if isinstance(i, list) else i for i in inputs]
-        self.inputs: List[Any] = inputs
-        self.input_types: List[str] = input_types
-        self.input_shapes: List[Any] = input_shapes
-        self.input_strides: Optional[List[Any]] = input_strides
+        self.inputs: list[Any] = inputs
+        self.input_types: list[str] = input_types
+        self.input_shapes: list[Any] = input_shapes
+        self.input_strides: list[Any] | None = input_strides
         # self.outputs: List[Any] = [tuple(o) if isinstance(o, list) else o for o in outputs]
-        self.outputs: List[Any] = outputs
-        self.output_types: List[str] = output_types
-        self.output_shapes: List[Any] = output_shapes
-        self.output_strides: Optional[List[Any]] = output_strides
-        self.commArgs: Optional[_CommArgs] = comm_args
+        self.outputs: list[Any] = outputs
+        self.output_types: list[str] = output_types
+        self.output_shapes: list[Any] = output_shapes
+        self.output_strides: list[Any] | None = output_strides
+        self.commArgs: _CommArgs | None = comm_args
 
     def get_inputs(self) -> Iterable:
         return zip(self.input_types, self.inputs, self.input_shapes)
@@ -217,7 +212,7 @@ class Node:
     def get_base_op(self) -> Node:
         return self._get_base_op()
 
-    def _get_child_by_name(self, name) -> Optional[Node]:
+    def _get_child_by_name(self, name) -> Node | None:
         for c in self.children:
             if name in c.name:
                 return c
@@ -226,14 +221,14 @@ class Node:
                 return node
         return None
 
-    def get_child_by_name(self, names) -> Optional[Node]:
+    def get_child_by_name(self, names) -> Node | None:
         for name in names:
             node = self._get_child_by_name(name)
             if node is not None:
                 return node
         return None
 
-    def _get_parent_by_name(self, name) -> Optional[Node]:
+    def _get_parent_by_name(self, name) -> Node | None:
         if self.parent:
             if name in self.parent.name:
                 return self.parent
@@ -242,7 +237,7 @@ class Node:
                 return node
         return None
 
-    def get_parent_by_name(self, names) -> Optional[Node]:
+    def get_parent_by_name(self, names) -> Node | None:
         for name in names:
             node = self._get_parent_by_name(name)
             if node is not None:
@@ -263,7 +258,7 @@ class Node:
         else:
             return NodeType.LABEL
 
-    def get_tensors(self, param_list: Iterable) -> List[tuple]:
+    def get_tensors(self, param_list: Iterable) -> list[tuple]:
         tensors = []
         for type, input, shape in param_list:  # TBR: avoid using python key words
             if type.startswith("Tensor"):
@@ -276,7 +271,7 @@ class Node:
 
     def get_tensor_strides(
         self, input_list: Iterable, stride_list: Iterable
-    ) -> List[tuple]:
+    ) -> list[tuple]:
         strides = []
         for (type, input, shape), stride in zip(input_list, stride_list):
             if type.startswith("Tensor"):
@@ -289,22 +284,22 @@ class Node:
                 )
         return strides
 
-    def get_input_tensors(self) -> List[tuple]:
+    def get_input_tensors(self) -> list[tuple]:
         return self.get_tensors(self.get_inputs())
 
-    def get_input_tensor_strides(self) -> Optional[List[tuple]]:
+    def get_input_tensor_strides(self) -> list[tuple] | None:
         if self.input_strides is None:
             return None
         else:
             return self.get_tensor_strides(self.get_inputs(), self.input_strides)
 
-    def get_output_tensor_strides(self) -> Optional[List[tuple]]:
+    def get_output_tensor_strides(self) -> list[tuple] | None:
         if self.output_strides is None:
             return None
         else:
             return self.get_tensor_strides(self.get_outputs(), self.output_strides)
 
-    def get_output_tensors(self) -> List[tuple]:
+    def get_output_tensors(self) -> list[tuple]:
         return self.get_tensors(self.get_outputs())
 
     def sort_children(self):
@@ -388,13 +383,13 @@ class ExecutionTrace:
         # remove all dataloader ops
         self.remove_dataloader_ops()
 
-    def _versiontuple(self, v: str) -> Tuple[int, int, int]:
+    def _versiontuple(self, v: str) -> tuple[int, int, int]:
         return tuple(map(int, (v.split("."))))
 
-    def schema_pytorch(self) -> Tuple[int, int, int]:
+    def schema_pytorch(self) -> tuple[int, int, int]:
         return self._versiontuple(self.schema.split("-")[0])
 
-    def schema_chakra(self) -> Tuple[int, int, int]:
+    def schema_chakra(self) -> tuple[int, int, int]:
         if "-" not in self.schema:
             return (0, 0, 0)
         return self._versiontuple(self.schema.split("-")[1])
@@ -412,7 +407,7 @@ class ExecutionTrace:
     }
 
     @classmethod
-    def _read_attrs(cls, node: Dict[str, Any]) -> Tuple:
+    def _read_attrs(cls, node: dict[str, Any]) -> tuple:
         attr_dict = {
             attr["name"]: cls.ATTR_TYPES[attr["name"]](attr["value"])
             for attr in node["attrs"]
@@ -437,7 +432,7 @@ class ExecutionTrace:
     }
 
     @classmethod
-    def _read_comm_attrs(cls, node: Dict[str, Any]) -> _CommArgs:
+    def _read_comm_attrs(cls, node: dict[str, Any]) -> _CommArgs:
         attr_dict = {
             attr["name"]: cls.COMM_ATTR_TYPES[attr["name"]](attr["value"])
             for attr in node["attrs"]
@@ -448,7 +443,7 @@ class ExecutionTrace:
         return _CommArgs(**params_dict)
 
     @staticmethod
-    def _create_node_v1_0_1(pid, x: Dict[str, Any]) -> Node:
+    def _create_node_v1_0_1(pid, x: dict[str, Any]) -> Node:
         return Node(
             x["name"],
             x["id"],
@@ -470,7 +465,7 @@ class ExecutionTrace:
         )
 
     @staticmethod
-    def _create_node_v1_0_2_chakra_0_0_4(pid, x: Dict[str, Any]) -> Node:
+    def _create_node_v1_0_2_chakra_0_0_4(pid, x: dict[str, Any]) -> Node:
         # TBR: guarantee matching with returned value manually. Easy to incurs bug.
         (
             fw_parent,
@@ -514,7 +509,7 @@ class ExecutionTrace:
         )
 
     @staticmethod
-    def _create_node_v1_1_1_chakra_0_0_4(pid, x: Dict[str, Any]) -> Node:
+    def _create_node_v1_1_1_chakra_0_0_4(pid, x: dict[str, Any]) -> Node:
         (
             fw_parent,
             seq_id,
@@ -573,7 +568,7 @@ class ExecutionTrace:
         self.iteration_ids = sorted(self.iteration_ids)
         logging.info(f"Iteration node ids list = {self.iteration_ids}")
 
-    def iterations(self) -> Optional[int]:
+    def iterations(self) -> int | None:
         if len(self.iteration_ids) == 0:
             return None
         return len(self.iteration_ids) - 1
@@ -867,8 +862,8 @@ class ExecutionTrace:
 
 class GraphML:
     def __init__(self, execution_trace: ExecutionTrace):
-        self.nodes: List = []
-        self.edges: List = []
+        self.nodes: list = []
+        self.edges: list = []
         # construct op nodes and edges
         for id, n in execution_trace.nodes.items():
             self._create_node(id, f"{n.name} ({n.id})", n.name)
@@ -983,7 +978,7 @@ class GraphML:
         def write_edge(id, source, target):
             out.write(f'<edge id="e_{id}" source="{source}" target="{target}"/>\n')
 
-        with open(file_name, "wt") as out:
+        with open(file_name, "w") as out:
             write_header()
             graphml_begin()
             write_graph()
@@ -1081,7 +1076,7 @@ def main():
     with (
         gzip.open(execution_json, "rb")
         if execution_json.endswith("gz")
-        else open(execution_json, "r")
+        else open(execution_json)
     ) as execution_data:
         execution_data: TextIO
         execution_trace: ExecutionTrace = ExecutionTrace(json.load(execution_data))

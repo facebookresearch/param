@@ -151,7 +151,7 @@ class BaseBackend(ABC):
 
     def alloc_ones(
         self,
-        sizeArr: List[int],
+        sizeArr: list[int],
         curRankDevice: str = "cuda",
         dtype: torch.dtype = torch.float32,
         scaleFactor: float = 1.0,
@@ -234,7 +234,7 @@ class BaseBackend(ABC):
     @abstractmethod
     def alloc_random(
         self,
-        sizeArr: List[int],
+        sizeArr: list[int],
         curRankDevice: str,
         dtype: torch.dtype,
         scaleFactor: float = 1.0,
@@ -251,7 +251,7 @@ class BaseBackend(ABC):
 
     @abstractmethod
     def alloc_empty(
-        self, sizeArr: List[int], dtype: torch.dtype, curRankDevice: str
+        self, sizeArr: list[int], dtype: torch.dtype, curRankDevice: str
     ) -> torch.Tensor:
         """Allocate tensor with uninitialized data based on parameters."""
         pass
@@ -291,7 +291,7 @@ class BaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_groups(self) -> List[ProcessGroup]:
+    def get_groups(self) -> list[ProcessGroup]:
         pass
 
     @abstractmethod
@@ -310,13 +310,13 @@ class BaseBackend(ABC):
         pass
 
 
-customized_backend: Dict[str, BaseBackend] = {}
+customized_backend: dict[str, BaseBackend] = {}
 
 
 def register_customized_backend(
     name: str,
     func: BaseBackend,
-    device: Optional[str] = None,
+    device: str | None = None,
 ) -> None:
     global customized_backend
     customized_backend[name] = func

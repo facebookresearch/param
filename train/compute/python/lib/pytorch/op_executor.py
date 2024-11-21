@@ -4,7 +4,8 @@ from ..init_helper import get_logger
 
 logger = get_logger()
 
-from typing import Any, Callable, Dict, List, Tuple
+from collections.abc import Callable
+from typing import Any, Dict, List, Tuple
 
 import torch
 from torch.autograd.profiler import record_function
@@ -36,7 +37,7 @@ class OpExecutor:
     a dictionary of collected metric results.
     """
 
-    def __init__(self, name: str, op: OperatorInterface, run_options: Dict[str, Any]):
+    def __init__(self, name: str, op: OperatorInterface, run_options: dict[str, Any]):
         self.name = name
         self.op = op
         self.device = run_options["device"]
@@ -80,7 +81,7 @@ class OpExecutor:
         self.fwd_cuda_graph = None
         self.bwd_cuda_graph = None
 
-    def generate_cuda_graph(self, args: List, kwargs: Dict[str, Any]):
+    def generate_cuda_graph(self, args: list, kwargs: dict[str, Any]):
         s = torch.cuda.Stream(self.torch_device)
         s.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(s):
@@ -98,8 +99,8 @@ class OpExecutor:
                 self.op.backward()
 
     def run(
-        self, input_args: List, input_kwargs: Dict[str, Any], op_run_id: str
-    ) -> Dict[str, Any]:
+        self, input_args: list, input_kwargs: dict[str, Any], op_run_id: str
+    ) -> dict[str, Any]:
         result = {}
         result[ExecutionPass.FORWARD.value] = {}
         if self.pass_type == ExecutionPass.BACKWARD:
@@ -119,12 +120,12 @@ class OpExecutor:
 
     def _benchmark_op(
         self,
-        op: Union[Callable, torch.cuda.CUDAGraph],
-        args: List,
-        kwargs: Dict[str, Any],
+        op: Callable | torch.cuda.CUDAGraph,
+        args: list,
+        kwargs: dict[str, Any],
         tag: str,
         label_str: str,
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         logger.debug(f"benchmarking {label_str}")
         gpu_memory = 0
         timer = Timer(self.device)
@@ -156,8 +157,8 @@ class OpExecutor:
         return timer.elapsed_time_ms(), gpu_memory
 
     def _benchmark_discrete(
-        self, count: int, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
-    ) -> Tuple[List[float], List[float], List[float], List[float]]:
+        self, count: int, args: list, kwargs: dict[str, Any], tag: str, op_run_id: str
+    ) -> tuple[list[float], list[float], list[float], list[float]]:
 
         logger.debug(f"benchmarking [{self.name}|{op_run_id}|{tag}]")
 
@@ -232,11 +233,11 @@ class OpExecutor:
     def _benchmark_loop_cuda_events(
         self,
         count: int,
-        args: List,
-        kwargs: Dict[str, Any],
+        args: list,
+        kwargs: dict[str, Any],
         tag: str,
         op_run_id: str,
-    ) -> Tuple[List[float], List[float], List[float], List[float]]:
+    ) -> tuple[list[float], list[float], list[float], list[float]]:
         """
         Using CUDA events to record is making the assumptions that we are running single stream.
         In this mode, we do not flush cache, assuming benefit from data in warmup.
@@ -252,7 +253,7 @@ class OpExecutor:
                 for _i in range(count)
             ]
 
-        def compute_cuda_event_delta(events: List[Tuple[Any]]):
+        def compute_cuda_event_delta(events: list[tuple[Any]]):
             deltas = []
             for event_pair in events:
                 deltas.append(event_pair[0].elapsed_time(event_pair[1]))
@@ -339,11 +340,11 @@ class OpExecutor:
     def _benchmark_loop_cuda(
         self,
         count: int,
-        args: List,
-        kwargs: Dict[str, Any],
+        args: list,
+        kwargs: dict[str, Any],
         tag: str,
         op_run_id: str,
-    ) -> Tuple[List[float], List[float], List[float], List[float]]:
+    ) -> tuple[list[float], list[float], list[float], list[float]]:
 
         logger.debug(f"benchmarking {self.name}|{op_run_id}|{tag}")
 
@@ -425,11 +426,11 @@ class OpExecutor:
     def _benchmark_loop_cpu(
         self,
         count: int,
-        args: List,
-        kwargs: Dict[str, Any],
+        args: list,
+        kwargs: dict[str, Any],
         tag: str,
         op_run_id: str,
-    ) -> Tuple[List[float], List[float], List[float], List[float]]:
+    ) -> tuple[list[float], list[float], list[float], list[float]]:
         logger.debug(f"benchmarking [{self.name}|{op_run_id}|{tag}]")
 
         fw_time_records = []
@@ -466,8 +467,8 @@ class OpExecutor:
         return fw_time_records, fw_gpu_mem_records, bw_time_records, bw_gpu_mem_records
 
     def _benchmark_continuous(
-        self, count: int, args: List, kwargs: Dict[str, Any], tag: str, op_run_id: str
-    ) -> Tuple[List[float], List[float], List[float], List[float]]:
+        self, count: int, args: list, kwargs: dict[str, Any], tag: str, op_run_id: str
+    ) -> tuple[list[float], list[float], list[float], list[float]]:
         if self.device.startswith("cpu"):
             return self._benchmark_loop_cpu(count, args, kwargs, tag, op_run_id)
         elif self.device.startswith("cuda"):
@@ -481,12 +482,12 @@ class OpExecutor:
 
     def _measure(
         self,
-        args: List,
-        kwargs: Dict[str, Any],
+        args: list,
+        kwargs: dict[str, Any],
         iteration: int,
         tag: str,
         op_run_id: str,
-        result: Dict[str, Any],
+        result: dict[str, Any],
     ) -> None:
         logger.info(f"running [{op_run_id}] for {iteration} {tag} iteration")
         fw_time_records = []

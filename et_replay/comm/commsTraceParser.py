@@ -15,12 +15,12 @@ logger = logging.getLogger(__name__)
 
 
 def parseTrace(
-    in_trace: List,
+    in_trace: list,
     trace_type: str,
     trace_file_path: str,
     target_rank: int,
     total_ranks: int,
-) -> List:
+) -> list:
     """
     Parse trace files to be compatible with PARAM replay-mode.
     Currently supports: Chakra host execution trace.
@@ -50,7 +50,7 @@ Please check supported types with '--help'"
 
 def _parseExecutionTrace(
     in_trace: ExecutionTrace, target_rank: int, total_ranks: int
-) -> List:
+) -> list:
     """
     Convert the Execution Trace comms metadata to the common trace format for replay.
     """
@@ -91,9 +91,9 @@ def _parse_proc_group_info(in_trace: ExecutionTrace):
                     f"Process group name is {pg['pg_name']} in node {node.id}, which is not supported. Skip."
                 )
                 continue
-            (pg_id, ranks, group_size, group_count) = [
+            (pg_id, ranks, group_size, group_count) = (
                 pg[k] for k in ["pg_name", "ranks", "group_size", "group_count"]
-            ]
+            )
             pg_id = int(pg_id)
             pg_ranks_map[node.id][pg_id] = (
                 ranks
@@ -195,7 +195,7 @@ def _parse_comms_op_node(  # noqa: C901
     return comms_op_list
 
 
-def _create_pg_init_node(node_id: int, pg_id: int, ranks: List[int], world_size: int):
+def _create_pg_init_node(node_id: int, pg_id: int, ranks: list[int], world_size: int):
     comm_args = commsArgs()
     comm_args.id = node_id
     comm_args.comms = "init"

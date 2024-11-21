@@ -10,14 +10,14 @@ def full_range(a: int, b: int, s: int = 1):
 
 # Repeatable iterator for lists.
 class IterableList:
-    def __init__(self, items: List[Any]):
+    def __init__(self, items: list[Any]):
         self.items = items
 
     def __iter__(self):
         return self.Iterator(self.items)
 
     class Iterator:
-        def __init__(self, items: List[Any]):
+        def __init__(self, items: list[Any]):
             self.iter = iter(items)
 
         def __iter__(self):
@@ -56,20 +56,20 @@ class ListProduct:
         print("i",i)
     """
 
-    def __init__(self, iter_list: List[Any]):
-        self.iter_list: List[Any] = iter_list
+    def __init__(self, iter_list: list[Any]):
+        self.iter_list: list[Any] = iter_list
 
     def __iter__(self):
         return self.Iterator(self.iter_list, [None] * len(self.iter_list), 0)
 
     class Iterator:
-        def __init__(self, iter_list: List[Any], val_list: List[Any], idx: int):
+        def __init__(self, iter_list: list[Any], val_list: list[Any], idx: int):
             self.generator = self._generate_next(iter_list, val_list, idx)
 
         def __iter__(self):
             return self
 
-        def _generate_next(self, iter_list: List[Any], val_list: List[Any], idx: int):
+        def _generate_next(self, iter_list: list[Any], val_list: list[Any], idx: int):
             if iter_list:
                 # If current item is iterable, loop through and recursive to next
                 # item in the list
@@ -98,9 +98,9 @@ class ListProduct:
 
 
 class TableProduct:
-    def __init__(self, table: Dict[Any, Any]):
-        self.table: Dict[Any, Any] = table
-        self.result: Dict[Any, Any] = {}
+    def __init__(self, table: dict[Any, Any]):
+        self.table: dict[Any, Any] = table
+        self.result: dict[Any, Any] = {}
 
     def __iter__(self):
         iterable_keys = []
@@ -119,9 +119,9 @@ class TableProduct:
     class Iterator:
         def __init__(
             self,
-            table: Dict[Any, Any],
-            iterable_keys: List[Any],
-            result: Dict[Any, Any],
+            table: dict[Any, Any],
+            iterable_keys: list[Any],
+            result: dict[Any, Any],
             idx: int,
         ):
             self.generator = self._generate_next(table, iterable_keys, result, idx)
@@ -131,9 +131,9 @@ class TableProduct:
 
         def _generate_next(
             self,
-            table: Dict[Any, Any],
-            iterable_keys: List[Any],
-            result: Dict[Any, Any],
+            table: dict[Any, Any],
+            iterable_keys: list[Any],
+            result: dict[Any, Any],
             idx: int,
         ):
             if table:
@@ -155,4 +155,4 @@ class TableProduct:
             return next(self.generator)
 
 
-iterable_types: Set[Any] = {range, IterableList, ListProduct, TableProduct}
+iterable_types: set[Any] = {range, IterableList, ListProduct, TableProduct}

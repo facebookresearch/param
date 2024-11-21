@@ -90,14 +90,14 @@ def run(args, dataset):
         elap = run_single(args, m, n, k, "blas")
         elap /= args.steps
         print(
-            "{0:10}, {1:10}, {2:10},     {3:10.6f}     {4:.3f} ".format(
+            "{:10}, {:10}, {:10},     {:10.6f}     {:.3f} ".format(
                 m, n, k, elap, m * n * k * 2 * 1.0 / elap / 1.0e12
             )
         )
         elap = run_single(args, m, n, k, "tlass")
         elap /= args.steps
         print(
-            "{0:10}, {1:10}, {2:10},     {3:10.6f}     {4:.3f} ".format(
+            "{:10}, {:10}, {:10},     {:10.6f}     {:.3f} ".format(
                 m, n, k, elap, m * n * k * 2 * 1.0 / elap / 1.0e12
             )
         )

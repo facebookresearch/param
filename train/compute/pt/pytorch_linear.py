@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 class Net(nn.Module):
     def __init__(self, layers_size):
-        super(Net, self).__init__()
+        super().__init__()
         self.linear_layer_list = nn.ModuleList(
             [
                 nn.Linear(layers_size[i], layers_size[i + 1])
@@ -354,7 +354,7 @@ def run(args, dataset):
         # compatibility
         # len(layers_size) including the input and output layer counts.
         print(
-            "{0:6},  {1:6},  {2:6},  {3:6},  {4:6},  {5:10.6f},  {6:8.1f}, {7:10.1f}".format(
+            "{:6},  {:6},  {:6},  {:6},  {:6},  {:10.6f},  {:8.1f}, {:10.1f}".format(
                 len(layers_size),
                 layers_size[0],
                 layers_size[1],
@@ -367,7 +367,7 @@ def run(args, dataset):
         )
 
         if args.debug:
-            print("layers size: {}".format(layers_size))
+            print(f"layers size: {layers_size}")
 
 
 def dash_separated_ints(value):

@@ -1,6 +1,7 @@
 import abc
 import copy
-from typing import Any, Callable, Dict, List, Type
+from collections.abc import Callable
+from typing import Any, Dict, List, Type
 
 from .generator import full_range, IterableList, ListProduct, TableProduct
 from .init_helper import get_logger
@@ -14,7 +15,7 @@ ATTR_LIST = "__list__"
 META_ATTRS = {ATTR_COPY, ATTR_RANGE, ATTR_LIST}
 
 
-def genericList_to_list(genericList: Dict[str, Any]):
+def genericList_to_list(genericList: dict[str, Any]):
     result = []
     for item in genericList["value"]:
         result.append(item["value"])
@@ -34,7 +35,7 @@ class ConfigIterator(metaclass=abc.ABCMeta):
             or NotImplemented
         )
 
-    def __init__(self, configs: Dict[str, Any], key: str, device: str):
+    def __init__(self, configs: dict[str, Any], key: str, device: str):
         self.configs = configs
         self.key = key
         self.device = device
@@ -48,7 +49,7 @@ class ConfigIterator(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 
-def remove_meta_attr(config: Dict[str, Any]):
+def remove_meta_attr(config: dict[str, Any]):
     result_config = copy.deepcopy(config)
     # TODO lofe: support kwargs too.
     for arg in result_config["args"]:
@@ -57,8 +58,8 @@ def remove_meta_attr(config: Dict[str, Any]):
     return result_config
 
 
-def create_range_iter(arg: Dict[str, Any]):
-    def create_tensor(attr: Dict[str, Any]):
+def create_range_iter(arg: dict[str, Any]):
+    def create_tensor(attr: dict[str, Any]):
         logger.debug(f"{attr}")
         result = copy.copy(attr)
         # if ranges exists, create iterator
@@ -73,11 +74,11 @@ def create_range_iter(arg: Dict[str, Any]):
         # otherwise return unchanged
         return result
 
-    def create_float(attr: Dict[str, Any]):
+    def create_float(attr: dict[str, Any]):
         # Not supporting range float values, any use cases?
         return copy.copy(attr)
 
-    def create_int(attr: Dict[str, Any]):
+    def create_int(attr: dict[str, Any]):
         result = copy.copy(attr)
         if ATTR_RANGE in attr:
             ranges = set(attr[ATTR_RANGE])
@@ -86,7 +87,7 @@ def create_range_iter(arg: Dict[str, Any]):
                 return TableProduct(result)
         return result
 
-    def create_str(attr: Dict[str, Any]):
+    def create_str(attr: dict[str, Any]):
         result = copy.copy(attr)
         if ATTR_RANGE in attr:
             ranges = set(attr[ATTR_RANGE])
@@ -95,7 +96,7 @@ def create_range_iter(arg: Dict[str, Any]):
                 return TableProduct(result)
         return result
 
-    def create_bool(attr: Dict[str, Any]):
+    def create_bool(attr: dict[str, Any]):
         result = copy.copy(attr)
         if ATTR_RANGE in attr:
             ranges = set(attr[ATTR_RANGE])
@@ -104,14 +105,14 @@ def create_range_iter(arg: Dict[str, Any]):
                 return TableProduct(result)
         return result
 
-    def create_none(attr: Dict[str, Any]):
+    def create_none(attr: dict[str, Any]):
         return copy.copy(attr)
 
     # Called for a list of data types to be iterated
-    def create_dtype(values: List[str]):
+    def create_dtype(values: list[str]):
         return IterableList(values)
 
-    def create_shape(values: List[Any]):
+    def create_shape(values: list[Any]):
         shape = []
         for val in values:
             # TODO lofe: should also check for ATTR_RANGE
@@ -121,7 +122,7 @@ def create_range_iter(arg: Dict[str, Any]):
                 shape.append(val)
         return ListProduct(shape)
 
-    def create_device(attr: Dict[str, Any]):
+    def create_device(attr: dict[str, Any]):
         result = copy.copy(attr)
         if ATTR_RANGE in attr:
             ranges = set(attr[ATTR_RANGE])
@@ -130,7 +131,7 @@ def create_range_iter(arg: Dict[str, Any]):
                 return TableProduct(result)
         return result
 
-    def create_genericlist(attr: List[Any]):
+    def create_genericlist(attr: list[Any]):
         result = copy.copy(attr)
         if ATTR_RANGE in attr:
             ranges = set(attr[ATTR_RANGE])
@@ -142,7 +143,7 @@ def create_range_iter(arg: Dict[str, Any]):
                 return TableProduct(result)
         return result
 
-    def create_tuple(attr: List[Any]):
+    def create_tuple(attr: list[Any]):
         result = copy.copy(attr)
         if ATTR_RANGE in attr:
             ranges = set(attr[ATTR_RANGE])
@@ -154,7 +155,7 @@ def create_range_iter(arg: Dict[str, Any]):
                 return TableProduct(result)
         return result
 
-    arg_factory_iter: Dict[str, Callable] = {
+    arg_factory_iter: dict[str, Callable] = {
         "tensor": create_tensor,
         "float": create_float,
         "double": create_float,
@@ -175,14 +176,14 @@ def create_range_iter(arg: Dict[str, Any]):
 class RangeConfigIterator(ConfigIterator):
     def __init__(
         self,
-        configs: Dict[str, Any],
+        configs: dict[str, Any],
         key: str,
         device: str,
     ):
-        super(RangeConfigIterator, self).__init__(configs, key, device)
+        super().__init__(configs, key, device)
         self.generator = self._generate()
 
-    def _apply_copy(self, config: Dict[str, Any]):
+    def _apply_copy(self, config: dict[str, Any]):
         args = config["args"]
         # TODO lofe: support kwargs too.
         for arg in args:
@@ -240,11 +241,11 @@ class RangeConfigIterator(ConfigIterator):
 class DefaultConfigIterator(ConfigIterator):
     def __init__(
         self,
-        configs: Dict[str, Any],
+        configs: dict[str, Any],
         key: str,
         device: str,
     ):
-        super(DefaultConfigIterator, self).__init__(configs, key, device)
+        super().__init__(configs, key, device)
         self.idx = 0
         self.configs = configs[key]
         self.num_configs = len(self.configs)
@@ -262,11 +263,11 @@ class DefaultConfigIterator(ConfigIterator):
 class DummyConfigIterator(ConfigIterator):
     def __init__(
         self,
-        configs: Dict[str, Any],
+        configs: dict[str, Any],
         key: str,
         device: str,
     ):
-        super(DummyConfigIterator, self).__init__(configs, key, device)
+        super().__init__(configs, key, device)
         self.called_once = False
 
     def __next__(self):
@@ -277,7 +278,7 @@ class DummyConfigIterator(ConfigIterator):
             raise StopIteration
 
 
-def register_config_iterator(name: str, iterator_class: Type[ConfigIterator]):
+def register_config_iterator(name: str, iterator_class: type[ConfigIterator]):
     global config_iterator_map
     logger.debug(f"register iterator: {name}")
     if name not in config_iterator_map:
@@ -286,7 +287,7 @@ def register_config_iterator(name: str, iterator_class: Type[ConfigIterator]):
         raise ValueError(f"Duplicate iterator registration name: {name}")
 
 
-config_iterator_map: Dict[str, Type[ConfigIterator]] = {}
+config_iterator_map: dict[str, type[ConfigIterator]] = {}
 
 register_config_iterator("DefaultConfigIterator", DefaultConfigIterator)
 register_config_iterator("RangeConfigIterator", RangeConfigIterator)

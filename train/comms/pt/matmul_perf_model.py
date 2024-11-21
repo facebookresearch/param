@@ -22,7 +22,7 @@ from triton.testing import (
 )
 
 
-@functools.lru_cache()
+@functools.lru_cache
 def get_clock_rate_in_khz():
     try:
         return nvsmi(["clocks.max.sm"])[0] * 1e3

@@ -17,7 +17,7 @@ class TestTraceLoadAndValidate(unittest.TestCase):
         with (
             gzip.open(trace_file, "rb")
             if trace_file.endswith("gz")
-            else open(trace_file, "r")
+            else open(trace_file)
         ) as execution_data:
             execution_trace: ExecutionTrace = ExecutionTrace(json.load(execution_data))
             t = TraceValidator(execution_trace)

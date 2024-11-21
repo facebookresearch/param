@@ -266,7 +266,7 @@ def main():
     if args.ncu_iteration:
         run_options["ncu_iteration"] = args.ncu_iteration
     if args.ncu_args_file:
-        with open(args.ncu_args_file, "r") as ncu_file:
+        with open(args.ncu_args_file) as ncu_file:
             run_options["ncu_args"] = ncu_file.read().strip()
 
     if args.nsys_bin:
@@ -276,7 +276,7 @@ def main():
     if args.nsys_iteration:
         run_options["nsys_iteration"] = args.nsys_iteration
     if args.nsys_args_file:
-        with open(args.nsys_args_file, "r") as nsys_file:
+        with open(args.nsys_args_file) as nsys_file:
             run_options["nsys_args"] = nsys_file.read().strip()
 
     if args.cupti_profiler and not run_options["device"].startswith("cuda"):

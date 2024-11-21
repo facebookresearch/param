@@ -5,7 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import argparse
 import json
@@ -41,7 +40,7 @@ LOOP_TIMER_S = 0.02
 VALID_TRACE_TYPES = ["basic", "et", "kineto"]
 
 
-def writeCommDetails(commsTracePerf: List, rank: int, folder: str = "./") -> None:
+def writeCommDetails(commsTracePerf: list, rank: int, folder: str = "./") -> None:
     """
     Writes the replayed comm details of the current rank.
 
@@ -77,11 +76,11 @@ def writeCommDetails(commsTracePerf: List, rank: int, folder: str = "./") -> Non
         try:
             import subprocess
 
-            subprocess.check_output(
-                ["mkdir", "-p", str(folder)], universal_newlines=True
-            )
+            subprocess.check_output(["mkdir", "-p", str(folder)], text=True)
         except Exception as err:
-            logger.error("\t Error: %s while creating directory: %s " % (err, folder))
+            logger.error(
+                "\t Error: {} while creating directory: {} ".format(err, folder)
+            )
             pass
         with open(comms_file, "w") as write_file:
             json.dump(commsTracePerf, write_file, indent=2)
@@ -121,16 +120,16 @@ class commsTraceReplayBench(paramCommsBench):
         self.profiler_num_replays_start = 0
         self.profiler_num_replays = 10
 
-        self.collInMsgBytes: Dict[str, List] = {}
-        self.collInUniMsgBytes: Dict[str, Set] = {}
-        self.collOutMsgBytes: Dict[str, List] = {}
-        self.collOutUniMsgBytes: Dict[str, Set] = {}
+        self.collInMsgBytes: dict[str, list] = {}
+        self.collInUniMsgBytes: dict[str, set] = {}
+        self.collOutMsgBytes: dict[str, list] = {}
+        self.collOutUniMsgBytes: dict[str, set] = {}
 
         self.batchLat = []
-        self.collLat: Dict[str, List] = {}
-        self.compLat: Dict[str, List] = {}
+        self.collLat: dict[str, list] = {}
+        self.compLat: dict[str, list] = {}
 
-        self.comms_blocks: Dict[str, List] = {}
+        self.comms_blocks: dict[str, list] = {}
         self.traceWithPerf = []
         self.blockStack = []
         self.replayIter = 0
@@ -1533,7 +1532,7 @@ class commsTraceReplayBench(paramCommsBench):
             )
 
 
-def extractCommsInfo(in_trace: List[Dict]) -> List[commsArgs]:
+def extractCommsInfo(in_trace: list[dict]) -> list[commsArgs]:
     """
     Convert Basic Trace to comms trace format.
     """

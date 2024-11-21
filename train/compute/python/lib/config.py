@@ -13,18 +13,18 @@ logger = get_logger()
 
 class OperatorConfig:
     def __init__(
-        self, name: str, info: Dict[str, Any], op: Optional[OperatorInterface] = None
+        self, name: str, info: dict[str, Any], op: OperatorInterface | None = None
     ):
         self._name: str = name
-        self._info: Dict[str, Any] = info
-        self._op: Optional[OperatorInterface] = op
+        self._info: dict[str, Any] = info
+        self._op: OperatorInterface | None = op
 
     @property
     def name(self) -> str:
         return self._name
 
     @property
-    def op(self) -> Optional[OperatorInterface]:
+    def op(self) -> OperatorInterface | None:
         return self._op
 
     @op.setter
@@ -32,43 +32,43 @@ class OperatorConfig:
         self._op = value
 
     @property
-    def info(self) -> Dict[str, Any]:
+    def info(self) -> dict[str, Any]:
         return self._info
 
     @property
-    def build_iterator(self) -> Type[ConfigIterator]:
+    def build_iterator(self) -> type[ConfigIterator]:
         return self._build_iterator
 
     @build_iterator.setter
-    def build_iterator(self, value: Type[ConfigIterator]):
+    def build_iterator(self, value: type[ConfigIterator]):
         self._build_iterator = value
 
     @property
-    def input_iterator(self) -> Type[ConfigIterator]:
+    def input_iterator(self) -> type[ConfigIterator]:
         return self._input_iterator
 
     @input_iterator.setter
-    def input_iterator(self, value: Type[ConfigIterator]):
+    def input_iterator(self, value: type[ConfigIterator]):
         self._input_iterator = value
 
     @property
-    def build_data_generator(self) -> Type[DataGenerator]:
+    def build_data_generator(self) -> type[DataGenerator]:
         return self._build_data_generator
 
     @build_data_generator.setter
-    def build_data_generator(self, value: Type[DataGenerator]):
+    def build_data_generator(self, value: type[DataGenerator]):
         self._build_data_generator = value
 
     @property
-    def input_data_generator(self) -> Type[DataGenerator]:
+    def input_data_generator(self) -> type[DataGenerator]:
         return self._input_data_generator
 
     @input_data_generator.setter
-    def input_data_generator(self, value: Type[DataGenerator]):
+    def input_data_generator(self, value: type[DataGenerator]):
         self._input_data_generator = value
 
 
-def make_op_config(op_name: str, op_info: Dict[str, Any], device: str):
+def make_op_config(op_name: str, op_info: dict[str, Any], device: str):
     global op_map
     if op_name in op_map:
         op = op_map[op_name]
@@ -113,7 +113,7 @@ class BenchmarkConfig:
     BenchmarkConfig stores loaded configuration data.
     """
 
-    def __init__(self, run_options: Dict[str, Any]):
+    def __init__(self, run_options: dict[str, Any]):
         self.run_options = run_options
         self._op_configs = []
         self.bench_config = None
@@ -133,12 +133,12 @@ class BenchmarkConfig:
         self.bench_config = json.loads(config_json)
         self._process_bench_config()
 
-    def load(self, config: Dict[str, Any]):
+    def load(self, config: dict[str, Any]):
         self.bench_config = copy.deepcopy(config)
         self._process_bench_config()
 
     @property
-    def op_configs(self) -> List[OperatorConfig]:
+    def op_configs(self) -> list[OperatorConfig]:
         return self._op_configs
 
     def has_op(self, op: str):

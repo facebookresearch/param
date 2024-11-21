@@ -24,7 +24,7 @@ class DataGenerator(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 
-def register_data_generator(name: str, data_gen_class: Type[DataGenerator]):
+def register_data_generator(name: str, data_gen_class: type[DataGenerator]):
     global data_generator_map
     logger.debug(f"register data generator: {name}")
     if name not in data_generator_map:
@@ -33,4 +33,4 @@ def register_data_generator(name: str, data_gen_class: Type[DataGenerator]):
         raise ValueError(f"Duplicate data generator registration name: {name}")
 
 
-data_generator_map: Dict[str, Type[DataGenerator]] = {}
+data_generator_map: dict[str, type[DataGenerator]] = {}

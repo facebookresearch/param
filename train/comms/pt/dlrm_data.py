@@ -8,7 +8,6 @@
 # 1) random distribution, generated and loaded based on uniform distribution
 # 2) synthetic data, the synthetic pre-generated data would be loaded.
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import sys
 

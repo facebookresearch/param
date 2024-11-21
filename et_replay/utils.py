@@ -36,15 +36,15 @@ def load_execution_trace_file(et_file_path: str) -> ExecutionTrace:
     return ExecutionTrace(data)
 
 
-def read_dictionary_from_json_file(file_path: str) -> Dict[Any, Any]:
+def read_dictionary_from_json_file(file_path: str) -> dict[Any, Any]:
     """Read a json file and return it as a dictionary."""
     with (
-        gzip.open(file_path, "rb") if file_path.endswith("gz") else open(file_path, "r")
+        gzip.open(file_path, "rb") if file_path.endswith("gz") else open(file_path)
     ) as f:
         return json.load(f)
 
 
-def write_dictionary_to_json_file(file_path: str, data: Dict[Any, Any]) -> None:
+def write_dictionary_to_json_file(file_path: str, data: dict[Any, Any]) -> None:
     """Write input dictionary to a json file."""
     if file_path.endswith("gz"):
         with gzip.open(file_path, "w") as f:

@@ -10,8 +10,9 @@
 import collections
 import statistics
 import time
+from collections.abc import Callable
 from itertools import repeat
-from typing import Callable, List, Tuple
+from typing import List, Tuple
 
 import torch
 import torch.nn as nn
@@ -20,7 +21,7 @@ from einops.layers.torch import Rearrange
 
 
 def benchmark_requests(
-    requests: List[Tuple[torch.FloatTensor]],
+    requests: list[tuple[torch.FloatTensor]],
     func: Callable[[torch.Tensor], torch.Tensor],
     check_median: bool = False,
 ) -> float:

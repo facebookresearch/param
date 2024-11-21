@@ -1,6 +1,7 @@
 import copy
 import random
-from typing import Any, Callable, Dict, List, Set
+from collections.abc import Callable
+from typing import Any, Dict, List, Set
 
 import torch
 
@@ -9,32 +10,32 @@ from ..init_helper import get_logger
 
 logger = get_logger()
 
-pytorch_int_dtype_map: Dict[str, torch.dtype] = {
+pytorch_int_dtype_map: dict[str, torch.dtype] = {
     "uint8": torch.uint8,
     "int8": torch.int8,
     "int16": torch.int16,
     "int": torch.int32,
     "long": torch.int64,
 }
-pytorch_float_dtype_map: Dict[str, torch.dtype] = {
+pytorch_float_dtype_map: dict[str, torch.dtype] = {
     "float": torch.float32,
     "double": torch.float64,
     "float16": torch.float16,
     "bfloat16": torch.bfloat16,
 }
-pytorch_dtype_map: Dict[str, torch.dtype] = {
+pytorch_dtype_map: dict[str, torch.dtype] = {
     **pytorch_int_dtype_map,
     **pytorch_float_dtype_map,
     "bool": torch.bool,
 }
 
 
-def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
+def materialize_arg(arg: dict[str, Any], device: str) -> Any:
     """
     Given an arg configuration, materialize the test data for that arg.
     """
 
-    def create_tensor(attr: Dict[str, Any]):
+    def create_tensor(attr: dict[str, Any]):
         shape = attr["shape"]
         requires_grad = attr.get("requires_grad", True)
         if len(shape) > 0:
@@ -73,44 +74,44 @@ def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
                 device=torch.device(device),
             )
 
-    def create_float(attr: Dict[str, Any]):
+    def create_float(attr: dict[str, Any]):
         if "value" in attr:
             return attr["value"]
         return random.uniform(attr["value_range"][0], attr["value_range"][1])
 
-    def create_int(attr: Dict[str, Any]):
+    def create_int(attr: dict[str, Any]):
         # check "value" key exists, attr["value"] = 0 could be eval to False
         if "value" in attr:
             return attr["value"]
         return random.randint(attr["value_range"][0], attr["value_range"][1])
 
-    def create_str(attr: Dict[str, Any]):
+    def create_str(attr: dict[str, Any]):
         # check "value" key exists, attr["value"] = 0 could be eval to False
         if "value" in attr:
             return attr["value"]
         return ""
 
-    def create_bool(attr: Dict[str, Any]):
+    def create_bool(attr: dict[str, Any]):
         return attr["value"]
 
-    def create_none(attr: Dict[str, Any]):
+    def create_none(attr: dict[str, Any]):
         return None
 
-    def create_device(attr: Dict[str, Any]):
+    def create_device(attr: dict[str, Any]):
         return torch.device(attr["value"])
 
-    def create_genericlist(attr: List[Any]):
+    def create_genericlist(attr: list[Any]):
         result = []
         for item in attr["value"]:
             result.append(arg_factory[item["type"]](item))
         return result
 
-    def create_tuple(attr: List[Any]):
+    def create_tuple(attr: list[Any]):
         result = create_genericlist(attr)
         return tuple(result)
 
     # Map of argument types to the create methods.
-    arg_factory: Dict[str, Callable] = {
+    arg_factory: dict[str, Callable] = {
         "tensor": create_tensor,
         "float": create_float,
         "double": create_float,
@@ -129,7 +130,7 @@ def materialize_arg(arg: Dict[str, Any], device: str) -> Any:
 # DefaultDataGenerator
 class DefaultDataGenerator(DataGenerator):
     def __init__(self, cache: bool = False):
-        super(DefaultDataGenerator, self).__init__()
+        super().__init__()
         # keep track/cache last arg_config so we only generate data for
         # args that's different from previous iteration.
         self.cache = cache
@@ -137,7 +138,7 @@ class DefaultDataGenerator(DataGenerator):
         self.op_args = []
         self.op_kwargs = {}
 
-    def _find_updates(self, config: Dict[str, Any]):
+    def _find_updates(self, config: dict[str, Any]):
         if not self.prev_config:
             return (None, None)
         arg_updates = set()
@@ -158,12 +159,12 @@ class DefaultDataGenerator(DataGenerator):
 
     def _generate_data(
         self,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         device: str,
-        op_args: List[Any],  # potentially cached container
-        op_kwargs: Dict[str, Any],  # potentially cached container
-        arg_updates: Set[Any],
-        kwarg_updates: Set[Any],
+        op_args: list[Any],  # potentially cached container
+        op_kwargs: dict[str, Any],  # potentially cached container
+        arg_updates: set[Any],
+        kwarg_updates: set[Any],
     ):
         # initialize positional args array if empty (not cached).
         if len(op_args) == 0:
@@ -185,7 +186,7 @@ class DefaultDataGenerator(DataGenerator):
                     op_kwargs[key] = materialize_arg(arg, device)
         return (op_args, op_kwargs)
 
-    def get_data(self, config: Dict[str, Any], device: str):
+    def get_data(self, config: dict[str, Any], device: str):
         if not config:
             # No configs, just return empty args.
             return ([], {})

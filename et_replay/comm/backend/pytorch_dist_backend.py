@@ -203,7 +203,7 @@ class PyTorchDistBackend(BaseBackend):
             collectiveArgs.use_ext_dist = self.use_ext_dist
             work = all_to_all_internal(collectiveArgs)
         elif collectiveArgs.num_emb_tables_batched > 0 and self.use_ext_dist:
-            work: List[extend_distributed.Request] = []
+            work: list[extend_distributed.Request] = []
             dim_sum_per_rank = [
                 collectiveArgs.num_emb_tables_batched * collectiveArgs.emb_dim
             ] * collectiveArgs.world_size
@@ -715,7 +715,7 @@ class PyTorchDistBackend(BaseBackend):
 
     def alloc_random(
         self,
-        sizeArr: List[int],
+        sizeArr: list[int],
         curRankDevice="cuda",
         dtype=torch.float32,
         scaleFactor=1.0,
@@ -870,13 +870,13 @@ class PyTorchDistBackend(BaseBackend):
         else:
             return None
 
-    def get_current_stream(self, device: Optional[torch.device]):
+    def get_current_stream(self, device: torch.device | None):
         if self.commsParams.device == "cuda":
             return torch.cuda.current_stream(device)
         else:
             return None
 
-    def switch_stream(self, stream, device: Optional[torch.device]):
+    def switch_stream(self, stream, device: torch.device | None):
         """switch to a new stream and return the current stream"""
         if device is None:
             device = self.get_device()
@@ -889,8 +889,8 @@ class PyTorchDistBackend(BaseBackend):
 
     def sync_stream(
         self,
-        stream: Optional[torch.cuda.Stream] = None,
-        device: Optional[torch.device] = None,
+        stream: torch.cuda.Stream | None = None,
+        device: torch.device | None = None,
     ):
         """Synchronize a stream with its associated device"""
         if device is not None and device.type == "cuda":
@@ -1017,7 +1017,7 @@ class PyTorchDistBackend(BaseBackend):
 
         # map from group_rank to pgId, pgId of the groups in current rank is the pgId defined in
         # ET, pgId of the groups from other ranks is -1.
-        group_rank_to_pgId: Dict[Tuple[int], List[int]] = defaultdict(list)
+        group_rank_to_pgId: dict[tuple[int], list[int]] = defaultdict(list)
         for pg_id, group_ranks in self.commsParams.groupRanks.items():
             if group_ranks is None or len(group_ranks) == 0:
                 group_ranks = list(range(world_size))

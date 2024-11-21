@@ -213,7 +213,7 @@ class PyTorchDistBackend(backendFunctions):
             collectiveArgs.use_ext_dist = self.use_ext_dist
             work = all_to_all_internal(collectiveArgs)
         elif collectiveArgs.num_emb_tables_batched > 0 and self.use_ext_dist:
-            work: List[extend_distributed.Request] = []
+            work: list[extend_distributed.Request] = []
             dim_sum_per_rank = [
                 collectiveArgs.num_emb_tables_batched * collectiveArgs.emb_dim
             ] * collectiveArgs.world_size
@@ -996,13 +996,13 @@ class PyTorchDistBackend(backendFunctions):
         else:
             return None
 
-    def get_current_stream(self, device: Optional[torch.device]):
+    def get_current_stream(self, device: torch.device | None):
         if self.commsParams.device == "cuda":
             return torch.cuda.current_stream(device)
         else:
             return None
 
-    def switch_stream(self, stream, device: Optional[torch.device]):
+    def switch_stream(self, stream, device: torch.device | None):
         """switch to a new stream and return the current stream"""
         if device is None:
             device = self.get_device()
@@ -1015,8 +1015,8 @@ class PyTorchDistBackend(backendFunctions):
 
     def sync_stream(
         self,
-        stream: Optional[torch.cuda.Stream] = None,
-        device: Optional[torch.device] = None,
+        stream: torch.cuda.Stream | None = None,
+        device: torch.device | None = None,
     ):
         """Synchronize a stream with its associated device"""
         if device.type == "cuda":
@@ -1150,7 +1150,7 @@ class PyTorchDistBackend(backendFunctions):
 
     def initialize_groups(
         self,
-        groupRanks: Optional[Dict[int, List[int]]] = None,
+        groupRanks: dict[int, list[int]] | None = None,
         backend="gloo",
         force_new_group=False,
     ):

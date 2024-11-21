@@ -119,7 +119,7 @@ class CustomEncoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, o)
 
 
-queries: Dict[str, str] = {
+queries: dict[str, str] = {
     "cuda_kernel": """
     SELECT NVTX_EVENTS.rangeId,
         NVTX_EVENTS.text,
@@ -174,7 +174,7 @@ queries: Dict[str, str] = {
 
 
 def create_op_event_range(
-    op_events: Dict[str, Dict[str, OperatorEvent]],
+    op_events: dict[str, dict[str, OperatorEvent]],
     op_name,
     id,
     range_id,
@@ -195,7 +195,7 @@ def create_op_event_range(
 
 
 def parse_kernel_events(
-    event_info: List[Tuple[Any]], op_events: Dict[str, Dict[str, OperatorEvent]]
+    event_info: list[tuple[Any]], op_events: dict[str, dict[str, OperatorEvent]]
 ):
     for event in event_info:
         range_id = event[0]
@@ -241,7 +241,7 @@ def parse_kernel_events(
 
 
 def parse_sync_events(
-    event_info: List[Tuple[Any]], op_events: Dict[str, Dict[str, OperatorEvent]]
+    event_info: list[tuple[Any]], op_events: dict[str, dict[str, OperatorEvent]]
 ):
     for event in event_info:
         range_id = event[0]
@@ -325,7 +325,7 @@ def main():
     cuda_sync_rows = list(cur.execute(queries["cuda_sync"]))
     con.close()
 
-    op_events: Dict[str, Dict[str, OperatorEvent]] = {}
+    op_events: dict[str, dict[str, OperatorEvent]] = {}
     parse_kernel_events(cuda_kernel_rows, op_events)
     parse_sync_events(cuda_sync_rows, op_events)
     analyze_events(op_events)

@@ -46,7 +46,7 @@ class commsQuantCollPerfMetrics(commsPerfMetrics):
     quant_p95_latency_us: float = 0.0
     dequant_p95_latency_us: float = 0.0
     quant_comms_p95_latency_us: float = 0.0
-    TFLOPs: Optional[float] = 0.0
+    TFLOPs: float | None = 0.0
 
     def __post_init__(self):
         self.BenchCommsType = benchType.QuantCollective
@@ -65,7 +65,7 @@ class commsCollPerfMetrics(commsPerfMetrics):
     max_latency_us: float = 0.0
     AlgoBW_GBs: float = 0.0
     BusBW_GBs: float = 0.0
-    TFLOPs: Optional[float] = 0.0
+    TFLOPs: float | None = 0.0
 
     def __post_init__(self):
         self.BenchCommsType = benchType.Collective
@@ -117,7 +117,7 @@ class commsPerfLogger:
         pass
 
 
-customized_perf_loggers: Dict[str, commsPerfLogger] = {}
+customized_perf_loggers: dict[str, commsPerfLogger] = {}
 
 
 def register_perf_logger(

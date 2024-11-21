@@ -7,13 +7,13 @@ from ...lib.pytorch.operator_impl import BuildableOp, CallableOp, UnaryOp
 
 
 # Unary
-unary_ops: Dict[str, OperatorInterface] = {
+unary_ops: dict[str, OperatorInterface] = {
     "torch.add_": UnaryOp("add_"),
     "torch.clamp_": UnaryOp("clamp_"),
 }
 register_operators(unary_ops)
 
-callable_ops: Dict[str, OperatorInterface] = {
+callable_ops: dict[str, OperatorInterface] = {
     "torch.add": CallableOp(torch.add),
     "torch.baddbmm": CallableOp(torch.baddbmm),
     "torch.bmm": CallableOp(torch.bmm),
@@ -28,7 +28,7 @@ callable_ops: Dict[str, OperatorInterface] = {
 register_operators(callable_ops)
 
 
-buildable_ops: Dict[str, OperatorInterface] = {
+buildable_ops: dict[str, OperatorInterface] = {
     "torch.nn.AdaptiveAvgPool2d": BuildableOp(torch.nn.AdaptiveAvgPool2d),
     "torch.nn.Conv2d": BuildableOp(torch.nn.Conv2d),
     "torch.nn.Dropout": BuildableOp(torch.nn.Dropout),

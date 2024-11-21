@@ -342,7 +342,7 @@ class backendFunctions(ABC):
         pass
 
     @abstractmethod
-    def get_groups(self) -> List[ProcessGroup]:
+    def get_groups(self) -> list[ProcessGroup]:
         pass
 
     @abstractmethod
@@ -365,13 +365,13 @@ class backendFunctions(ABC):
         pass
 
 
-customized_backend: Dict[str, backendFunctions] = {}
+customized_backend: dict[str, backendFunctions] = {}
 
 
 def register_customized_backend(
     name: str,
     func: backendFunctions,
-    device: Optional[str] = None,
+    device: str | None = None,
 ) -> None:
     global customized_backend
     customized_backend[name] = func

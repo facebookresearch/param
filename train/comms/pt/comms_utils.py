@@ -3,13 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from __future__ import (
-    absolute_import,
-    annotations,
-    division,
-    print_function,
-    unicode_literals,
-)
+from __future__ import annotations
 
 import argparse
 
@@ -20,9 +14,10 @@ import sys
 from abc import ABC, abstractmethod
 from argparse import ArgumentParser, Namespace
 from collections import OrderedDict
+from collections.abc import Callable
 from contextlib import ContextDecorator
 from io import StringIO
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
     from param_bench.train.comms.pt.fb.internals import (
@@ -124,7 +119,7 @@ def parsesize(ipValue: str) -> int:
     return int(size)
 
 
-def parseRankList(ipStr: str) -> List[int]:
+def parseRankList(ipStr: str) -> list[int]:
     """
     Parses a string into a rank list.
 
@@ -150,7 +145,7 @@ def parseRankList(ipStr: str) -> List[int]:
     return rankList
 
 
-def getAlgBW(elapsedTimeNS: float, dataSize: int, numIters: int) -> Tuple[float, float]:
+def getAlgBW(elapsedTimeNS: float, dataSize: int, numIters: int) -> tuple[float, float]:
     """
     Similar to how algorithmic bandwidth is computed in nccl-tests.
 
@@ -173,7 +168,7 @@ def getAlgBW(elapsedTimeNS: float, dataSize: int, numIters: int) -> Tuple[float,
 
 def getSizes(
     beginSize: int, endSize: int, stepFactor: int, stepBytes: int
-) -> List[int]:
+) -> list[int]:
     """
     Gets the sizes of each iteration.
 
@@ -242,7 +237,7 @@ def fixBeginSize(commsParams: commsParamsHolder, world_size: int) -> None:
 
 def get_rank_details(
     backendFuncs: backendFunctions,
-) -> Tuple[int, int, int, ProcessGroup, str, str]:
+) -> tuple[int, int, int, ProcessGroup, str, str]:
     """
     Returns the details of the rank for the current backendFunction.
 
@@ -261,7 +256,7 @@ def get_rank_details(
     return (local_rank, global_rank, world_size, group, curDevice, curHwDevice)
 
 
-def env2int(env_list: List[str], default: int = -1) -> int:
+def env2int(env_list: list[str], default: int = -1) -> int:
     """
     Takes environment variables list and returns the first value found.
 
@@ -278,7 +273,7 @@ def env2int(env_list: List[str], default: int = -1) -> int:
     return default
 
 
-def read_comms_env_vars() -> Dict[str, int]:
+def read_comms_env_vars() -> dict[str, int]:
     """
     Reads environment variables and record them.
 
@@ -434,7 +429,7 @@ def clearQuantCommCtx(collectiveArgs: collectiveArgsHolder) -> None:
         remove_quantization_handlers(collectiveArgs)
 
 
-def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
+def paramToCommName(name: str, supported_comms: list[str] = None) -> str:
     """
     Map any possible creative collective names to the internal name.
     Validate the `name` if `supported_comms` is provided.
@@ -475,7 +470,7 @@ def paramToCommName(name: str, supported_comms: List[str] = None) -> str:
     return new_name
 
 
-def ensureTensorFlush(tensors: Union[List[torch.Tensor], torch.Tensor]) -> float:
+def ensureTensorFlush(tensors: list[torch.Tensor] | torch.Tensor) -> float:
     """
     Use this to flush non-blocking ops to ensure they are really complete.
 
@@ -612,7 +607,7 @@ class commsArgs:
         )
         self.bagSize = kwargs["bagSize"] if "bagSize" in kwargs else None
 
-    def toDict(self) -> Dict:
+    def toDict(self) -> dict:
         """
         Convert commsArgs to dictionary for storing in json.
 
@@ -705,11 +700,11 @@ class paramStreamGuard(ContextDecorator):
 
     def __init__(
         self,
-        stream: Optional[torch.cuda.Stream],  # TODO: MAKE Generic Stream
+        stream: torch.cuda.Stream | None,  # TODO: MAKE Generic Stream
         curDevice: torch.device,
         backendFuncs: backendFunctions,
         is_blocking: bool = True,
-        timer: Optional[paramDeviceTimer] = None,
+        timer: paramDeviceTimer | None = None,
     ) -> None:
         self.cur_stream = None
         self.stream = stream
@@ -772,7 +767,7 @@ class bootstrap_info_holder:
         master_ip: str,
         master_port: str,
         num_tpu_cores: int,
-        comms_env_params: Dict[str, int],
+        comms_env_params: dict[str, int],
     ) -> None:
         self.global_rank = comms_env_params["global_rank"]
         self.local_rank = comms_env_params["local_rank"]
@@ -818,7 +813,7 @@ class commsDlrmParamsHolder(commsParamsHolderBase):
     def __init__(
         self,
         args,
-        mpi_env_params: Dict[str, int],
+        mpi_env_params: dict[str, int],
     ) -> None:
         super().__init__(args)
 
@@ -852,7 +847,7 @@ class commsParamsHolder(commsParamsHolderBase):
         bootstrap_info: bootstrap_info_holder,
         element_size: int,
         benchTime: Callable,
-        groupRanks: Dict[int, List[int]] = None,  # pyre-ignore
+        groupRanks: dict[int, list[int]] = None,  # pyre-ignore
     ) -> None:
         super().__init__(args)
 
@@ -901,7 +896,7 @@ class commsOverlapParamsHolder(commsParamsHolder):
         bootstrap_info: bootstrap_info_holder,
         element_size: int,
         benchTime: Callable,
-        groupRanks: Dict[int, List[int]] = None,  # pyre-ignore
+        groupRanks: dict[int, list[int]] = None,  # pyre-ignore
     ) -> None:
         super().__init__(args, bootstrap_info, element_size, benchTime, groupRanks)
 
@@ -920,7 +915,7 @@ class commsComputParamsHolder(commsParamsHolder):
         bootstrap_info: bootstrap_info_holder,
         element_size: int,
         benchTime: Callable,
-        groupRanks: Dict[int, List[int]] = None,  # pyre-ignore
+        groupRanks: dict[int, list[int]] = None,  # pyre-ignore
     ) -> None:
         super().__init__(args, bootstrap_info, element_size, benchTime, groupRanks)
 
@@ -942,7 +937,7 @@ class commsComputParamsHolder(commsParamsHolder):
 class paramCommsBench(ABC):
     """Abstract class for any param comms benchmark."""
 
-    def __init__(self, supportedNwstacks: List[str] = None) -> None:
+    def __init__(self, supportedNwstacks: list[str] = None) -> None:
         self.supportedNwstacks = supportedNwstacks
         self.supported_tpu_core_valuses = [1, 8]
         self.dtypeMap = {
@@ -1084,7 +1079,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Prepare the all_to_allv mode"""
 
         opTensor = []
@@ -1118,7 +1113,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
 
         ipTensor = None
         opTensor = None
@@ -1199,7 +1194,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # all_to_all requires two tensor lists, e.g., List[torch.Tensor]
 
         ipTensor = []
@@ -1245,7 +1240,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         opTensor = []
 
         if not commsParams.size_from_trace:
@@ -1284,7 +1279,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
 
         opTensor = []
         if not commsParams.size_from_trace:
@@ -1323,7 +1318,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # incast requires a tensor list with length of src_ranks, e.g., List[torch.Tensor]
         opTensor = []
 
@@ -1348,7 +1343,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
 
         ipTensor = []
         opTensor = []
@@ -1395,7 +1390,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
 
         ipTensor = []
         opTensor = []
@@ -1434,7 +1429,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         scaleFactor: float,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # pt2pt or out-of-place collectives
         opTensor = []
         if allocate:
@@ -1455,7 +1450,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         curDevice: str,
         gemmTensor: torch.tensor = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if gemmTensor is None:
             MMin1 = self.backendFuncs.alloc_random(
                 (mm0_dim0, mm0_dim1), curDevice, dtype
@@ -1488,7 +1483,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         curDevice: str,
         kernel: str,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         compIn1 = self.backendFuncs.alloc_random([mm_dim0, mm_dim1], curDevice, dtype)
         compIn2 = None
         if kernel in ["add", "sub"]:
@@ -1514,7 +1509,7 @@ class paramCommsBench(ABC):
         dtype: torch.dtype,
         curDevice: str,
         gemmTensor: torch.tensor = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         return self.prepGemmNotSquare(
             mm_dim, mm_dim, mm_dim, mm_dim, dtype, curDevice, gemmTensor
         )
@@ -1524,7 +1519,7 @@ class paramCommsBench(ABC):
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         allocate: bool = True,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Allocate the tensors for collective.
 
@@ -1782,22 +1777,14 @@ class paramCommsBench(ABC):
         if not isinstance(numeric_level, int):
             raise ValueError(f"Invalid log level: {args.log}")
         comms_env_params = read_comms_env_vars()
-        if sys.version_info >= (3, 8):
-            # overwrite existing logging config. Require Python 3.8+
-            logging.basicConfig(
-                level=numeric_level,
-                format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
-                    comms_env_params["global_rank"]
-                ),
-                force=True,
-            )
-        else:
-            logging.basicConfig(
-                level=numeric_level,
-                format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
-                    comms_env_params["global_rank"]
-                ),
-            )
+        # overwrite existing logging config. Require Python 3.8+
+        logging.basicConfig(
+            level=numeric_level,
+            format="[%(asctime)s][%(name)s][%(levelname)s][Rank{:3}] - %(message)s".format(
+                comms_env_params["global_rank"]
+            ),
+            force=True,
+        )
         # check master-ip and master-port with the following logic
         #   1) prefer the values passed to PARAM, i.e., through --master-ip and --master-port
         #   2) check and use the env. variable, i.e., MASTER_ADDR and MASTER_PORT

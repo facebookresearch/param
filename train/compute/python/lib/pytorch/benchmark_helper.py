@@ -28,7 +28,7 @@ class BenchmarkHelper:
     def __init__(
         self,
         config: Any,
-        logger: Optional[logging.Logger] = None,
+        logger: logging.Logger | None = None,
     ) -> None:
 
         self.logger = logger or logging.getLogger("foo").addHandler(
@@ -44,7 +44,7 @@ class BenchmarkHelper:
         # Load PyTorch operator workloads.
         load_modules(workloads_pytorch)
 
-        self.run_options: Dict[str, Any] = get_benchmark_options()
+        self.run_options: dict[str, Any] = get_benchmark_options()
         self.run_options["warmup"] = getattr(config, "warmup", 1)
         self.run_options["iteration"] = getattr(config, "iteration", 1)
         self.run_options["device"] = getattr(config, "device", "cpu")
@@ -78,7 +78,7 @@ class BenchmarkHelper:
         if getattr(config, "ncu_iteration", None):
             self.run_options["ncu_iteration"] = config.ncu_iteration
         if getattr(config, "ncu_args_file", None):
-            with open(config.ncu_args_file, "r") as ncu_file:
+            with open(config.ncu_args_file) as ncu_file:
                 self.run_options["ncu_args"] = ncu_file.read().strip()
 
         # NSys
@@ -91,7 +91,7 @@ class BenchmarkHelper:
         if getattr(config, "nsys_iteration", None):
             self.run_options["nsys_iteration"] = config.nsys_iteration
         if getattr(config, "nsys_args_file", None):
-            with open(config.nsys_args_file, "r") as nsys_file:
+            with open(config.nsys_args_file) as nsys_file:
                 self.run_options["nsys_args"] = nsys_file.read().strip()
 
         self.run_options["cmd_args"] = getattr(config, "__dict__", None)
@@ -131,7 +131,7 @@ class BenchmarkHelper:
         )
         self.upload_to_manifold: bool = getattr(config, "upload_to_manifold", False)
 
-    def eval(self, evaluate_file_path: str) -> Dict:
+    def eval(self, evaluate_file_path: str) -> dict:
         self.logger.info("Microbenchmarking started")
 
         self.out_file_prefix = (

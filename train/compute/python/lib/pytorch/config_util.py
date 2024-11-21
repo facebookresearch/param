@@ -37,7 +37,7 @@ def get_op_run_id(op_name: str, run_id: str) -> str:
     return f"{op_name}:{run_id}"
 
 
-def get_benchmark_options() -> Dict[str, Any]:
+def get_benchmark_options() -> dict[str, Any]:
     options = {
         "device": "cpu",
         "pass_type": ExecutionPass.FORWARD,
@@ -68,11 +68,11 @@ def get_benchmark_options() -> Dict[str, Any]:
     return options
 
 
-def create_bench_config(name: str) -> Dict[str, Any]:
+def create_bench_config(name: str) -> dict[str, Any]:
     return {name: create_op_info()}
 
 
-def create_op_info() -> Dict[str, Any]:
+def create_op_info() -> dict[str, Any]:
     return {
         "build_iterator": None,
         "input_iterator": None,
@@ -82,11 +82,11 @@ def create_op_info() -> Dict[str, Any]:
     }
 
 
-def create_op_args(args: List[Any], kwargs: Dict[str, Any]) -> Dict[str, Any]:
+def create_op_args(args: list[Any], kwargs: dict[str, Any]) -> dict[str, Any]:
     return {"args": args, "kwargs": kwargs}
 
 
-_pytorch_type: Dict[str, Any] = {
+_pytorch_type: dict[str, Any] = {
     "int": {"type": "int", "value": None},
     "int_range": {"type": "int", "value_range": None},
     "long": {"type": "long", "value": None},
@@ -104,7 +104,7 @@ _pytorch_type: Dict[str, Any] = {
 }
 
 
-def create_type(type) -> Dict[str, Any]:
+def create_type(type) -> dict[str, Any]:
     return copy.deepcopy(_pytorch_type[type])
 
 
@@ -139,7 +139,7 @@ def get_sys_info():
     }
 
 
-def init_pytorch(run_options: Dict[str, Any]):
+def init_pytorch(run_options: dict[str, Any]):
     # We don't want too many threads for stable benchmarks
     torch.set_num_threads(1)
 

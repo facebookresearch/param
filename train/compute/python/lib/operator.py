@@ -46,7 +46,7 @@ class OperatorInterface(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
 
-def register_operator(name: str, operator_class: Type[OperatorInterface]):
+def register_operator(name: str, operator_class: type[OperatorInterface]):
     global op_map
     logger.debug(f"register op: {name}")
     if name not in op_map:
@@ -55,7 +55,7 @@ def register_operator(name: str, operator_class: Type[OperatorInterface]):
         raise ValueError(f"Duplicate operator registration name: {name}")
 
 
-def register_operators(op_dict: Dict[str, Type[OperatorInterface]]):
+def register_operators(op_dict: dict[str, type[OperatorInterface]]):
     global op_map
     for name, operator_class in op_dict.items():
         logger.debug(f"register op: {name}")
@@ -66,4 +66,4 @@ def register_operators(op_dict: Dict[str, Type[OperatorInterface]]):
 
 
 # Global operator registry, a mapping of name to operator object
-op_map: Dict[str, Type[OperatorInterface]] = {}
+op_map: dict[str, type[OperatorInterface]] = {}

@@ -13,7 +13,7 @@ import torch.nn.init
 
 class Net(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, layer_num):
-        super(Net, self).__init__()
+        super().__init__()
         self.layer_num = layer_num
         self.linear_in = nn.Linear(input_size, hidden_size)
         self.linear_hid_list = nn.ModuleList(
@@ -272,7 +272,7 @@ def run(args, dataset):
         QPS = batch_size / elap
 
         print(
-            "{0:6},  {1:6},  {2:6},  {3:6},  {4:6},  {5:10.6f},  {6:8.1f}, {7:10.1f}".format(
+            "{:6},  {:6},  {:6},  {:6},  {:6},  {:10.6f},  {:8.1f}, {:10.1f}".format(
                 layer_num,
                 input_size,
                 hidden_size,

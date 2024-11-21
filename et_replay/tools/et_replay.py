@@ -148,7 +148,7 @@ class ExgrReplayManager:
         self.tensor_shapes = defaultdict(set)
         # Dict that maps tensor storage id to its size, and a map for {device, torch.Tensor}.
         # The tensor with the same storage id may located on different devices.
-        self.tensor_storage_map: Dict[int, []] = defaultdict(set)
+        self.tensor_storage_map: dict[int, []] = defaultdict(set)
         # Mark those tensors that occur first as an input in the original et as needing to be instantiated in replay
         # at the very beginning.
         self.instantiate = set()
@@ -186,7 +186,7 @@ class ExgrReplayManager:
         # actual_skip_nodes is a dictinary which records the skipped node name
         # and the reason to skip it.
         # Dict {name => skip reason}
-        self.actual_skip_nodes: Dict[str, str] = {}
+        self.actual_skip_nodes: dict[str, str] = {}
         self.initial_skip_node_count = 0
         self.n_skipped_nodes = 0
 
@@ -250,7 +250,7 @@ class ExgrReplayManager:
                     self.et = ExecutionTrace(json.load(et))
             else:
                 self.trace_file = self.args.input
-                with open(self.trace_file, "r") as f:
+                with open(self.trace_file) as f:
                     self.et = ExecutionTrace(json.load(f))
 
             if self.cuda_id == -1:
@@ -290,7 +290,7 @@ class ExgrReplayManager:
                         self.initial_skip_node_count = len(self.actual_skip_nodes)
             else:
                 self.trace_file = f"{self.args.trace_path}/rank-{self.comms_env_params['global_rank']}.json"
-                with open(self.trace_file, "r") as f:
+                with open(self.trace_file) as f:
                     self.et = ExecutionTrace(json.load(f))
 
             self.dump_path += f"benchmark_{self.comms_env_params['global_rank']}.py"
@@ -303,7 +303,7 @@ class ExgrReplayManager:
 
         if self.args.skip_node_file:
             try:
-                with open(self.args.skip_node_file, "r") as json_file:
+                with open(self.args.skip_node_file) as json_file:
                     self.actual_skip_nodes = json.load(json_file)
                     self.initial_skip_node_count = len(self.actual_skip_nodes)
             except OSError:

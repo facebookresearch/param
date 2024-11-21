@@ -18,9 +18,7 @@ logger = logging.getLogger(__name__)
 class paramProfile(record_function):
     """Inherit from PyTorch profiler to enable autoguard profiling while measuring the time interval in PARAM"""
 
-    def __init__(
-        self, timer: Optional[paramTimer] = None, description: str = ""
-    ) -> None:
+    def __init__(self, timer: paramTimer | None = None, description: str = "") -> None:
         super().__init__(name=description)
         self.description = description
         self.timer = timer

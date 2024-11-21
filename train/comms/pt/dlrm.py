@@ -5,7 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import argparse
 import json
@@ -1397,11 +1396,9 @@ class commsDLRMBench(paramCommsBench):
         if commsDlrmParams.print_comms:
             folder = str(self.model) + "_np" + str(world_size)
             try:
-                subprocess.check_output(
-                    ["mkdir", "-p", str(folder)], universal_newlines=True
-                )
+                subprocess.check_output(["mkdir", "-p", str(folder)], text=True)
             except Exception as err:
-                print("\t Error: %s while creating directory: %s " % (err, folder))
+                print("\t Error: {} while creating directory: {} ".format(err, folder))
                 pass
             comms_file = str(folder) + "/rank" + str(global_rank) + ".json"
             with open(comms_file, "w") as write_file:
