@@ -1035,6 +1035,9 @@ class commsTraceReplayBench(paramCommsBench):
                         collName in ("recv", "irecv")
                         and curComm.dst_rank != self.backendFuncs.get_global_rank()
                     )
+                    # in blocking mode, skip wait, and we will add barrier anyway.
+                    # FIXME: if with the wait, the blocking mode can have issue
+                    or (collName == "wait" and self.is_blocking)
                 ):
                     continue
 
@@ -1081,6 +1084,7 @@ class commsTraceReplayBench(paramCommsBench):
                     self.dcheck(
                         commsParams, curComm.outMsgSize, self.collectiveArgs.opTensor
                     )
+                    logger.info("Data validation passed!")
 
                 # calculating batch latency (batch defined by --colls-per-batch)
                 if not warmup and collName == "wait" and self.colls_per_batch > 0:
@@ -1400,13 +1404,6 @@ class commsTraceReplayBench(paramCommsBench):
         self.is_dry_run = args.dry_run
         self.shrink = args.auto_shrink
         self.max_msg_cnt = args.max_msg_cnt
-        # FIXME: blocking mode is not supported for ET replay anymore
-        self.is_blocking = args.z
-        if args.z and self.trace_type == "et":
-            logger.warning(
-                "Blocking mode is not supported for ET replay anymore. Fall back to non-blocking mode to avoid non-deterministic behavior."
-            )
-            self.is_blocking = False
 
         self.do_warm_up = args.do_warm_up
         self.reuse_tensors = args.reuse_tensors
