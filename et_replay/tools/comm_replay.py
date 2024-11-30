@@ -77,14 +77,11 @@ def writeCommDetails(commsTracePerf: list, rank: int, folder: str = "./") -> Non
 
     if saveToLocal:
         try:
-            import subprocess
-
-            subprocess.check_output(["mkdir", "-p", str(folder)], text=True)
-        except Exception as err:
-            logger.error(
-                "\t Error: {} while creating directory: {} ".format(err, folder)
-            )
-            pass
+            import pathlib
+            pathlib.Path(folder).mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            logger.error(f'Permission denied to create directory {folder}')
+        
         with open(comms_file, "w") as write_file:
             json.dump(commsTracePerf, write_file, indent=2)
 
@@ -114,6 +111,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.num_msg = 0
         self.is_blocking = False
         self.warmup_iter = 5
+        self.do_warm_up = False
         self.reuse_tensors = False
 
         self.allowList = ""
@@ -214,10 +212,10 @@ class commsTraceReplayBench(paramCommsBench):
             help="Only replay first N operations (0 means no limit)",
         )
         parser.add_argument(
-            "--warmup-iter",
-            type=int,
-            default=self.warmup_iter,
-            help="Number of warmup iterations",
+            "--do-warm-up",
+            action="store_true",
+            default=self.do_warm_up,
+            help="Toggle to perform extra replaying for warm-up",
         )
         parser.add_argument(
             "--reuse-tensors",
@@ -231,20 +229,6 @@ class commsTraceReplayBench(paramCommsBench):
             type=str,
             default="all",
             help="List of desired collectives (separate by comma) to be replayed, e.g., `--allow-ops all_reduce,all_to_allv,wait`, typo or not supported collectives will be ignored.",
-        )
-        parser.add_argument(
-            "--output-path",
-            type=str,
-            default=self.out_path,
-            nargs="?",
-            const="",
-            help='Output path to write the replayed trace for post performance analysis. Set as empty string, i.e., "", to skip output',
-        )
-        parser.add_argument(
-            "--output-ranks",
-            type=str,
-            default="all",
-            help="List of ranks separated by comma or a range specified by start:end to generate replayed trace for post performance analysis. Default including all ranks.",
         )
         parser.add_argument(
             "--colls-per-batch",
@@ -270,18 +254,36 @@ class commsTraceReplayBench(paramCommsBench):
             default=self.num_replays,
             help="Number of times to replay the given trace, used to get more accurate replay for small traces.",
         )
+
+        parser.add_argument(
+            "--output-path",
+            type=str,
+            default=self.out_path,
+            nargs="?",
+            const="",
+            help='Path to store generated results (e.g., replayed trace, profiler trace) for post performance analysis. (Default: %(default)s)',
+        )
+
+        parser.add_argument(
+            "--output-ranks",
+            type=str,
+            default=None,
+            help="List of ranks separated by comma (e.g. 1,2,3) OR a range specified by start:end (e.g., 1:3) to enable replayed trace dumping for post performance analysis. (Default: %(default)s)",
+        )
+
         parser.add_argument(
             "--profiler-num-replays-start",
             type=int,
             default=self.profiler_num_replays_start,
-            help=f"Replay iteration to start collecting profiler after warmup runs. Default start from {self.profiler_num_replays_start} replay if --enables-profiler is  True",
+            help="Index of replay iteration to start collecting profiler trace after warmup in all ranks. (Default: %(default)s)",
         )
         parser.add_argument(
             "--profiler-num-replays",
             type=int,
             default=self.profiler_num_replays,
-            help=f"Number of replay iterations to collect profiler. Default profile {self.profiler_num_replays} replays if --enables-profiler is True.",
+            help="Number of replay iterations to collect profiler trace in all ranks. (Default: %(default)s)",
         )
+
         args, _ = parser.parse_known_args()
         return args
 
@@ -1322,8 +1324,8 @@ class commsTraceReplayBench(paramCommsBench):
             if self.backendFuncs.get_global_rank() in self.outputRanks:
                 writeCommDetails(
                     self.traceWithPerf,
-                    folder=self.out_path,
-                    rank=global_rank,
+                    folder=os.path.join(self.out_path, 'replayed_trace'),
+                    rank=global_rank
                 )
             # TODO: collect perf. from all ranks to rank 0 and detect any imbalanced perf?
             self.backendFuncs.barrier(self.collectiveArgs)

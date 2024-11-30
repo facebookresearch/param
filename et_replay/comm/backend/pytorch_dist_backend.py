@@ -622,6 +622,9 @@ class PyTorchDistBackend(BaseBackend):
 
         if retFlag:
             return retObj
+        
+    def barrier_all_ranks(self):
+        dist.barrier(device_ids=[self.get_device().index] if dist.get_backend() == "nccl" else None)
 
     def sync_barrier(self, collectiveArgs, desc="dummy"):
         # ensure all streams have finished outstanding events before calling barrier
@@ -1031,7 +1034,7 @@ class PyTorchDistBackend(BaseBackend):
         # even if they are not going to be members of the group.
         sync_store = dist.PrefixStore("pg_sync_r", self.tcp_store)
         sync_store.set(str(global_rank), json.dumps(self.commsParams.groupRanks))
-        torch.distributed.barrier()
+        self.barrier_all_ranks()
 
         idxed_group_ranks_to_pgId: dict[tuple[int], list[int]] = defaultdict(list)
         for i in range(self.get_world_size()):
