@@ -14,6 +14,7 @@ import time
 
 import numpy as np
 import torch
+from torch.profiler import profile, ProfilerActivity, schedule
 
 from et_replay.comm import comms_utils, commsTraceParser
 from et_replay.comm.backend.base_backend import supportedP2pOps
@@ -26,6 +27,7 @@ from et_replay.comm.comms_utils import (
     paramToCommName,
 )
 from et_replay.comm.param_profile import paramProfile, paramTimer
+from et_replay.vendor_internal import fb_internal
 
 try:
     # pyre-ignore[21]:
@@ -110,7 +112,6 @@ class commsTraceReplayBench(paramCommsBench):
         self.max_msg_cnt = 0  # 0 means no limit
         self.num_msg = 0
         self.is_blocking = False
-        self.warmup_iter = 5
         self.do_warm_up = False
         self.reuse_tensors = False
 
@@ -307,17 +308,29 @@ class commsTraceReplayBench(paramCommsBench):
                 f"The specified trace path '{self.trace_file}' is neither a "
                 "file nor a directory. Please provide a valid path."
             )
-            comms_utils.gracefulExit()
+
         if args.disable_parallel_read and not args.use_one_trace:
             raise ValueError(
                 "--disable-parallel-read is valid only when --use-one-trace is used."
             )
-            comms_utils.gracefulExit()
+
         if args.trace_type not in VALID_TRACE_TYPES:
             raise ValueError(
                 f"Trace type {self.trace_type} is not valid! Please specify one supported trace type from {str(VALID_TRACE_TYPES)} by using --trace-type."
             )
-            comms_utils.gracefulExit()
+
+        if (
+            args.output_ranks is not None 
+            and len(args.output_ranks) > 0
+            and not len(args.output_path)
+        ):
+            raise ValueError('"--output-path" is not set for replay trace dumping')
+
+        if (
+            args.enable_profiler
+            and not len(args.output_path)
+        ):
+            raise ValueError('"--output-path" is not set for profiler trace dumping')
 
     def reportBenchTime(self):
         """
@@ -1205,21 +1218,33 @@ class commsTraceReplayBench(paramCommsBench):
         Returns:
             None
         """
+        # warm-up
+        if self.do_warm_up:
+            self.replayIter = -1
+            self.replayTrace(commsParams=commsParams, warmup=True)
+        self.resetComms()
+
         if commsParams.enable_profiler:
-            # num of iterations to skip
-            numWarmupIters = self.warmup_iter + self.profiler_num_replays_start
-            # num of iterations to profile, at most num_replays iterations
-            numProfileIters = (
-                self.profiler_num_replays
-                if self.profiler_num_replays < self.num_replays
-                else self.num_replays
-            )
-            self.collectiveArgs.enable_profiler = comms_utils.startProfiler(
-                rank=self.backendFuncs.get_global_rank(),
-                device=self.collectiveArgs.device,
-                numWarmupIters=numWarmupIters,
-                numIters=numProfileIters,
-            )
+            self.collectiveArgs.enable_profiler = True
+            if fb_internal.has_fb_internal_libs:
+                # num of iterations to skip
+                fbProfilerWarmupIters = self.profiler_num_replays_start
+                # num of iterations to profile, at most num_replays iterations
+                fbProfilerProfileIters = (
+                    self.profiler_num_replays
+                    if self.profiler_num_replays_start + self.profiler_num_replays <= self.num_replays
+                    else self.num_replays - self.profiler_num_replays_start
+                )
+                fb_internal.fbStartProfiler(
+                    rank=self.backendFuncs.get_global_rank(),
+                    device=self.collectiveArgs.device,
+                    numWarmupIters=fbProfilerWarmupIters,
+                    numIters=fbProfilerProfileIters,
+                )
+
+        # sync everything before starting real runs
+        with paramProfile(description="# PARAM replay warmup post-replay global sync"):
+            self.backendFuncs.sync_barrier(self.collectiveArgs)
 
         if self.backendFuncs.get_global_rank() == 0:
             logger.info(
@@ -1228,37 +1253,52 @@ class commsTraceReplayBench(paramCommsBench):
             for coll, sizes in self.collInMsgBytes.items():
                 logger.info(f"\t{coll}: {len(sizes)}")
 
-        traceStartTime = 0
-        for i in range(self.warmup_iter + self.num_replays):
-            if i == self.warmup_iter:
-                traceStartTime = time.monotonic_ns()
+        traceStartTime = time.monotonic_ns()
 
-            if self.collectiveArgs.enable_profiler:
-                comms_utils.sampleProfiler()
-
-            # set training iteration number in NCCL
+        def trace_handler(p):
+            import pathlib
+            folder_path = os.path.join(self.out_path, 'profiler_trace')
             try:
-                setTrainingIteration(i + 1)
-            except NameError:
-                pass
+                pathlib.Path(folder_path).mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                logger.error(f'Permission denied to create directory {folder_path}')
+            p.export_chrome_trace(os.path.join(folder_path, f'rank-{self.backendFuncs.get_global_rank()}.json'))
 
-            if self.backendFuncs.get_global_rank() == 0:
-                s = time.monotonic_ns()
+        # If Facebook internal libs are imported, use fb internal features. Otherwise, use public torch profiler.
+        with profile(
+            activities = [ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            schedule = schedule(skip_first = 0 if self.collectiveArgs.enable_profiler and not fb_internal.has_fb_internal_libs else self.num_replays,
+                                wait = self.profiler_num_replays_start - (1 if self.profiler_num_replays_start >= 1 else 0),
+                                warmup = (1 if self.profiler_num_replays_start >= 1 else 0),
+                                active = self.profiler_num_replays,
+                                repeat = 1),
+            on_trace_ready = trace_handler
+        ) as prof:
+            for i in range(self.num_replays):
+                if self.backendFuncs.get_global_rank() == 0:
+                    logger.info(f"Replay #{i}")
 
-            # replay comms trace
-            self.replayIter = i
-            self.replayTrace(commsParams=commsParams, warmup=False)
-            self.resetComms()
+                if self.collectiveArgs.enable_profiler and fb_internal.has_fb_internal_libs:
+                    fb_internal.fbSampleProfiler()
 
-            # make sure all ops are completed
-            with paramProfile(
-                description=f"# PARAM replay {self.replayIter} post-replay global sync"
-            ):
-                self.backendFuncs.sync_barrier(self.collectiveArgs)
+                # set training iteration number in NCCL
+                try:
+                    setTrainingIteration(i + 1)
+                except NameError:
+                    pass
+                
+                # replay comms trace
+                self.replayIter = i
+                self.replayTrace(commsParams=commsParams, warmup=False)
+                self.resetComms()
 
-            if self.backendFuncs.get_global_rank() == 0:
-                e = time.monotonic_ns()
-                logger.info(f"Replay #{i} took {(e-s)/1e3:.2f} us")
+                # make sure all ops are completed
+                with paramProfile(
+                    description=f"# PARAM replay {self.replayIter} post-replay global sync"
+                ):
+                    self.backendFuncs.sync_barrier(self.collectiveArgs)
+                
+                prof.step()
 
         # record how long it took for trace-replay to complete
         traceEndTime = time.monotonic_ns()
@@ -1266,7 +1306,8 @@ class commsTraceReplayBench(paramCommsBench):
 
         # stop profiler if used
         if self.collectiveArgs.enable_profiler:
-            comms_utils.sampleProfiler(stop=True)
+            if fb_internal.has_fb_internal_libs:
+                fb_internal.fbSampleProfiler(stop=True)
             self.collectiveArgs.enable_profiler = False
 
         # cleanup any memory left in use
@@ -1458,7 +1499,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.shrink = args.auto_shrink
         self.max_msg_cnt = args.max_msg_cnt
         self.is_blocking = args.blocking
-        self.warmup_iter = args.warmup_iter
+        self.do_warm_up = args.do_warm_up
         self.reuse_tensors = args.reuse_tensors
         self.allowList = args.allow_ops
         if args.output_ranks == "all":
