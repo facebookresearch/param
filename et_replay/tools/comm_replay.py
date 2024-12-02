@@ -407,9 +407,11 @@ class commsTraceReplayBench(paramCommsBench):
         if not self.is_dry_run:
             print("\n{} Performance of replayed comms {}".format("=" * 20, "=" * 20))
             print(
-                "{}\n Total latency (us) of comms in trace: {}. \n{}".format(
+                "{}\nE2E latency (us): {} for {} iters, {:10.2f} per iter in avg\n{}".format(
                     "-" * 50,
                     self.totalTraceLatency,
+                    self.num_replays,
+                    self.totalTraceLatency / self.num_replays,
                     "-" * 50,
                 )
             )
