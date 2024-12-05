@@ -9,7 +9,7 @@ import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, TextIO, Tuple
+from typing import Any, TextIO
 
 import pydot
 
