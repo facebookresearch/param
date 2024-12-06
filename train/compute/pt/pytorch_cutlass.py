@@ -10,7 +10,6 @@ import torch
 
 
 def measure_blas(a, b, steps):
-
     global c
     torch.cuda.synchronize()
     start = time.perf_counter()
@@ -37,7 +36,6 @@ def measure_tlass(a, b, steps):
 
 
 def run_single(args, m, n, k, func):
-
     dtype = args.dtype
     warmups = args.warmups
     steps = args.steps
@@ -81,7 +79,6 @@ def run_single(args, m, n, k, func):
 
 
 def run(args, dataset):
-
     print("----------------------------------------------------------------")
     print("         M         N          K          Time(s)      Rate(TF/s)")
     print("----------------------------------------------------------------")
@@ -104,7 +101,6 @@ def run(args, dataset):
 
 
 def main() -> None:
-
     import argparse
 
     parser = argparse.ArgumentParser(

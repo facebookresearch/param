@@ -159,7 +159,6 @@ class OpExecutor:
     def _benchmark_discrete(
         self, count: int, args: list, kwargs: dict[str, Any], tag: str, op_run_id: str
     ) -> tuple[list[float], list[float], list[float], list[float]]:
-
         logger.debug(f"benchmarking [{self.name}|{op_run_id}|{tag}]")
 
         fw_time_records = []
@@ -345,7 +344,6 @@ class OpExecutor:
         tag: str,
         op_run_id: str,
     ) -> tuple[list[float], list[float], list[float], list[float]]:
-
         logger.debug(f"benchmarking {self.name}|{op_run_id}|{tag}")
 
         if (

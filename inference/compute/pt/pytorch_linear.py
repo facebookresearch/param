@@ -161,7 +161,6 @@ def infer_gpu(model, device, data_type, input_size, output_size, batch_size, arg
 
 
 def infer(model, device, data_type, input_size, output_size, batch_size, args):
-
     if device == "cpu":
         elap = infer_cpu(
             model,
@@ -199,7 +198,6 @@ def infer(model, device, data_type, input_size, output_size, batch_size, args):
 
 
 def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size):
-
     device = args.device
     data_type = args.dtype
 
@@ -214,7 +212,6 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
             )
 
     elif device == "gpu":
-
         assert torch.cuda.is_available(), "cuda not available"
 
         dev = torch.device("cuda:0")
@@ -227,7 +224,6 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
             )
 
     elif device == "nnpi":
-
         import os
 
         # Set to 1 to use the card, set to 0 to use the emulator
@@ -244,7 +240,6 @@ def run_single(args, layer_num, input_size, hidden_size, output_size, batch_size
 
 
 def run(args, dataset):
-
     print(
         "--------------------------------------------------------------------------------"
     )
@@ -286,7 +281,6 @@ def run(args, dataset):
 
 
 def main() -> None:
-
     import argparse
 
     parser = argparse.ArgumentParser(description="Measure the performance of MLP")

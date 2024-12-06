@@ -299,7 +299,6 @@ def analyze_events(op_events):
 
 
 def main():
-
     parser = argparse.ArgumentParser(
         description="Microbenchmarks NSight System Analysis"
     )

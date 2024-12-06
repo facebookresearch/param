@@ -139,7 +139,6 @@ class cvt_convolutional_token_embedding(nn.Module):
 
 
 def run(layer_type, input_shape, kwargs, device, warmups, steps, forward_only):
-
     if layer_type == "conv_proj":
         conv_block = cvt_convolutional_projection(**kwargs)
     elif layer_type == "patch_embed":
@@ -216,7 +215,6 @@ def run(layer_type, input_shape, kwargs, device, warmups, steps, forward_only):
 
 
 def main() -> None:
-
     import argparse
 
     parser = argparse.ArgumentParser(

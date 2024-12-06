@@ -30,7 +30,6 @@ class BenchmarkHelper:
         config: Any,
         logger: logging.Logger | None = None,
     ) -> None:
-
         self.logger = logger or logging.getLogger("foo").addHandler(
             logging.NullHandler()
         )

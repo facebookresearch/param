@@ -1432,7 +1432,6 @@ class commsDLRMBench(paramCommsBench):
 
 
 def main():
-
     mpi_env_params = comms_utils.read_comms_env_vars()
 
     dlrmBench = commsDLRMBench()

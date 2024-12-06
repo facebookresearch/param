@@ -223,7 +223,6 @@ def train_tpu(
 def train(
     model, device, optimizer, data_type, input_size, output_size, batch_size, args
 ):
-
     if device.type == "cpu":
         elap, loss = train_cpu(
             model,
@@ -264,7 +263,6 @@ def train(
 
 
 def run_single(args, layers_size, batch_size):
-
     device = args.device
     optimizer_type = args.optimizer_type
     data_type = args.dtype
@@ -282,7 +280,6 @@ def run_single(args, layers_size, batch_size):
             assert 0, "Unsupported optimizer type"
 
     elif device == "gpu":
-
         assert torch.cuda.is_available(), "cuda not available"
 
         dev = torch.device("cuda:0")
@@ -295,7 +292,6 @@ def run_single(args, layers_size, batch_size):
             assert 0, "Unsupported optimizer type"
 
     elif device == "tpu":
-
         import torch_xla.core.xla_model as xm
 
         # alldev = xm.get_xla_supported_devices()
@@ -324,7 +320,6 @@ def run_single(args, layers_size, batch_size):
 
 
 def run(args, dataset):
-
     print(
         "--------------------------------------------------------------------------------"
     )

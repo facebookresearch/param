@@ -35,7 +35,6 @@ class XlaEmbeddingBag(nn.Module):
 
 
 def measure_cpu(warmups, steps, h_emb, h_indices, h_offsets):
-
     start = time.perf_counter()
     for i in range(warmups + steps):
         results = h_emb(h_indices, h_offsets)
@@ -47,7 +46,6 @@ def measure_cpu(warmups, steps, h_emb, h_indices, h_offsets):
 
 
 def measure_gpu(warmups, steps, h_emb, h_indices, h_offsets):
-
     # ncuda = torch.cuda.device_count()
     # print("There are {} cuda devices".format(ncuda))
     # print("The current cuda device name is {} ".format(torch.cuda.get_device_name()))
@@ -72,7 +70,6 @@ def measure_gpu(warmups, steps, h_emb, h_indices, h_offsets):
 
 
 def measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, usexlabag, batch, nnz):
-
     import os
 
     import torch_xla
@@ -139,7 +136,6 @@ def measure_tpu(warmups, steps, h_emb, h_indices, h_offsets, usexlabag, batch, n
 
 
 def init_indices(alpha, features, batch, nnz):
-
     if alpha == 0.0:
         indices = torch.randint(0, features, (batch * nnz,))
     else:
@@ -165,7 +161,6 @@ def init_indices(alpha, features, batch, nnz):
 
 
 def run_single(args, features, embdim, nnz, batch):
-
     device = args.device
     random_seed = args.randomseed
     warmups = args.warmups
@@ -211,7 +206,6 @@ def run_single(args, features, embdim, nnz, batch):
 
 
 def run(args, dataset):
-
     print(
         "---------------------------------------------------------------------------------"
     )
@@ -241,7 +235,6 @@ def run(args, dataset):
 
 
 def main() -> None:
-
     import argparse
 
     parser = argparse.ArgumentParser(

@@ -100,9 +100,7 @@ class collectiveArgsHolder:
         self.dataSize = 0
         self.numElements = 0
         self.waitObj = []
-        self.waitObjIds = (
-            {}
-        )  # mapping of (pg_id, req_id, is_p2p) to future of async collectives
+        self.waitObjIds = {}  # mapping of (pg_id, req_id, is_p2p) to future of async collectives
 
         self.ipTensor_split_pair = []
         self.opTensor_split_pair = []

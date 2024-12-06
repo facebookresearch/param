@@ -66,8 +66,8 @@ class TensorNode:
 
     def is_leaf_tensor(self):
         return (
-            not self.sources
-        ) and self.sinks  # A tensor having no sources yet having some sinks is a leaf tensor
+            (not self.sources) and self.sinks
+        )  # A tensor having no sources yet having some sinks is a leaf tensor
 
 
 @dataclass

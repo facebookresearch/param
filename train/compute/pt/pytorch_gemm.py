@@ -10,7 +10,6 @@ import torch
 
 
 def measure_cpu(a, b, steps):
-
     global c
     start = time.perf_counter()
     for i in range(steps):
@@ -21,7 +20,6 @@ def measure_cpu(a, b, steps):
 
 
 def measure_gpu(a, b, steps):
-
     global c
     torch.cuda.synchronize()
     start = time.perf_counter()
@@ -34,7 +32,6 @@ def measure_gpu(a, b, steps):
 
 
 def measure_xla(a, b, steps):
-
     import torch_xla
 
     def sync(tensor, dev):
@@ -59,7 +56,6 @@ def measure_xla(a, b, steps):
 
 
 def run_single(args, m, n, k):
-
     dtype = args.dtype
     device = args.device
     warmups = args.warmups
@@ -83,12 +79,10 @@ def run_single(args, m, n, k):
     c = torch.zeros(m, n).to(dt)
 
     if device == "cpu":
-
         measure_cpu(a, b, warmups)
         elap = measure_cpu(a, b, steps)
 
     elif device == "gpu":
-
         if torch.cuda.is_available():
             # ncuda = torch.cuda.device_count()
             # print("There are {} cuda devices".format(ncuda))
@@ -124,7 +118,6 @@ def run_single(args, m, n, k):
 
 
 def run(args, dataset):
-
     print("----------------------------------------------------------------")
     print("         M         N          K          Time(s)      Rate(TF/s)")
     print("----------------------------------------------------------------")
@@ -140,7 +133,6 @@ def run(args, dataset):
 
 
 def main() -> None:
-
     import argparse
 
     parser = argparse.ArgumentParser(

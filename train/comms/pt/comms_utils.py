@@ -793,9 +793,7 @@ class commsParamsHolderBase:
         self.quant_a2a_embedding_dim = args.quant_a2a_embedding_dim
         self.quant_threshold = args.quant_threshold
         self.dcheck = args.c
-        self.groupRanks = (
-            {}
-        )  # record what ranks each process group will work on {pg_id, ranks}
+        self.groupRanks = {}  # record what ranks each process group will work on {pg_id, ranks}
         self.use_ext_dist = args.use_ext_dist
         self.size_from_trace = False
         self.init_method = args.init_method
@@ -1114,7 +1112,6 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-
         ipTensor = None
         opTensor = None
         if allocate:
@@ -1280,7 +1277,6 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-
         opTensor = []
         if not commsParams.size_from_trace:
             numElementsOut = numElementsIn
@@ -1344,7 +1340,6 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-
         ipTensor = []
         opTensor = []
         if not commsParams.size_from_trace:
@@ -1391,7 +1386,6 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-
         ipTensor = []
         opTensor = []
         if not commsParams.size_from_trace:

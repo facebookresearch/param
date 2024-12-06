@@ -70,7 +70,6 @@ def _parseBasicTrace(in_trace: list):
     """
     newCommsTrace = []
     for cnt, curComm in enumerate(in_trace):
-
         newComm = commsArgs()
         newComm.id = cnt
         newComm.markerStack = curComm.get("markers")
@@ -91,7 +90,6 @@ def _parseBasicTrace(in_trace: list):
 
 
 def _parseBasicTraceComms(curComm, newComm: commsArgs) -> None:
-
     newComm.comms = comms_utils.paramToCommName(curComm["comms"].lower())
     if newComm.markerStack is None:
         newComm.markerStack = [newComm.comms]
@@ -172,7 +170,6 @@ def _parseKinetoUnitrace(in_trace: list, target_rank: int) -> list:
             and entry["name"] == "record_param_comms"
             and entry["args"]["rank"] == target_rank
         ):
-
             newComm = commsArgs()
             newComm.comms = comms_utils.paramToCommName(entry["args"]["comms"].lower())
             newComm.id = commsCnt
@@ -252,9 +249,7 @@ def _parseExecutionTrace(
                 ranks = pg["ranks"]
                 groupCnt = pg["group_count"]
                 pgRanksMap[pgId] = (
-                    ranks
-                    if len(ranks) > 0
-                    else list(range(pg["group_size"]))
+                    ranks if len(ranks) > 0 else list(range(pg["group_size"]))
                     # rank list is empty when all ranks are in a pg
                 )
                 if ET_BACKENDID:

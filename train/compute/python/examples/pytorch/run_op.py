@@ -15,7 +15,6 @@ from ...workloads import pytorch as workloads_pytorch
 
 
 def main():
-
     # Load PyTorch implementations for data generator and operators.
     load_modules(lib_pytorch)
 

@@ -96,9 +96,7 @@ def _parse_proc_group_info(in_trace: ExecutionTrace):
             )
             pg_id = int(pg_id)
             pg_ranks_map[node.id][pg_id] = (
-                ranks
-                if len(ranks) > 0
-                else list(range(group_size))
+                ranks if len(ranks) > 0 else list(range(group_size))
                 # rank list is empty when all ranks are in a pg
             )
         break  # only one process_group init node per trace

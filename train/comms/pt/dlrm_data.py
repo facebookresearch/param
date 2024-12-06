@@ -65,7 +65,6 @@ class RandomDataset(Dataset):
         # torch.manual_seed(numpy_rand_seed)
 
     def __getitem__(self, index):
-
         if isinstance(index, slice):
             return [
                 self[idx]
@@ -110,7 +109,6 @@ def collate_wrapper_random(list_of_tuples):
 
 
 def make_random_data_and_loader(args, ln_emb, m_den):
-
     train_data = RandomDataset(
         m_den,
         ln_emb,
@@ -241,7 +239,6 @@ class SyntheticDataset(Dataset):
 
 
 def synthetic_data_loader(args, ln_emb, m_den):
-
     train_data = SyntheticDataset(
         args.mini_batch_size,
         nbatches=args.num_batches,

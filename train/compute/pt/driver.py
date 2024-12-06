@@ -10,7 +10,6 @@ import pytorch_linear as klinear
 
 
 def main() -> None:
-
     import argparse
 
     parser = argparse.ArgumentParser(

@@ -681,7 +681,6 @@ class PyTorchDistBackend(backendFunctions):
             self.device_sync(collectiveArgs)
 
     def wait(self, collectiveArgs, retFlag=False):
-
         # for backwards compatibility, use old wait functionality.
         if len(collectiveArgs.waitObjIds) == 0:
             self.complete_single_op(collectiveArgs)
