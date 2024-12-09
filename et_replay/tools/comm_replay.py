@@ -29,12 +29,6 @@ from et_replay.comm.comms_utils import (
 from et_replay.comm.param_profile import paramProfile, paramTimer
 from et_replay.vendor_internal import fb_internal
 
-try:
-    # pyre-ignore[21]:
-    from trainer_iteration_wrapper import setTrainingIteration
-except ImportError:
-    pass
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -1282,12 +1276,6 @@ class commsTraceReplayBench(paramCommsBench):
 
                 if self.collectiveArgs.enable_profiler and fb_internal.has_fb_internal_libs:
                     fb_internal.fbSampleProfiler()
-
-                # set training iteration number in NCCL
-                try:
-                    setTrainingIteration(i + 1)
-                except NameError:
-                    pass
                 
                 # replay comms trace
                 self.replayIter = i
