@@ -16,7 +16,7 @@ import numpy as np
 import torch
 from torch.profiler import profile, ProfilerActivity, schedule
 
-from et_replay.comm import comms_utils, commsTraceParser
+from et_replay.comm import comms_utils, commsTraceParser, profiler_trace_analysis
 from et_replay.comm.backend.base_backend import supportedP2pOps
 from et_replay.comm.comms_utils import (
     bootstrap_info_holder,
@@ -1302,6 +1302,8 @@ class commsTraceReplayBench(paramCommsBench):
         # cleanup any memory left in use
         self.backendFuncs.clear_memory(self.collectiveArgs)
 
+        self.backendFuncs.barrier_all_ranks()
+
     def runBench(
         self,
         commsParams: commsParamsHolderBase,
@@ -1358,8 +1360,11 @@ class commsTraceReplayBench(paramCommsBench):
                     rank=global_rank
                 )
             # TODO: collect perf. from all ranks to rank 0 and detect any imbalanced perf?
-            self.backendFuncs.barrier(self.collectiveArgs)
-            self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+
+            if commsParams.enable_profiler and not fb_internal.has_fb_internal_libs and self.backendFuncs.get_global_rank() == 0:
+                profiler_trace_analysis.analyze_profiler_trace(os.path.join(self.out_path, 'profiler_trace'), self.out_path)
+            
+            self.backendFuncs.barrier_all_ranks()
 
     def replayInit(
         self,
