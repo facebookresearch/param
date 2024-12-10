@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import json
 
-from typing import List, Tuple
-
 from et_replay import ExecutionTrace
 
 from param_bench.train.comms.pt import comms_utils
@@ -188,7 +186,7 @@ def _parseKinetoUnitrace(in_trace: list, target_rank: int) -> list:
 
 def _getTensorInfoFromPyTorchETEntry(
     tensor_container: list, container_type: str
-) -> tuple[int, int, str]:
+) -> tuple[int, str]:
     """
     Extract message size, tensor count, type from PyTorch ET entry inputs/outputs field.
     NOTE: This format can be changed at anytime. TODO: When an extract/parsing tool is available in ATC, switch to it.

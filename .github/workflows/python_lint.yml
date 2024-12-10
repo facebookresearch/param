@@ -13,14 +13,16 @@ jobs:
     - name: Setup Python Environment
       uses: actions/setup-python@v2
       with:
-        python-version: '3.8'
+        python-version: '3.10'
 
     - name: Install Dependencies
       run: |
         pip install black
-
-    - name: Run Black
-      run: black . --check
+    # OpenSource Black seems not match Meta internal version
+    # temporarily disable it until we figure out how to make
+    # them consistent
+    # - name: Run Black
+    #  run: black . --check
 
     - name: Run tests
       run: |

@@ -10,7 +10,6 @@ from collections import defaultdict
 
 from itertools import cycle
 from time import sleep
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch

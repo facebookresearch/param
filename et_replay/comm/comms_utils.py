@@ -17,7 +17,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from contextlib import ContextDecorator
 from io import StringIO
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 try:
     from param_bench.train.comms.pt.fb.internals import (
