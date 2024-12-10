@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import time
-from typing import Dict, List, Set, Tuple, Union
 
 import numpy as np
 import torch
@@ -114,7 +113,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.max_msg_cnt = 0  # 0 means no limit
         self.num_msg = 0
         self.is_blocking = False
-        self.do_warm_up = False
+        self.warmup_iter = 5
         self.reuse_tensors = False
 
         self.allowList = ""
@@ -215,10 +214,10 @@ class commsTraceReplayBench(paramCommsBench):
             help="Only replay first N operations (0 means no limit)",
         )
         parser.add_argument(
-            "--do-warm-up",
-            action="store_true",
-            default=self.do_warm_up,
-            help="Toggle to enable performing extra replaying for warm-up",
+            "--warmup-iter",
+            type=int,
+            default=self.warmup_iter,
+            help="Number of warmup iterations",
         )
         parser.add_argument(
             "--reuse-tensors",
@@ -275,7 +274,7 @@ class commsTraceReplayBench(paramCommsBench):
             "--profiler-num-replays-start",
             type=int,
             default=self.profiler_num_replays_start,
-            help=f"Replay iteration to start collecting profiler after warmup (if --do-warm-up is True). Default start from {self.profiler_num_replays_start} replay if --enables-profiler is  True",
+            help=f"Replay iteration to start collecting profiler after warmup runs. Default start from {self.profiler_num_replays_start} replay if --enables-profiler is  True",
         )
         parser.add_argument(
             "--profiler-num-replays",
@@ -393,9 +392,16 @@ class commsTraceReplayBench(paramCommsBench):
         if not self.is_dry_run:
             print("\n{} Performance of replayed comms {}".format("=" * 20, "=" * 20))
             print(
-                "{}\n Total latency (us) of comms in trace {}: \n{}".format(
+                "{}\n Total latency (us) of comms in trace: {}. \n{}".format(
                     "-" * 50,
                     self.totalTraceLatency,
+                    "-" * 50,
+                )
+            )
+            print(
+                "{}\n Average latency (us) of comms in trace: {}. \n{}".format(
+                    "-" * 50,
+                    self.totalTraceLatency / self.num_replays,
                     "-" * 50,
                 )
             )
@@ -1199,9 +1205,7 @@ class commsTraceReplayBench(paramCommsBench):
         """
         if commsParams.enable_profiler:
             # num of iterations to skip
-            numWarmupIters = (
-                1 if self.do_warm_up else 0
-            ) + self.profiler_num_replays_start
+            numWarmupIters = self.warmup_iter + self.profiler_num_replays_start
             # num of iterations to profile, at most num_replays iterations
             numProfileIters = (
                 self.profiler_num_replays
@@ -1215,18 +1219,6 @@ class commsTraceReplayBench(paramCommsBench):
                 numIters=numProfileIters,
             )
 
-        # warm-up
-        if self.do_warm_up:
-            if self.collectiveArgs.enable_profiler:
-                comms_utils.sampleProfiler()
-            self.replayIter = -1
-            self.replayTrace(commsParams=commsParams, warmup=True)
-        self.resetComms()
-
-        # sync everything before starting real runs
-        with paramProfile(description="# PARAM replay warmup post-replay global sync"):
-            self.backendFuncs.sync_barrier(self.collectiveArgs)
-
         if self.backendFuncs.get_global_rank() == 0:
             logger.info(
                 f"\n+ {self.max_msg_cnt} messages in the trace...replaying (if present) {list(self.allowList)}"
@@ -1234,10 +1226,10 @@ class commsTraceReplayBench(paramCommsBench):
             for coll, sizes in self.collInMsgBytes.items():
                 logger.info(f"\t{coll}: {len(sizes)}")
 
-        traceStartTime = time.monotonic_ns()
-        for i in range(self.num_replays):
-            if self.backendFuncs.get_global_rank() == 0:
-                logger.info(f"Replay #{i}")
+        traceStartTime = 0
+        for i in range(self.warmup_iter + self.num_replays):
+            if i == self.warmup_iter:
+                traceStartTime = time.monotonic_ns()
 
             if self.collectiveArgs.enable_profiler:
                 comms_utils.sampleProfiler()
@@ -1247,6 +1239,9 @@ class commsTraceReplayBench(paramCommsBench):
                 setTrainingIteration(i + 1)
             except NameError:
                 pass
+
+            if self.backendFuncs.get_global_rank() == 0:
+                s = time.monotonic_ns()
 
             # replay comms trace
             self.replayIter = i
@@ -1258,6 +1253,10 @@ class commsTraceReplayBench(paramCommsBench):
                 description=f"# PARAM replay {self.replayIter} post-replay global sync"
             ):
                 self.backendFuncs.sync_barrier(self.collectiveArgs)
+
+            if self.backendFuncs.get_global_rank() == 0:
+                e = time.monotonic_ns()
+                logger.info(f"Replay #{i} took {(e-s)/1e3:.2f} us")
 
         # record how long it took for trace-replay to complete
         traceEndTime = time.monotonic_ns()
@@ -1457,7 +1456,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.shrink = args.auto_shrink
         self.max_msg_cnt = args.max_msg_cnt
         self.is_blocking = args.blocking
-        self.do_warm_up = args.do_warm_up
+        self.warmup_iter = args.warmup_iter
         self.reuse_tensors = args.reuse_tensors
         self.allowList = args.allow_ops
         if args.output_ranks == "all":
