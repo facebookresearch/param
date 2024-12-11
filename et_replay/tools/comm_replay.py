@@ -1403,6 +1403,7 @@ class commsTraceReplayBench(paramCommsBench):
             # record process group info
             if curComm.comms == "init":
                 commsParams.groupRanks[curComm.pgId] = curComm.groupRanks
+                commsParams.pgsDesc[curComm.pgId] = curComm.pgDesc
         self.backendFuncs.initialize_groups(commsParams.backend)
 
         # set basic collective info
@@ -1419,7 +1420,6 @@ class commsTraceReplayBench(paramCommsBench):
 
         self.collectiveArgs.group = group  # default group
         self.collectiveArgs.groups = self.backendFuncs.get_groups()
-        self.collectiveArgs.num_pgs = self.backendFuncs.get_num_pgs()
         self.collectiveArgs.device = curDevice
         self.collectiveArgs.world_size = world_size
         self.collectiveArgs.global_rank = global_rank

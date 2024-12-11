@@ -7,9 +7,8 @@ import json
 import logging
 import os
 from collections import defaultdict
-
-from itertools import cycle
 from time import sleep
+from typing import Dict
 
 import numpy as np
 import torch
@@ -37,6 +36,7 @@ except ImportError:
         has_ext_dist = False
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def _downcast(input, bitwidth):
@@ -831,12 +831,6 @@ class PyTorchDistBackend(BaseBackend):
     def get_groups(self):
         return self.groups
 
-    def get_num_pgs(self):
-        return self.num_pgs
-
-    def get_next_group(self):
-        return next(self.round_robin_group)
-
     def set_device(self, local_rank, global_rank):
         """set current device: 'cpu' or 'cuda'"""
         dev_str = (
@@ -943,14 +937,14 @@ class PyTorchDistBackend(BaseBackend):
             except ImportError:
                 raise RuntimeError("Unable to import Fairring")
 
-    def get_new_pg(self, group_ranks, backend):
+    def get_new_pg(self, group_ranks, backend, pg_desc=""):
         if self.use_ext_dist:
             return extend_distributed.new_extend_process_group(
                 ranks=group_ranks, backend=backend
             )
         else:
-            pg = dist.new_group(ranks=group_ranks, backend=backend)
-            return pg
+            pg = dist.new_group(ranks=group_ranks, backend=backend, group_desc=pg_desc)
+            return pg if pg is not dist.GroupMember.NON_GROUP_MEMBER else None
 
     def tensor_list_to_numpy(self, tensorList):
         if isinstance(tensorList, list):
@@ -1006,23 +1000,11 @@ class PyTorchDistBackend(BaseBackend):
         # default 1 group, maybe overwritten by user created groups via initialize_groups
         self.groups = {}
         self.groups[0] = self.get_default_group()
-        self.num_pgs = len(self.groups)
-        self.round_robin_group = cycle(list(self.groups.values()))
 
     def initialize_groups(self, backend="gloo"):
         groups = {}
         world_size = self.get_world_size()
         global_rank = self.get_global_rank()
-
-        # map from group_rank to pgId, pgId of the groups in current rank is the pgId defined in
-        # ET, pgId of the groups from other ranks is -1.
-        group_rank_to_pgId: dict[tuple[int], list[int]] = defaultdict(list)
-        for pg_id, group_ranks in self.commsParams.groupRanks.items():
-            if group_ranks is None or len(group_ranks) == 0:
-                group_ranks = list(range(world_size))
-            group_ranks.sort()
-            rank_tuple = tuple(group_ranks)
-            group_rank_to_pgId[rank_tuple].append(pg_id)
 
         # sync pgs across ranks to fix hang with multiple comm groups
         # because new_group() function requires that all processes in the default group call it,
@@ -1030,9 +1012,9 @@ class PyTorchDistBackend(BaseBackend):
         sync_store = dist.PrefixStore("pg_sync_r", self.tcp_store)
         sync_store.set(str(global_rank), json.dumps(self.commsParams.groupRanks))
         torch.distributed.barrier()
+
+        idxed_group_ranks_to_pgId: Dict[tuple[int], list[int]] = defaultdict(list)
         for i in range(self.get_world_size()):
-            if i == global_rank:
-                continue
             json_data = sync_store.get(str(i))
 
             # convert pg_id in json_data to int
@@ -1040,40 +1022,50 @@ class PyTorchDistBackend(BaseBackend):
                 int(pg_id): rank for pg_id, rank in json.loads(json_data).items()
             }
 
-            for _, group_ranks in pg_id_to_group_ranks.items():
-                if group_ranks is None or len(group_ranks) == 0:
-                    group_ranks = list(range(world_size))
+            # map from indexed group_ranks to pgId, pgId of the group in current rank is the pgId defined in
+            # ET, pgId of the group from other ranks is -1.
+            # index is used to differentiate several groups with the same ranks.
+            group_ranks_count: Dict[tuple[int], int] = defaultdict(int)
+            for pg_id, group_ranks in dict(
+                sorted(pg_id_to_group_ranks.items())
+            ).items():
                 group_ranks.sort()
                 rank_tuple = tuple(group_ranks)
-                group_rank_to_pgId[rank_tuple].append(-1)
+                count = group_ranks_count[rank_tuple]
+                group_ranks_count[rank_tuple] = count + 1
+                idxed_group_ranks_to_pgId[tuple(group_ranks + [count])].append(
+                    pg_id if global_rank == i else -1
+                )
 
         # create additional groups, sort it to make sure pg are created in the same order for all ranks
-        for group_ranks, pg_ids in dict(sorted(group_rank_to_pgId.items())).items():
+        for idxed_group_ranks, pg_ids in dict(
+            sorted(idxed_group_ranks_to_pgId.items())
+        ).items():
             if (
-                len(group_ranks) > world_size
+                len(idxed_group_ranks[:-1]) > world_size
             ):  # this means that --auto-shrink is enabled, only use default pg
                 groups.clear()
                 break
-            if (
-                len(group_ranks) == world_size
-            ):  # this is the default group, it has already been created
+
+            pg_id = next((i for i in pg_ids if i != -1), -1)
+
+            if len(idxed_group_ranks[:-1]) == world_size and idxed_group_ranks[-1] == 0:
                 pg = self.get_default_group()
             else:
-                pg = self.get_new_pg(group_ranks=list(group_ranks), backend=backend)
-                logger.info(
-                    f"initialized_group: create new group, pg_ids = {pg_ids}, group_ranks = {group_ranks}"
+                pg = self.get_new_pg(
+                    group_ranks=list(idxed_group_ranks[:-1]),
+                    backend=backend,
+                    pg_desc=self.commsParams.pgsDesc.get(pg_id, ""),
                 )
-            for pg_id in pg_ids:
-                if pg_id != -1:
-                    groups[pg_id] = pg
+                logger.info(
+                    f"initialized_group: create new group, pg_ids = {pg_ids}, idxed_group_ranks = {idxed_group_ranks}"
+                )
+            if pg_id != -1:
+                groups[pg_id] = pg
 
         # if additional groups are created, overwrite the default groups list
         if len(groups):
             self.groups = groups
-
-        self.num_pgs = len(self.groups)
-
-        self.round_robin_group = cycle(list(self.groups.values()))
 
     def benchmark_comms(self, benchTime, commsParams):
         index = 0  # used in TPU, where it is not initialized!
