@@ -160,9 +160,6 @@ class PyTorchTPUBackend(BaseBackend):
     def get_groups(self):
         pass
 
-    def get_num_pgs(self):
-        pass
-
     def tensor_list_to_numpy(self, tensorList):
         tensorList = torch.transpose(tensorList.view(-1, 1), 0, 1)[0]
         return tensorList.cpu().detach().numpy()

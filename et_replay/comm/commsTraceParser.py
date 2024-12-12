@@ -58,11 +58,11 @@ def _parseExecutionTrace(
             f"Only support trace version >1.0.3, but current trace version is {in_trace.schema.split('-')[0]}"
         )
 
-    pg_ranks_map = _parse_proc_group_info(
-        in_trace
-    )  # key is pg id, value is global ranks in this pg
+    # pg_ranks_map: key is pg id, value is global ranks in this pg
+    # pg_desc_map: key is pg id, value is pg desc
+    pg_ranks_map, pg_desc_map = _parse_proc_group_info(in_trace)
     comms_op_list = _parse_comms_op_node(
-        in_trace, pg_ranks_map, target_rank, total_ranks
+        in_trace, pg_ranks_map, pg_desc_map, target_rank, total_ranks
     )
 
     return comms_op_list
@@ -70,12 +70,13 @@ def _parseExecutionTrace(
 
 def _parse_proc_group_info(in_trace: ExecutionTrace):
     pg_ranks_map = {}  # {node_id : {process_group_id : [ranks] } }
+    pg_desc_map = {}  # {node_id : {process_group_id : pg_desc }
     pg_init_nodes = (
         node for node in in_trace.nodes.values() if "process_group:init" in node.name
     )
     for node in pg_init_nodes:
         # info of this node is dumped using torch.distributed.distributed_c10d._world.pg_config_info
-        # at the start of profiling, but not not callback to torch.distributed.init_process_group()
+        # at the start of profiling, but not callback to torch.distributed.init_process_group()
         # Pre-Assumption: all process groups has been created before profiling start.
         try:
             pg_objs = json.loads(node.inputs[0])
@@ -83,6 +84,7 @@ def _parse_proc_group_info(in_trace: ExecutionTrace):
             break
 
         pg_ranks_map[node.id] = {}
+        pg_desc_map[node.id] = {}
         for pg in pg_objs:
             if not pg["pg_name"].isdecimal():
                 # TODO support local synchronization pg
@@ -90,26 +92,34 @@ def _parse_proc_group_info(in_trace: ExecutionTrace):
                     f"Process group name is {pg['pg_name']} in node {node.id}, which is not supported. Skip."
                 )
                 continue
-            (pg_id, ranks, group_size, group_count) = (
-                pg[k] for k in ["pg_name", "ranks", "group_size", "group_count"]
+            (pg_id, pg_desc, ranks, group_size, group_count) = (
+                pg[k]
+                for k in ["pg_name", "pg_desc", "ranks", "group_size", "group_count"]
             )
             pg_id = int(pg_id)
             pg_ranks_map[node.id][pg_id] = (
                 ranks if len(ranks) > 0 else list(range(group_size))
                 # rank list is empty when all ranks are in a pg
             )
+            pg_desc_map[node.id][pg_id] = pg_desc
         break  # only one process_group init node per trace
-    return pg_ranks_map
+    return pg_ranks_map, pg_desc_map
 
 
 def _parse_comms_op_node(  # noqa: C901
-    in_trace: ExecutionTrace, pg_ranks_map: dict, target_rank: int, total_ranks: int
+    in_trace: ExecutionTrace,
+    pg_ranks_map: dict,
+    pg_desc_map: dict,
+    target_rank: int,
+    total_ranks: int,
 ):
     comms_op_list = []
 
     for node_id in pg_ranks_map:
         for pg_id, ranks in pg_ranks_map[node_id].items():
-            comm_args = _create_pg_init_node(node_id, pg_id, ranks, len(ranks))
+            comm_args = _create_pg_init_node(
+                node_id, pg_id, ranks, pg_desc_map[node_id][pg_id], len(ranks)
+            )
             comms_op_list.append(comm_args)
 
     pg_ranks_map_flatten = {}
@@ -192,11 +202,14 @@ def _parse_comms_op_node(  # noqa: C901
     return comms_op_list
 
 
-def _create_pg_init_node(node_id: int, pg_id: int, ranks: list[int], world_size: int):
+def _create_pg_init_node(
+    node_id: int, pg_id: int, ranks: list[int], pg_desc: str, world_size: int
+):
     comm_args = commsArgs()
     comm_args.id = node_id
     comm_args.comms = "init"
     comm_args.pgId = pg_id
+    comm_args.pgDesc = pg_desc
     comm_args.req = -1
     comm_args.groupRanks = ranks
     comm_args.worldSize = world_size
