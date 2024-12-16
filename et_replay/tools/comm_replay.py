@@ -643,9 +643,8 @@ class commsTraceReplayBench(paramCommsBench):
             return super().prepComm(curComm, commsParams)
         else:
             commsOpHash = self.hashEtCommsOp(curComm)
+            # Allocate input/output tensors if first time replay, otherwise reuse the previous ones.
             if commsOpHash in self.et_to_tensors:
-                # Allocate input/output tensors if first time replay, otherwise the previous ones.
-                super().prepComm(curComm, commsParams, False)
                 (ipTensor, opTensor) = self.et_to_tensors[commsOpHash]
             else:
                 (ipTensor, opTensor) = super().prepComm(curComm, commsParams, True)
