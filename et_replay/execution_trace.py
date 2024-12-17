@@ -128,6 +128,7 @@ class Node:
         comm_args: _CommArgs | None = None,
         input_strides: list[Any] | None = None,
         output_strides: list[Any] | None = None,
+        tensor_range: str | None = None,
     ):
         self.name: str = name
         self.parent_id: int = parent_id
@@ -156,6 +157,11 @@ class Node:
         self.output_shapes: list[Any] = output_shapes
         self.output_strides: list[Any] | None = output_strides
         self.commArgs: _CommArgs | None = comm_args
+        self.tensor_range = json.loads(tensor_range) if tensor_range else None
+        if self.tensor_range is not None:
+            self.tensor_range = {
+                int(index): min_max for index, min_max in self.tensor_range.items()
+            }
 
     def get_inputs(self) -> Iterable:
         return zip(self.input_types, self.inputs, self.input_shapes)
@@ -293,6 +299,12 @@ class Node:
         else:
             return self.get_tensor_strides(self.get_inputs(), self.input_strides)
 
+    def get_input_tensor_range(self, tensor_index) -> tuple | None:
+        if self.tensor_range is None or tensor_index not in self.tensor_range:
+            return None
+        else:
+            return self.tensor_range[tensor_index]
+
     def get_output_tensor_strides(self) -> list[tuple] | None:
         if self.output_strides is None:
             return None
@@ -404,6 +416,7 @@ class ExecutionTrace:
         "tid": int,
         "kernel_backend": str,
         "kernel_file": str,
+        "tensor_range": str,
     }
 
     @classmethod
@@ -477,6 +490,7 @@ class ExecutionTrace:
             tid,
             kernel_backend,
             kernel_file,
+            _,
         ) = ExecutionTrace._read_attrs(x)
 
         comm_attrs = (
@@ -520,6 +534,7 @@ class ExecutionTrace:
             tid,
             kernel_backend,
             kernel_file,
+            tensor_range,
         ) = ExecutionTrace._read_attrs(x)
 
         comm_attrs = (
@@ -551,6 +566,7 @@ class ExecutionTrace:
             comm_attrs,
             x["inputs"]["strides"],
             x["outputs"]["strides"],
+            tensor_range,
         )
 
     def get_nodes(self, clean: bool = False):
