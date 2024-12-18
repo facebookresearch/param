@@ -662,6 +662,7 @@ class ExgrReplayManager:
                             shape,
                             dtype,
                             strides,
+                            node.get_input_tensor_range(idx),
                         )
                         self.tensor_registry_permanent[replay_t_id] = tensor
                     except KeyError:
@@ -724,6 +725,7 @@ class ExgrReplayManager:
                             shape,
                             dtype,
                             strides,
+                            node.get_input_tensor_range(idx),
                         )
                         self.tensor_registry_permanent[replay_t_id] = tensor
 
@@ -1178,11 +1180,40 @@ class ExgrReplayManager:
         shape,
         data_type,
         strides,
+        tensor_range,
     ):
         assert storage_id in self.tensor_storage_map
         tensor_data = self.tensor_storage_map[storage_id]
         if device not in tensor_data[1]:
-            if data_type in [torch.half, torch.float32, torch.float64, torch.bfloat16]:
+            if (
+                data_type
+                in [
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                    torch.uint8,
+                    torch.uint16,
+                    torch.uint32,
+                    torch.uint64,
+                    torch.int,
+                    torch.long,
+                ]
+                and tensor_range is not None
+            ):
+                storage_tensor = torch.randint(
+                    tensor_range[0],
+                    tensor_range[1] + 1,
+                    (tensor_data[0] // elem_bytes,),
+                    dtype=data_type,
+                    device=device,
+                )
+            elif data_type in [
+                torch.half,
+                torch.float32,
+                torch.float64,
+                torch.bfloat16,
+            ]:
                 storage_tensor = torch.rand(
                     (tensor_data[0] // elem_bytes), dtype=data_type, device=device
                 )
@@ -1369,7 +1400,6 @@ class ExgrReplayManager:
             inputs, msg = self.get_data(node, True)
             if msg != "":
                 return False, msg
-
             # TODO: why need this hack?
             # Workaround to eliminate the "strides() called on undefined Tensor" error.
             if node.name == "aten::convolution_backward":
