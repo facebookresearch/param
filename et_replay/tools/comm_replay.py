@@ -1153,7 +1153,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         if self.backendFuncs.get_global_rank() == 0:
             logger.info(
-                f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} in block [{curBlockStack}]... {global_latency:.2f} us"
+                f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} with id={curComm.id} in block [{curBlockStack}]... {global_latency:.2f} us"
             )
 
     def benchTime(self, commsParams: commsParamsHolderBase) -> None:
