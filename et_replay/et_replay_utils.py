@@ -16,7 +16,7 @@ from param_bench.train.compute.python.workloads.pytorch.split_table_batched_embe
 TORCH_DTYPES_RNG = {
     "bool": (torch.bool, torch.ones),
     "int8": (torch.int8, torch.ones),
-    "half": (torch.half, torch.ones),
+    "half": (torch.half, torch.randn),
     "int": (torch.int, torch.ones),
     "long": (torch.int64, torch.ones),
     "long int": (torch.int64, torch.ones),
@@ -24,14 +24,15 @@ TORCH_DTYPES_RNG = {
     "double": (torch.float64, torch.randn),
     "signed char": (torch.int8, torch.ones),
     "unsigned char": (torch.uint8, torch.ones),
-    "c10::Half": (torch.half, torch.ones),
-    "c10::BFloat16": (torch.bfloat16, torch.ones),
+    "c10::Half": (torch.half, torch.randn),
+    "c10::BFloat16": (torch.bfloat16, torch.randn),
+    "c10::complex<float>": (torch.complex32, torch.randn),
 }
 
 TORCH_DTYPES_RNG_str = {
     "bool": ("torch.bool", "torch.ones"),
     "int8": ("torch.int8", "torch.ones"),
-    "half": ("torch.half", "torch.ones"),
+    "half": ("torch.half", "torch.randn"),
     "int": ("torch.int", "torch.ones"),
     "long": ("torch.int64", "torch.ones"),
     "long int": ("torch.int64", "torch.ones"),
@@ -39,8 +40,9 @@ TORCH_DTYPES_RNG_str = {
     "double": ("torch.float64", "torch.randn"),
     "signed char": ("torch.int8", "torch.ones"),
     "unsigned char": ("torch.uint8", "torch.ones"),
-    "c10::Half": ("torch.half", "torch.ones"),
-    "c10::BFloat16": ("torch.bfloat16", "torch.ones"),
+    "c10::Half": ("torch.half", "torch.randn"),
+    "c10::BFloat16": ("torch.bfloat16", "torch.randn"),
+    "c10::complex<float>": ("torch.complex32", "torch.randn"),
 }
 
 TORCH_DTYPES_BYTES = {
@@ -56,6 +58,7 @@ TORCH_DTYPES_BYTES = {
     "unsigned char": 1,
     "c10::Half": 2,
     "c10::BFloat16": 2,
+    "c10::complex<float>": 8,
 }
 
 
