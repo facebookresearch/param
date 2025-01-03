@@ -227,12 +227,24 @@ class PyTorchDistBackend(BaseBackend):
                     "Not using batched embedding tables because extend distributed package not in use"
                 )
 
-            work = dist.all_to_all(
-                collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
-                collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
-                group=self.get_collective_group(collectiveArgs),
-                async_op=collectiveArgs.asyncOp,
-            )
+            if isinstance(collectiveArgs.opTensor, list):
+                work = dist.all_to_all(
+                    collectiveArgs.opTensor,
+                    collectiveArgs.ipTensor,
+                    group=self.get_collective_group(collectiveArgs),
+                    async_op=collectiveArgs.asyncOp,
+                )
+            else:
+                work = dist.all_to_all_single(
+                    collectiveArgs.opTensor
+                    if not pair
+                    else collectiveArgs.opTensor_pair,
+                    collectiveArgs.ipTensor
+                    if not pair
+                    else collectiveArgs.ipTensor_pair,
+                    group=self.get_collective_group(collectiveArgs),
+                    async_op=collectiveArgs.asyncOp,
+                )
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(work)
@@ -269,6 +281,15 @@ class PyTorchDistBackend(BaseBackend):
                 async_op=collectiveArgs.asyncOp,
             )
         else:
+            # Found the case that opTensor and ipTensor are not the same dtype
+            # Have to make them the same dtype before calling all_to_allv
+            # Otherwise, it will raise an error
+            if collectiveArgs.opTensor.dtype != collectiveArgs.ipTensor.dtype:
+                logger.warn("all_to_allv: opTensor and ipTensor are not the same dtype")
+                collectiveArgs.opTensor = collectiveArgs.opTensor.to(
+                    collectiveArgs.ipTensor.dtype
+                )
+
             work = dist.all_to_all_single(
                 collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
                 collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
@@ -1056,7 +1077,7 @@ class PyTorchDistBackend(BaseBackend):
                     backend=backend,
                     pg_desc=self.commsParams.pgsDesc.get(pg_id, ""),
                 )
-                logger.info(
+                logger.debug(
                     f"initialized_group: create new group, pg_ids = {pg_ids}, idxed_group_ranks = {idxed_group_ranks}"
                 )
             if pg_id != -1:

@@ -1095,7 +1095,7 @@ class commsTraceReplayBench(paramCommsBench):
                     )
 
                 logger.info(
-                    f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc}"
+                    f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc} id = {curComm.id}"
                 )
 
             # read fields and prepare the tensors
