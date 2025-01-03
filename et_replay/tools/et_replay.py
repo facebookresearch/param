@@ -17,6 +17,8 @@ from et_replay.comm.comms_utils import (
     bootstrap_info_holder,
     commsArgs,
     commsParamsHolderBase,
+    paramCommsBench,
+    paramToCommName,
 )
 from et_replay.et_replay_utils import (
     build_torchscript_func,
@@ -57,41 +59,49 @@ class CommsReplayManager(commsTraceReplayBench):  # pyre-ignore[13]:
 
         self.comp_replay_manager = None
 
-    """
-    TODO: some of the collectives need a list of tensors as input/output
-          invetigate how to support it
     def generate_io_tensors(
         self,
         curComm: commsArgs,
         commsParams: commsParamsHolderBase,
         regenerateTensors: bool,
-    ) -> Tuple[torch.Tensor, Union[List[torch.Tensor], torch.Tensor]]:
-        return super().prepComm(curComm, commsParams, regenerateTensors)
+    ) -> tuple[torch.Tensor, list[torch.Tensor] | torch.Tensor]:
+        paramCommsBench.prepComm(self, curComm, commsParams, False)
 
         node = self.comp_replay_manager.et.nodes[curComm.id]
 
-        input_tensors, _ = self.comp_replay_manager.get_data(node, True)
-        output_tensors, _ = self.comp_replay_manager.get_data(node, False)
+        ip_tensor, _ = self.comp_replay_manager.get_data(node, True, True)
+        op_tensor, _ = self.comp_replay_manager.get_data(node, False, True)
 
-        ip_tensor = None
-        op_tensor = None
+        # "record_param_comms" node is recorded in NCCL C++ API (for example,
+        # torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp). However, et_replay need to
+        # call its Python API. Apparently C++ API and Python API is not compatable. For some
+        # collectives, their Python API has tensor as their input while its C++ API has a vector
+        #  of tensor as their input. The following code is to work around this issue.
+        need_extract_ops = [
+            "send",
+            "recv",
+            "broadcast",
+            "reduce",
+            "all_reduce",
+            "all_gather",
+            "gather",
+            "scatter",
+            "reduce_scatter",
+        ]
 
-        # a hack to see if the ip/op tensor is a GenericList, if so, get the first element,
-        # @see _getTensorInfoFromPyTorchETEntry from commsTraceParser.py
-        def extract_tensor_from_list(tensor_list):
-            if isinstance(tensor_list, list):
-                return extract_tensor_from_list(tensor_list[0])
+        if len(ip_tensor) > 0:
+            if paramToCommName(curComm.comms) not in need_extract_ops:
+                ip_tensor = ip_tensor[0]
             else:
-                return tensor_list
+                ip_tensor = ip_tensor[0][0]
 
-        if input_tensors is not None and len(input_tensors) > 0:
-            ip_tensor = extract_tensor_from_list(input_tensors[0])
-
-        if output_tensors is not None and len(output_tensors) > 0:
-            op_tensor = extract_tensor_from_list(output_tensors[0])
+        if len(op_tensor) > 0:
+            if paramToCommName(curComm.comms) not in need_extract_ops:
+                op_tensor = op_tensor[0]
+            else:
+                op_tensor = op_tensor[0][0]
 
         return (ip_tensor, op_tensor)
-    """
 
 
 class TensorAllcationMode(Enum):
@@ -128,7 +138,6 @@ class ExgrReplayManager:
         self.commsBench = None
         self.comms_world_info = None
         self.commsParams = None
-        self.regenerate_tensors = None
 
         self.cuda = "cuda"
         self.device = torch.device(self.cuda)
@@ -417,9 +426,7 @@ class ExgrReplayManager:
             for _, t_id, _ in get_input_tensors(node):
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
-                if node.name == "record_param_comms" and (
-                    self.compute_only or self.args.separate
-                ):
+                if node.name == "record_param_comms" and self.compute_only:
                     continue
                 self.input_tensor_ids.add(t_id)
 
@@ -428,7 +435,7 @@ class ExgrReplayManager:
             # we take them as the input tensors, and put them in self.input_tensor_ids.
             # So in full_replay, self.input_tensor_ids contains both input tensor ids and
             # the comm nodes' output tensor ids
-            if not (self.compute_only or self.args.separate):
+            if not self.compute_only:
                 for _, t_id, _ in get_output_tensors(node):
                     if self.tensor_with_device:
                         t_id = tuple(list(t_id)[:5])
@@ -575,9 +582,7 @@ class ExgrReplayManager:
                 self.special_tensors.add(replay_t_id)
 
         for node in self.sorted_nodes:
-            if node.name == "record_param_comms" and (
-                self.compute_only or self.args.separate
-            ):
+            if node.name == "record_param_comms" and self.compute_only:
                 continue
             for _, t_id, shape in get_input_tensors(node):
                 if self.tensor_with_device:
@@ -618,9 +623,7 @@ class ExgrReplayManager:
         # Simulate the execution progress and record the output tensors we have seen so far.
         output_set = set()
         for node in self.sorted_nodes:
-            if node.name == "record_param_comms" and (
-                self.compute_only or self.args.separate
-            ):
+            if node.name == "record_param_comms" and self.compute_only:
                 continue
             for _, t_id, _ in get_input_tensors(node):
                 if self.tensor_with_device:
@@ -646,82 +649,44 @@ class ExgrReplayManager:
 
     def allocate_tensors(self):
         start_ns = time.time_ns()
-        """
-        TODO: before figure out how to allocate tensors for comm nodes, we use
-              comms replay to allocate tensors for comm nodes.
-        if not (self.compute_only or self.args.separate):
+
+        if not self.compute_only:
             for node in self.sorted_nodes:
                 if node.name == "record_param_comms":
-                    self.allocate_comm_tensors(node)
+                    self.allocate_node_tensors(node, True, True)
+                    self.allocate_node_tensors(node, False, True)
                 else:
-                    self.allocate_comp_tensors(node)
+                    self.allocate_node_tensors(node, True, False)
         else:
             for node in self.sorted_nodes:
                 if node.name != "record_param_comms":
-                    self.allocate_comp_tensors(node)
-        """
+                    self.allocate_node_tensors(node, True, False)
 
-        for node in self.sorted_nodes:
-            if node.name != "record_param_comms":
-                self.allocate_comp_tensors(node)
         logger.info(
             f"Tensor allocation time: {(time.time_ns() - start_ns) / 1000000.0} ms"
         )
 
-    def allocate_comm_tensors(self, node):
-        def add_comm_tensor_registry(tensor_strides, tensors):
-            for idx, (data_type, t_id, shape) in enumerate(tensors):
-                device = self.device
-                if self.tensor_with_device:
-                    device = t_id[5]
-                    t_id = tuple(list(t_id)[:5])
-                replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
-                if (
-                    t_id in self.input_tensor_ids
-                    and replay_t_id not in self.tensor_registry_permanent.keys()
-                    and replay_t_id in self.instantiate
-                ):
-                    try:
-                        dtype, _ = TORCH_DTYPES_RNG[
-                            data_type.lstrip("Tensor(").rstrip(")")
-                        ]
+    def allocate_node_tensors(self, node, is_input, is_comm_node):  # noqa: C901
+        if is_input:
+            tensor_strides = node.get_input_tensor_strides()
+            tensors = get_input_tensors(node)
+            node.pre_load_tensors = [None] * len(tensors)
+        else:
+            tensor_strides = node.get_output_tensor_strides()
+            tensors = get_output_tensors(node)
 
-                        strides = None
-                        if tensor_strides is not None:
-                            strides = tensor_strides[idx]
-                        tensor = self.get_tensor_from_storage(
-                            t_id[1],  # storage_id
-                            t_id[2],  # offset
-                            t_id[4],  # number of bytes per element
-                            device,
-                            shape,
-                            dtype,
-                            strides,
-                            node.get_input_tensor_range(idx),
-                        )
-                        self.tensor_registry_permanent[replay_t_id] = tensor
-                    except KeyError:
-                        if data_type != "Tensor(nullptr (uninitialized))":
-                            logger.info(f"KeyError: {node.id}, {t_id}, {data_type}")
-                        self.tensor_registry_permanent[replay_t_id] = None
-
-        add_comm_tensor_registry(
-            node.get_input_tensor_strides(), get_input_tensors(node)
-        )
-        add_comm_tensor_registry(
-            node.get_output_tensor_strides(), get_output_tensors(node)
-        )
-
-    def allocate_comp_tensors(self, node):  # noqa: C901
-        tensor_strides = node.get_input_tensor_strides()
-        input_tensors = get_input_tensors(node)
-        node.pre_load_tensors = [None] * len(input_tensors)
-        for idx, (data_type, t_id, shape) in enumerate(input_tensors):
+        for idx, (data_type, t_id, shape) in enumerate(tensors):
             device = self.device
             if self.tensor_with_device:
                 device = t_id[5]
                 t_id = tuple(list(t_id)[:5])
-            replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
+
+            if is_comm_node:
+                # Both input/output tensors of the comm nodes are treated as input tensors
+                replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
+            else:
+                replay_t_id = self.tensors_mapping[(node.id, t_id, is_input)]
+
             if t_id not in self.input_tensor_ids:
                 continue
             found_tensor = False
@@ -733,23 +698,29 @@ class ExgrReplayManager:
                     found_tensor = True
             if not found_tensor:
                 try:
-                    dtype, _ = TORCH_DTYPES_RNG[data_type.lstrip("Tensor(").rstrip(")")]
+                    dtype, _ = TORCH_DTYPES_RNG[
+                        data_type.removeprefix("Tensor(").rstrip(")")
+                    ]
 
                     strides = None
                     if node.input_strides is not None:
                         strides = tensor_strides[idx]
 
                     tensor = None
-                    if dtype in (
-                        torch.int8,
-                        torch.uint8,
-                        torch.int16,
-                        torch.uint16,
-                        torch.int32,
-                        torch.uint32,
-                        torch.int64,
-                        torch.uint64,
-                        torch.long,
+                    if (
+                        dtype
+                        in (
+                            torch.int8,
+                            torch.uint8,
+                            torch.int16,
+                            torch.uint16,
+                            torch.int32,
+                            torch.uint32,
+                            torch.int64,
+                            torch.uint64,
+                            torch.long,
+                        )
+                        and is_input
                     ):
                         tensor = self.get_tensor_from_file(
                             node.id, idx, device, shape, dtype, strides
@@ -810,9 +781,7 @@ class ExgrReplayManager:
             unallocated_tensors = set()
             tensor_allocate_template = """{tensor} = {rng}({shape}).to({dtype}){cuda}"""
             for node in self.sorted_nodes:
-                if node.name == "record_param_comms" and (
-                    self.compute_only or self.args.separate
-                ):
+                if node.name == "record_param_comms" and self.compute_only:
                     continue
                 if is_fbgemm_forward(node):
                     if self.cpu:
@@ -876,7 +845,7 @@ class ExgrReplayManager:
                                     ]
                                 else:
                                     dtype_str, rng_str = TORCH_DTYPES_RNG_str[
-                                        dtype.lstrip("Tensor(").rstrip(")")
+                                        dtype.removeprefix("Tensor(").rstrip(")")
                                     ]
                                 tensor_str = f"tensor_{replay_t_id}"
                                 shape_str = "[" + ", ".join(str(d) for d in shape) + "]"
@@ -1051,14 +1020,14 @@ class ExgrReplayManager:
                             code_str += "        with torch.cuda.stream(s1):\n"
                         start_special = True
                         code_str += f"            # node id: {node.id}\n"
-                        code_str += f"            _ = traceBench.replaySingle(commsParams, {node.id}, {self.regenerate_tensors})\n"
+                        code_str += f"            _ = traceBench.replaySingle(commsParams, {node.id})\n"
                         if "wait" in node.inputs or "barrier" in node.inputs:
                             if self.wait_delay != 0:
                                 code_str += f"            time.sleep({self.wait_delay / 1000.0})\n"
                     else:
                         start_special = False
                         code_str += f"        # node id: {node.id}\n"
-                        code_str += f"        _ = traceBench.replaySingle(commsParams, {node.id}, {self.regenerate_tensors})\n"
+                        code_str += f"        _ = traceBench.replaySingle(commsParams, {node.id})\n"
                         if "wait" in node.inputs or "barrier" in node.inputs:
                             if self.wait_delay != 0:
                                 code_str += (
@@ -1103,7 +1072,7 @@ class ExgrReplayManager:
                         target_len = node.output_shapes[0][0]
                         if current_len < target_len:
                             dtype_str, _ = TORCH_DTYPES_RNG_str[
-                                node.output_types[0].lstrip("Tensor(").rstrip(")")
+                                node.output_types[0].removeprefix("Tensor(").rstrip(")")
                             ]
                             code_str += f'        tmp = torch.zeros({target_len - current_len}).to({dtype_str}).cuda("{self.cuda}")\n'
                             t_id = node.outputs[0]
@@ -1306,12 +1275,12 @@ class ExgrReplayManager:
         ):
             self.tensor_storage_map[storage_id][1] = {}
 
-    def get_data(self, node, is_input):
+    def get_data(self, node, is_input, is_comm_node):
         try:
+            if self.tensor_allocate_mode == TensorAllcationMode.LAZY_ALLOCATE:
+                self.allocate_node_tensors(node, is_input, is_comm_node)
             if is_input:
                 data_in = node.inputs
-                if self.tensor_allocate_mode == TensorAllcationMode.LAZY_ALLOCATE:
-                    self.allocate_comp_tensors(node)
             else:
                 data_in = node.outputs
             data_out = []
@@ -1451,20 +1420,21 @@ class ExgrReplayManager:
             self.commsBench.replaySingle(self.commsParams, node, cnt)
             if self.debug and iter >= self.numWarmupIters:
                 after_execution = time.time_ns()
-            """
-            TODO: before figure out how to allocate tensor for collectives, comms replay
-                  will handle tensor allocation and deallocation.
+
+            # Caution: some collectives are running asynchronously, not sure if freeing the tensors immediately
+            # may cause any invalid tensor issue. The best solution is to free the tensors after the "wait"
+            # op of this collective finishes
             et_node = self.et.nodes[node.id]
             for _, t_id, _ in get_input_tensors(et_node) + get_output_tensors(et_node):
                 if self.tensor_with_device:
                     t_id = tuple(list(t_id)[:5])
-                replay_t_id = self.tensors_mapping[(et_node.id, t_id, True)]
+                replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
                 if (
-                    et_node.id >= self.replay_tensor_id_to_last_node_id_map[replay_t_id]
-                    and replay_t_id not in self.instantiate
+                    node.id >= self.replay_tensor_id_to_last_node_id_map[replay_t_id]
+                    and replay_t_id in self.tensor_registry
                 ):
                     del self.tensor_registry[replay_t_id]
-            """
+                self.free_tensor_in_storage(t_id[1], node.id)
             return True, ""
         else:
             # This is a comms node and it is handled by commsBench.replaySingle
@@ -1475,8 +1445,7 @@ class ExgrReplayManager:
                 start_ns = time.time_ns()
 
             func, output_count = self.funcs[node.id]
-
-            inputs, msg = self.get_data(node, True)
+            inputs, msg = self.get_data(node, True, False)
             if msg != "":
                 logger.info(f"Failed to get input data for node {node.id}: {msg}")
                 return False, msg
@@ -1628,7 +1597,7 @@ class ExgrReplayManager:
                     t = None
                 else:
                     dtype, rng = TORCH_DTYPES_RNG[
-                        data_type.lstrip("Tensor(").rstrip(")")
+                        data_type.removeprefix("Tensor(").rstrip(")")
                     ]
                     replay_t_id = self.tensors_mapping[(node.id, t_id, False)]
                     t = rng(shape).to(dtype)
@@ -1715,7 +1684,7 @@ class ExgrReplayManager:
         event_2 = torch.cuda.Event(enable_timing=True)
 
         def run_ops(event_1, event_2, iter):
-            if not (self.compute_only or self.args.separate):
+            if not self.compute_only:
                 self.commsBench.replayIter = iter
             event_1.record()
             for cnt, node in enumerate(self.sorted_nodes):
@@ -1723,7 +1692,7 @@ class ExgrReplayManager:
                 if not success:
                     return False
             event_2.record()
-            if not (self.compute_only or self.args.separate):
+            if not self.compute_only:
                 self.commsBench.resetComms()
                 # make sure all ops are completed
                 with param_profile.paramProfile(
@@ -1733,7 +1702,7 @@ class ExgrReplayManager:
                         self.commsBench.collectiveArgs
                     )
             torch.cuda.synchronize(self.device)
-            if not (self.compute_only or self.args.separate):
+            if not self.compute_only:
                 self.commsBench.backendFuncs.clear_memory(
                     self.commsBench.collectiveArgs
                 )
@@ -1786,7 +1755,7 @@ class ExgrReplayManager:
             et = ExecutionTraceObserver()
             et.register_callback(et_file)
 
-        if not (self.compute_only or self.args.separate):
+        if not self.compute_only:
             # since the comp replay will pick the 2nd iteration nodes, comm replay also needs
             if len(self.profile_step_node_ids) > 1:
                 commNodes = []
@@ -1899,7 +1868,7 @@ class ExgrReplayManager:
                 f"Execution time: 50th:{np.percentile(self.exec_time, 50) / 1000.0}ms\t90th:{np.percentile(self.exec_time, 90) / 1000.0}ms\t95th:{np.percentile(self.exec_time, 95) / 1000.0}ms"
             )
 
-        if not (self.compute_only or self.args.separate):
+        if not self.compute_only:
             self.commsBench.reportBenchTime()
 
         return benchmark_result
@@ -1975,13 +1944,6 @@ class ExgrReplayManager:
             help="File path to read the trace. All rank read their own trace file.",
         )
         parser.add_argument(
-            "-s",
-            "--separate",
-            action="store_true",
-            default=False,
-            help="Separate compute and comms tensors.",
-        )
-        parser.add_argument(
             "-c",
             "--compute",
             action="store_true",
@@ -2012,12 +1974,6 @@ class ExgrReplayManager:
             action="store_true",
             default=False,
             help="Replay on cpu.",
-        )
-        parser.add_argument(
-            "--regenerate_tensors",
-            action="store_true",
-            default=True,
-            help="when a et_id is being replayed multiple times, setting this to false will use temsors from previous runs.",
         )
         parser.add_argument(
             "--skip-node-file",

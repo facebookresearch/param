@@ -136,10 +136,13 @@ def _parse_comms_op_node(  # noqa: C901
         and isinstance(x[1], bool)
     )
     for node in comm_nodes:
-        # according to macro RECORD_PARAM_COMMS and RECORD_PARAM_COMMS_DATA in torch/csrc/distributed/c10d/ParamCommsUtils.hpp
-        # ["wait", "barrier", "init"] record 1st element as seq_id, whose 1st element is an integer for sequence number, 2nd element is a bool for isP2P
-        # others record starting from input tensor
-        index_base = 0 if is_seq_id(node.inputs[0]) else 1
+        # for ["wait", "barrier", "init"] ops, before having different seq_id for p2p op and non p2p op, seq_id is an integer for the first input
+        # After having different seq_id for p2p op and non p2p op, seq_id is a list of [seq_id, isP2P] for the first input
+        # Need to handle both cases, in the future this kind of change should have different version of schema, and we can use version to decide how to parse the trace
+        if is_seq_id(node.inputs[0]) or isinstance(node.inputs[0], int):
+            index_base = 0
+        else:
+            index_base = 1
         req_id = node.inputs[index_base]
         recorded_rank = node.inputs[index_base + 2]
 
@@ -151,7 +154,12 @@ def _parse_comms_op_node(  # noqa: C901
         if comm_args.comms == "init":
             # init node has been built
             continue
-        comm_args.req = req_id
+
+        if isinstance(req_id, int):
+            # this is the format before having different seq_id for p2p op and non p2p op
+            comm_args.req = (req_id, False)
+        else:
+            comm_args.req = req_id
 
         if node.commArgs.pg_name and node.commArgs.pg_name.isdecimal():
             comm_args.pgId = int(node.commArgs.pg_name)
