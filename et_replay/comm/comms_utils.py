@@ -19,11 +19,12 @@ from contextlib import ContextDecorator
 from io import StringIO
 from typing import Any
 
+from torch._C._profiler import ProfilerActivity
+
 try:
-    from param_bench.train.comms.pt.fb.internals import (
-        fbInitProfiler,
-        fbSampleProfiler,
-        fbStartProfiler,
+    from et_replay.fb.internals import (
+        get_fb_profiler_activities,
+        get_fb_profiler_trace_handler,
         initialize_collectiveArgs_internal,
         remove_quantization_handlers,
     )
@@ -390,45 +391,79 @@ def ensureTensorFlush(tensors: list[torch.Tensor] | torch.Tensor) -> Any:
     return x
 
 
-def startProfiler(rank: int, device: str, numWarmupIters: int, numIters: int) -> bool:
+_torch_profiler = None
+
+
+def startProfiler(
+    rank: int, device: str, numWarmupIters: int, numIters: int, output_path: str
+):
     """
-    Starts internal profiler with given parameters.
+    Starts pytorch profiler with given parameters.
 
     Args:
         rank: Global rank.
         device: Type of device "cuda", "cpu", etc.
         numWarmupIters: Number of warmup iterations.
         numIters: Number of real iterations.
-    Returns:
-        bool: Returns if internal profile was able to start or not.
+        output_path: Path to save profiler trace.
     """
+    global _torch_profiler
+
     if has_internal_libs:
-        fbInitProfiler(
-            rank=rank,
-            device=device,
+        activities = get_fb_profiler_activities()
+        trace_handler = get_fb_profiler_trace_handler()
+    else:
+        activities = ([ProfilerActivity.CPU, ProfilerActivity.CUDA],)
+
+        def trace_handler(p):
+            import pathlib
+
+            folder_path = os.path.join(output_path, "profiler_trace")
+            try:
+                pathlib.Path(folder_path).mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                logger.error(f"Permission denied to create directory {folder_path}")
+            p.export_chrome_trace(os.path.join(folder_path, f"rank-{rank}.json"))
+
+    logger.debug("GPU Trace Collection: Enabled")
+    _torch_profiler = torch.profiler.profile(
+        schedule=torch.profiler.schedule(
+            wait=1,
             warmup=numWarmupIters,
-            iters=numIters,
-        )
-        fbStartProfiler()
+            active=numIters,
+            repeat=1,
+        ),
+        on_trace_ready=trace_handler,
+        activities=activities,
+    )
+
+    if _torch_profiler:
+        logger.debug("GPU Trace Profiler: Start")
+        _torch_profiler.start()
         return True
     else:
-        logger.debug("Internal profiler is not available, skip...")
+        logger.debug("GPU Trace Profiler: Fail to start")
         return False
 
 
 def sampleProfiler(stop: bool = False) -> None:
     """
-    Starts internal sample profiler.
+    Starts sample profiler.
 
     Args:
         stop: Bool to be passed into sample profiler.
     Returns:
         None
     """
-    if has_internal_libs:
-        fbSampleProfiler(stop)
+    global _torch_profiler
+    if _torch_profiler:
+        _torch_profiler.step()
+        if stop:
+            _torch_profiler.stop()
+            _torch_profiler = None
+            logger.debug("GPU Trace Profiler: Stop")
     else:
-        logger.debug("Internal profiler is not available, skip...")
+        logger.debug("GPU Trace Profiler: not enabled")
 
 
 class commsArgs:
