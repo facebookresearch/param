@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+from contextlib import nullcontext
 
 import numpy as np
 import torch
@@ -1221,21 +1222,6 @@ class commsTraceReplayBench(paramCommsBench):
 
         if commsParams.enable_profiler:
             self.collectiveArgs.enable_profiler = True
-            if fb_internal.has_fb_internal_libs:
-                # num of iterations to skip
-                fbProfilerWarmupIters = self.profiler_num_replays_start
-                # num of iterations to profile, at most num_replays iterations
-                fbProfilerProfileIters = (
-                    self.profiler_num_replays
-                    if self.profiler_num_replays_start + self.profiler_num_replays <= self.num_replays
-                    else self.num_replays - self.profiler_num_replays_start
-                )
-                fb_internal.fbStartProfiler(
-                    rank=self.backendFuncs.get_global_rank(),
-                    device=self.collectiveArgs.device,
-                    numWarmupIters=fbProfilerWarmupIters,
-                    numIters=fbProfilerProfileIters,
-                )
 
         # sync everything before starting real runs
         with paramProfile(description="# PARAM replay warmup post-replay global sync"):
@@ -1248,8 +1234,6 @@ class commsTraceReplayBench(paramCommsBench):
             for coll, sizes in self.collInMsgBytes.items():
                 logger.info(f"\t{coll}: {len(sizes)}")
 
-        traceStartTime = time.monotonic_ns()
-
         def trace_handler(p):
             import pathlib
             folder_path = os.path.join(self.out_path, 'profiler_trace')
@@ -1259,22 +1243,34 @@ class commsTraceReplayBench(paramCommsBench):
                 logger.error(f'Permission denied to create directory {folder_path}')
             p.export_chrome_trace(os.path.join(folder_path, f'rank-{self.backendFuncs.get_global_rank()}.json'))
 
-        # If Facebook internal libs are imported, use fb internal features. Otherwise, use public torch profiler.
-        with profile(
-            activities = [ProfilerActivity.CPU, ProfilerActivity.CUDA],
-            schedule = schedule(skip_first = 0 if self.collectiveArgs.enable_profiler and not fb_internal.has_fb_internal_libs else self.num_replays,
-                                wait = self.profiler_num_replays_start - (1 if self.profiler_num_replays_start >= 1 else 0),
-                                warmup = (1 if self.profiler_num_replays_start >= 1 else 0),
-                                active = self.profiler_num_replays,
-                                repeat = 1),
-            on_trace_ready = trace_handler
-        ) as prof:
+        if self.collectiveArgs.enable_profiler and not fb_internal.has_fb_internal_libs:
+            profiler = profile(
+                activities = [ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                schedule = schedule(
+                    skip_first = 0,
+                    wait = self.profiler_num_replays_start - (1 if self.profiler_num_replays_start >= 1 else 0),
+                    warmup = (1 if self.profiler_num_replays_start >= 1 else 0),
+                    active = self.profiler_num_replays,
+                    repeat = 1
+                    ),
+                on_trace_ready = trace_handler
+                )
+        elif self.collectiveArgs.enable_profiler and fb_internal.has_fb_internal_libs:
+            profiler = fb_internal.MetaProfiler(
+                self.backendFuncs.get_global_rank(),
+                self.collectiveArgs.device,
+                self.profiler_num_replays_start,
+                self.profiler_num_replays,
+                self.num_replays
+                )
+        else:
+            profiler = nullcontext()
+
+        traceStartTime = time.monotonic_ns()
+        with profiler as prof:
             for i in range(self.num_replays):
                 if self.backendFuncs.get_global_rank() == 0:
                     logger.info(f"Replay #{i}")
-
-                if self.collectiveArgs.enable_profiler and fb_internal.has_fb_internal_libs:
-                    fb_internal.fbSampleProfiler()
                 
                 # replay comms trace
                 self.replayIter = i
@@ -1287,16 +1283,14 @@ class commsTraceReplayBench(paramCommsBench):
                 ):
                     self.backendFuncs.sync_barrier(self.collectiveArgs)
                 
-                prof.step()
+                if prof:
+                    prof.step()
 
         # record how long it took for trace-replay to complete
         traceEndTime = time.monotonic_ns()
         self.totalTraceLatency = (traceEndTime - traceStartTime) / 1e3  # make it us
 
-        # stop profiler if used
         if self.collectiveArgs.enable_profiler:
-            if fb_internal.has_fb_internal_libs:
-                fb_internal.fbSampleProfiler(stop=True)
             self.collectiveArgs.enable_profiler = False
 
         # cleanup any memory left in use
