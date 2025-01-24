@@ -47,7 +47,7 @@ _dtype_size_map: Dict[str, int] = {
 }
 
 # refer to: https://github.com/NVIDIA/nccl-tests/blob/master/doc/PERFORMANCE.md
-_busbw_correction_factors_tbl: Dict[str, Callable[[int], float]] = {
+_busbw_correction_factors_func_tbl: Dict[str, Callable[[int], float]] = {
     'all_reduce'        : (lambda n: 2 * (n - 1) / n),
     'all_gather'        : (lambda n: (n - 1) / n),
     'all_to_all'        : (lambda n: (n - 1) / n),
@@ -62,19 +62,19 @@ _busbw_correction_factors_tbl: Dict[str, Callable[[int], float]] = {
 
 # map collective name of event to key string for bw calculation
 _collname_to_busbw_corr_factor_func: Dict[str, Callable[[int], float]] = {
-    'allreduce'             : _busbw_correction_factors_tbl['all_reduce'],
-    'all_gather'            : _busbw_correction_factors_tbl['all_gather'],
-    '_allgather_base'       : _busbw_correction_factors_tbl['all_gather'],
-    'reduce_scatter'        : _busbw_correction_factors_tbl['reduce_scatter'],
-    '_reduce_scatter_base'  : _busbw_correction_factors_tbl['reduce_scatter'],
-    'all_to_all'            : _busbw_correction_factors_tbl['all_to_all'],
-    'all_to_allv'           : _busbw_correction_factors_tbl['all_to_all'],
-    'broadcast'             : _busbw_correction_factors_tbl['broadcast'],
-    'reduce'                : _busbw_correction_factors_tbl['reduce'],
-    'gather'                : _busbw_correction_factors_tbl['gather'],
-    'scatter'               : _busbw_correction_factors_tbl['scatter'],
-    'send'                  : _busbw_correction_factors_tbl['send'],
-    'recv'                  : _busbw_correction_factors_tbl['recv'],
+    'allreduce'             : _busbw_correction_factors_func_tbl['all_reduce'],
+    'all_gather'            : _busbw_correction_factors_func_tbl['all_gather'],
+    '_allgather_base'       : _busbw_correction_factors_func_tbl['all_gather'],
+    'reduce_scatter'        : _busbw_correction_factors_func_tbl['reduce_scatter'],
+    '_reduce_scatter_base'  : _busbw_correction_factors_func_tbl['reduce_scatter'],
+    'all_to_all'            : _busbw_correction_factors_func_tbl['all_to_all'],
+    'all_to_allv'           : _busbw_correction_factors_func_tbl['all_to_all'],
+    'broadcast'             : _busbw_correction_factors_func_tbl['broadcast'],
+    'reduce'                : _busbw_correction_factors_func_tbl['reduce'],
+    'gather'                : _busbw_correction_factors_func_tbl['gather'],
+    'scatter'               : _busbw_correction_factors_func_tbl['scatter'],
+    'send'                  : _busbw_correction_factors_func_tbl['send'],
+    'recv'                  : _busbw_correction_factors_func_tbl['recv'],
 }
 
 def _get_dict_value(d, k, err_msg):
@@ -123,6 +123,7 @@ def _get_event_busbw_factor(evt):
 
 def calculate_bw_(trace_data):
     nccl_events = [i for i in trace_data['traceEvents'] if i.get('cat', '') == 'kernel' and i['name'].startswith('ncclDevKernel_')]
+    failed_events = []
     for evt in nccl_events:
         try:
             coll_name = _get_dict_value(evt['args'], 'Collective name', f'Missing "Collective name" in event: {evt}')
@@ -139,7 +140,13 @@ def calculate_bw_(trace_data):
             evt['args']['busbw (GB/sec)'] = busbw
             evt['args']['busbw_factor'] = busbw_factor
         except ValueError as e:
-            logger.error('Error processing event: %s', e)
+            failed_events.append((evt, str(e)))
+    
+    if failed_events:
+        logger.error('Fail to process events:')
+        for evt, err_msg in failed_events:
+            logger.error(f'- Event: {evt}')
+            logger.error(f'- Error: {err_msg}')
 
 def calculate_sbw(trace_data):
     # calculate shared bw per rank
@@ -150,7 +157,7 @@ def calculate_sbw(trace_data):
     if not len(nccl_events):
         return 0
     
-    total_data_size = sum([_calculate_event_data_size(evt) * _get_event_busbw_factor(evt) for evt in nccl_events])
+    total_data_size = sum(_calculate_event_data_size(evt) * _get_event_busbw_factor(evt) for evt in nccl_events)
 
     time_range_tree = IntervalTree([Interval(evt['ts'], evt['ts'] + evt['dur']) for evt in nccl_events])
     time_range_tree.merge_overlaps()
@@ -160,12 +167,15 @@ def calculate_sbw(trace_data):
 
     sorted_tr = sorted(time_range_tree)
     total_idle_time = \
-        sum([sorted_tr[i + 1].begin - sorted_tr[i].end for i in range(len(sorted_tr) - 1)]) \
+        sum(sorted_tr[i + 1].begin - sorted_tr[i].end for i in range(len(sorted_tr) - 1)) \
         if len(sorted_tr) > 1 else 0
 
     return total_data_size / (end_time_point - begin_time_point - total_idle_time) / 1e3
 
 def pick_iter_e2e_time_(trace_data, tl):
+    '''
+    Pick the execution time of each iteration from trace.
+    '''
     tl.extend([evt['dur'] for evt in trace_data['traceEvents'] if evt.get('cat', '') == 'user_annotation' and evt['name'].startswith('ProfilerStep#')])
 
 def pick_comm_bw_(trace_data, comm_bw_data):
