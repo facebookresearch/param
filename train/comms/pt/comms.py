@@ -853,11 +853,10 @@ class commsCollBench(paramCommsBench):
                     "TotalLatency(us):p50",
                 )
             else:
-                fmt = "{:>40}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
+                fmt = "{:>40}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
                 header += fmt.format(
                     "total-size (B)",
                     "nElementsPerRank",
-                    "nElementsPairPerRank",
                     "Latency(us):p50",
                     "p75",
                     "p95",
