@@ -20,10 +20,7 @@ from io import StringIO
 from typing import Any
 
 try:
-    from param_bench.train.comms.pt.fb.internals import (
-        fbInitProfiler,
-        fbSampleProfiler,
-        fbStartProfiler,
+    from param_bench.et_replay.vendor_internals import (
         initialize_collectiveArgs_internal,
         remove_quantization_handlers,
     )
@@ -388,47 +385,6 @@ def ensureTensorFlush(tensors: list[torch.Tensor] | torch.Tensor) -> Any:
         x = tensors[-1].item()  # to ensure collective won't be optimized away.
 
     return x
-
-
-def startProfiler(rank: int, device: str, numWarmupIters: int, numIters: int) -> bool:
-    """
-    Starts internal profiler with given parameters.
-
-    Args:
-        rank: Global rank.
-        device: Type of device "cuda", "cpu", etc.
-        numWarmupIters: Number of warmup iterations.
-        numIters: Number of real iterations.
-    Returns:
-        bool: Returns if internal profile was able to start or not.
-    """
-    if has_internal_libs:
-        fbInitProfiler(
-            rank=rank,
-            device=device,
-            warmup=numWarmupIters,
-            iters=numIters,
-        )
-        fbStartProfiler()
-        return True
-    else:
-        logger.debug("Internal profiler is not available, skip...")
-        return False
-
-
-def sampleProfiler(stop: bool = False) -> None:
-    """
-    Starts internal sample profiler.
-
-    Args:
-        stop: Bool to be passed into sample profiler.
-    Returns:
-        None
-    """
-    if has_internal_libs:
-        fbSampleProfiler(stop)
-    else:
-        logger.debug("Internal profiler is not available, skip...")
 
 
 class commsArgs:
