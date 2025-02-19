@@ -744,6 +744,10 @@ class paramCommsBench(ABC):
             "signed char": torch.int8,
             "unsigned char": torch.uint8,
         }
+        self.dtypeSizeMap = {
+            k: torch.tensor([], dtype=v).element_size()
+            for k, v in self.dtypeMap.items()
+        }
         self.supportedDtype = list(self.dtypeMap.keys())
         self.backendFuncs: BaseBackend
 

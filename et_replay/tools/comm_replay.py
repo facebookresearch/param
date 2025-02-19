@@ -509,9 +509,7 @@ class commsTraceReplayBench(paramCommsBench):
                     self.collOutMsgBytes[collName] = []
                     self.collOutUniMsgBytes[collName] = set()
             if curComm.inMsgSize is not None:
-                dtypeSize = torch.tensor(
-                    [], dtype=self.dtypeMap[curComm.dtype]
-                ).element_size()
+                dtypeSize = self.dtypeSizeMap[curComm.dtype]
                 self.collInMsgBytes[collName].append(curComm.inMsgSize * dtypeSize)
                 self.collInUniMsgBytes[collName].add(curComm.inMsgSize * dtypeSize)
                 self.collOutMsgBytes[collName].append(curComm.outMsgSize * dtypeSize)
@@ -1001,6 +999,7 @@ class commsTraceReplayBench(paramCommsBench):
     ):
         recordComm = curComm.toDict()
 
+        recordComm["dtype_size"] = self.dtypeSizeMap.get(curComm.dtype, 0)
         recordComm["marker_stack"] = curBlockStack
         recordComm["quant_us"] = self.collectiveArgs.quant_time.getTimeUS()
         recordComm["dequant_us"] = self.collectiveArgs.dequant_time.getTimeUS()
