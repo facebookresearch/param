@@ -43,7 +43,6 @@ from param_bench.train.compute.python.lib import pytorch as lib_pytorch
 from param_bench.train.compute.python.lib.init_helper import load_modules
 from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
 from torch._inductor.async_compile import AsyncCompile
-from torch._inductor.codecache import TritonFuture
 
 # grid and split_scan_grid are dynamically loaded
 from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid  # noqa
@@ -1038,8 +1037,6 @@ class ExgrReplayManager:
                 func, output_count = self.funcs[node.id]
                 if not func:
                     continue
-                if isinstance(func, TritonFuture):
-                    func = func.result()
 
                 func_str = f"funcs[{node.id}]"
                 inputs_str = _generate_inputs_str(node)
