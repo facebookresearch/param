@@ -45,7 +45,6 @@ from param_bench.train.compute.python.workloads import pytorch as workloads_pyto
 from torch._inductor.async_compile import AsyncCompile
 
 # grid and split_scan_grid are dynamically loaded
-from torch._inductor.runtime.triton_heuristics import grid, split_scan_grid  # noqa
 from torch.profiler import ExecutionTraceObserver
 
 logger = logging.getLogger(__name__)
