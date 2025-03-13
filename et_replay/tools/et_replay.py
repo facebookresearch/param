@@ -1459,9 +1459,7 @@ class ExgrReplayManager:
                 outputs = []
                 if output_count == 0:
                     if node.kernel_backend == "triton":
-                        exec(
-                            f"func.run(*inputs[:-2], grid={inputs[-2]}, stream={inputs[-1]})"
-                        )
+                        exec(f"func.run(*inputs[:-1], stream={inputs[-1]})")
                     else:
                         func(*inputs)
                 else:
