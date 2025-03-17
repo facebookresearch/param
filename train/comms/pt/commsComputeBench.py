@@ -493,14 +493,13 @@ class commsComputeBench(commsCollBench):
                 )
             else:
                 fmt = (
-                    "{:>40}{:>18}{:>22}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
+                    "{:>40}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
                     + dev_time_fmt
                     + tflops_fmt
                 )
                 header += fmt.format(
                     "total-size (B)",
                     "nElementsPerRank",
-                    "nElementsPairPerRank",
                     "Latency(us):p50",
                     "p75",
                     "p95",
