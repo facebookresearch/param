@@ -669,6 +669,27 @@ class PyTorchDistBackend(backendFunctions):
         if devSync:
             self.device_sync(collectiveArgs)
 
+    def create_event(self, collectiveArgs):
+        dev_str = (
+            self.commsParams["device"]
+            if isinstance(self.commsParams, dict)
+            else self.commsParams.device
+        )
+        if dev_str == "cuda":
+            return torch.cuda.Event(enable_timing=True)
+        return None
+
+    def record_event(self, event, collectiveArgs):
+        # Check if the start_event is not None, which means it's a CUDA event
+        if event is not None:
+            # Record the start event on the current CUDA stream
+            event.record(self.get_current_stream(device=collectiveArgs.device))
+
+    def elapsed_time(self, start_event, end_event):
+        if start_event is not None and end_event is not None:
+            return start_event.elapsed_time(end_event)
+        return 0
+
     # retFlag not used
     def complete_single_op(self, collectiveArgs, retFlag=False):
         """only wait on the first op in the queue"""

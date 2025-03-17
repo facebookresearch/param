@@ -127,6 +127,7 @@ class collectiveArgsHolder:
         self.use_ext_dist = False
 
         self.include_0B = False
+        self.use_device_time = False
 
 
 class backendFunctions(ABC):

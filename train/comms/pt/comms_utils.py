@@ -803,6 +803,7 @@ class commsParamsHolderBase:
         self.ibv_devices = args.ibv_devices
         self.init_only = args.init_only
         self.eager_init = args.eager_init
+        self.use_device_time = args.use_device_time
 
 
 class commsDlrmParamsHolder(commsParamsHolderBase):
