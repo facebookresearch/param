@@ -1023,7 +1023,7 @@ class PyTorchDistBackend(backendFunctions):
             return None
 
     def switch_stream(self, stream, device: torch.device | None):
-        """switch to a new stream and return the current stream"""
+        """switch to a new stream and return the old current stream"""
         if device is None:
             device = self.get_device()
         if stream is not None and device.type == "cuda":

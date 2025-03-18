@@ -883,6 +883,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.groupRanks = groupRanks
 
         self.include_0B = args.include_0B
+        self.graph_launches = args.graph_launches
         self.num_coll = args.num_coll
 
 

@@ -189,6 +189,12 @@ class commsCollBench(paramCommsBench):
             default=False,
             help="use device time measurement",
         )
+        parser.add_argument(
+            "--graph-launches",
+            type=int,
+            default=0,
+            help="Number of graph launches for each data-size",
+        )
         return parser.parse_known_args()
 
     def _checkPt2Pt(self, args):
@@ -315,6 +321,10 @@ class commsCollBench(paramCommsBench):
                 logger.error(f"wrong dst_ranks ({args.dst_ranks})")
                 comms_utils.gracefulExit()
 
+        if args.graph_launches > 0 and args.device != "cuda":
+            logger.error("cuda graph is only supported for cuda or rocm device")
+            comms_utils.gracefulExit()
+
     # depnds on data type
     def checkArgsdataType(self, args):  # noqa: C901
         args.b = comms_utils.parsesize(args.b)
@@ -354,7 +364,81 @@ class commsCollBench(paramCommsBench):
         # run a few sanity checks
         self._check_bitwidth(args)
 
+    def run_coll_cuda_graph(self, comm_fn=None, dcheck=False):
+        self.backendFuncs.sync_barrier(
+            self.collectiveArgs, desc="run_coll_cuda_graph_begin"
+        )
+        elapsedTimeNS = 0.0
+
+        # 1. Warmup phase
+        # launch collective on a separate stream and sync with current_stream
+        s = torch.cuda.Stream()
+        s.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(s):
+            for _ in range(self.collectiveArgs.numWarmupIters):
+                comm_fn(self.collectiveArgs)
+        torch.cuda.current_stream().wait_stream(s)
+
+        # 2. capturing graph
+        # in cuda graph, we need to use sync mode
+        # TODO: this might need PTD fix (async_op=True won't work under cuda graph)
+        self.collectiveArgs.asyncOp = False
+        g = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(g):
+            for _ in range(self.collectiveArgs.numIters):
+                if dcheck:
+                    # reset input tensor for data validation
+                    self.setTensorVal(self.collectiveArgs.ipTensor)
+                comm_fn(self.collectiveArgs)
+
+        # 3. Replay
+        start = time.monotonic()  # available only in py3
+        for _ in range(self.collectiveArgs.graph_launches):
+            if self.collectiveArgs.enable_profiler:
+                comms_utils.sampleProfiler()
+
+            # [optional] we can feed new input data to ipTensor for each replay
+            g.replay()
+
+        self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+        end = time.monotonic()  # available only in py3
+
+        ensureTensorFlush(self.collectiveArgs.opTensor)
+
+        elapsedTimeNS += (
+            end - start
+        ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
+
+        memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
+
+        avgIterNS, algBW = comms_utils.getAlgBW(
+            elapsedTimeNS,
+            memSize,
+            self.collectiveArgs.numIters
+            * self.collectiveArgs.numCollPerIter
+            * self.collectiveArgs.graph_launches,
+        )
+        busBW = self.backendFuncs.getBusBW(
+            self.collectiveArgs.collective,
+            algBW,
+            self.collectiveArgs,
+        )
+
+        # reset group to sync among all global ranks
+        self.collectiveArgs.group = self.backendFuncs.get_default_group()
+        self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_end")
+
+        results = {
+            "timeUS": avgIterNS / 1e3,
+            "algBW": algBW,
+            "busBW": busBW,
+            "memSize": memSize,
+        }
+        return results
+
     def runColl(self, comm_fn=None, dcheck=False):
+        if self.collectiveArgs.graph_launches > 0:
+            return self.run_coll_cuda_graph(comm_fn, dcheck)
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
         elapsedCPUTimeNS = 0.0
@@ -801,6 +885,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.numCollPerIter = commsParams.num_coll
         self.collectiveArgs.include_0B = commsParams.include_0B
         self.collectiveArgs.use_device_time = commsParams.use_device_time
+        self.collectiveArgs.graph_launches = commsParams.graph_launches
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)

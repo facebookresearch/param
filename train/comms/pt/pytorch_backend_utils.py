@@ -128,6 +128,7 @@ class collectiveArgsHolder:
 
         self.include_0B = False
         self.use_device_time = False
+        self.graph_launches = 0
 
 
 class backendFunctions(ABC):
