@@ -941,19 +941,9 @@ class paramCommsBench(ABC):
         ipTensor = []
         opTensor = []
         if allocate:
-            alloc_func = (
-                self.backendFuncs.alloc_ones
-                if commsParams.dcheck == 1
-                else self.backendFuncs.alloc_random
-            )
-            ipTensor = [
-                alloc_func(i, curDevice, commsParams.dtype, self.initVal)
-                for i in curComm.inSplit
-            ]
-            opTensor = [
-                alloc_func(i, curDevice, commsParams.dtype, self.initVal)
-                for i in curComm.outSplit
-            ]
+            alloc_func = self.backendFuncs.alloc_ones if commsParams.dcheck == 1 else self.backendFuncs.alloc_random
+            ipTensor = [alloc_func(i, curDevice, commsParams.dtype, self.initVal) for i in curComm.inSplit]
+            opTensor = [alloc_func(i, curDevice, commsParams.dtype, self.initVal) for i in curComm.outSplit]
         return (ipTensor, opTensor)
 
     def _prep_all_gather(

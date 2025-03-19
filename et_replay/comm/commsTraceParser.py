@@ -1,6 +1,7 @@
 # (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
 from __future__ import annotations
 
+import math
 import json
 
 import logging
