@@ -937,37 +937,12 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
-        # all_to_all requires two tensor lists, e.g., List[torch.Tensor]
-
         ipTensor = []
         opTensor = []
         if allocate:
-            if commsParams.dcheck == 1:
-                for _ in range(world_size):
-                    ipTensor.append(
-                        self.backendFuncs.alloc_ones(
-                            [(numElementsIn // world_size)],
-                            curDevice,
-                            commsParams.dtype,
-                            self.initVal,
-                        )
-                    )
-            else:
-                for _ in range(world_size):
-                    ipTensor.append(
-                        self.backendFuncs.alloc_random(
-                            [(numElementsIn // world_size)],
-                            curDevice,
-                            commsParams.dtype,
-                            scaleFactor,
-                        )
-                    )
-            for _ in range(world_size):
-                opTensor.append(
-                    self.backendFuncs.alloc_random(
-                        [(numElementsOut // world_size)], curDevice, dtype, scaleFactor
-                    )
-                )
+            alloc_func = self.backendFuncs.alloc_ones if commsParams.dcheck == 1 else self.backendFuncs.alloc_random
+            ipTensor = [alloc_func(i, curDevice, commsParams.dtype, self.initVal) for i in curComm.inSplit]
+            opTensor = [alloc_func(i, curDevice, commsParams.dtype, self.initVal) for i in curComm.outSplit]
         return (ipTensor, opTensor)
 
     def _prep_all_gather(
