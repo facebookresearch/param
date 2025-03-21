@@ -876,17 +876,12 @@ class paramCommsBench(ABC):
             opTensor = self.backendFuncs.alloc_random(
                 [numElementsOut], curDevice, dtype, scaleFactor
             )
-        # all_to_allv requires tensors to specify split
-        self.collectiveArgs.opTensor_split = (
-            curComm.outSplit
-            if (curComm.outSplit is not None)
-            else [(numElementsOut // world_size) for _ in range(world_size)]
-        )
-        self.collectiveArgs.ipTensor_split = (
-            curComm.inSplit
-            if (curComm.inSplit is not None)
-            else [(numElementsIn // world_size) for _ in range(world_size)]
-        )
+        # recorded splits in trace is only for dim 0, but tensor in replay has been flattened.
+        # need to recalculate the splits for flattened 1D tensor
+        self.collectiveArgs.opTensor_split = \
+            [numElementsOut // sum(curComm.outSplit) * i for i in curComm.outSplit] if curComm.outSplit else None
+        self.collectiveArgs.ipTensor_split = \
+            [numElementsIn // sum(curComm.inSplit) * i for i in curComm.inSplit] if curComm.inSplit else None
         return (ipTensor, opTensor)
 
     def _prep_all_to_all_single(

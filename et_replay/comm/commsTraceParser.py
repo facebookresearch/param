@@ -198,18 +198,9 @@ def _parse_comms_op_node(  # noqa: C901
             if not comm_args.worldSize:
                 # if no pg info provided, use total ranks as world size
                 comm_args.worldSize = total_ranks
-            comm_args.inSplit = (
-                json.loads(node.commArgs.in_split_size)
-                if json.loads(node.commArgs.in_split_size)
-                else [int(comm_args.inMsgSize / comm_args.worldSize)]
-                * comm_args.worldSize
-            )
-            comm_args.outSplit = (
-                json.loads(node.commArgs.out_split_size)
-                if json.loads(node.commArgs.out_split_size)
-                else [int(comm_args.outMsgSize / comm_args.worldSize)]
-                * comm_args.worldSize
-            )
+            comm_args.inSplit = json.loads(node.commArgs.in_split_size)
+            comm_args.outSplit = json.loads(node.commArgs.out_split_size)
+        
         comms_op_list.append(comm_args)
 
     return comms_op_list
