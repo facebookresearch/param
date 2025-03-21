@@ -357,8 +357,8 @@ class ExecutionTrace:
             input_tensors = self.nodes[id].get_input_tensors()
             output_tensors = self.nodes[id].get_output_tensors()
 
-            # track the various process and threads we have
-            if x["name"] == "__ROOT_THREAD__":
+            # track annonation to get thread ids of root nodes
+            if x["name"] == "[pytorch|profiler|execution_trace|thread]":
                 tid = self.nodes[id].tid
                 self.proc_group[pid][tid] = id
 
