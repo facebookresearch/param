@@ -878,16 +878,10 @@ class paramCommsBench(ABC):
             )
         # recorded splits in trace is only for dim 0, but tensor in replay has been flattened.
         # need to recalculate the splits for flattened 1D tensor
-        self.collectiveArgs.opTensor_split = (
-            [numElementsOut // sum(curComm.outSplit) * i for i in curComm.outSplit]
-            if curComm.outSplit
-            else None
-        )
-        self.collectiveArgs.ipTensor_split = (
-            [numElementsIn // sum(curComm.inSplit) * i for i in curComm.inSplit]
-            if curComm.inSplit
-            else None
-        )
+        self.collectiveArgs.opTensor_split = \
+            [numElementsOut // sum(curComm.outSplit) * i for i in curComm.outSplit] if curComm.outSplit else None
+        self.collectiveArgs.ipTensor_split = \
+            [numElementsIn // sum(curComm.inSplit) * i for i in curComm.inSplit] if curComm.inSplit else None
         return (ipTensor, opTensor)
 
     def _prep_all_to_all_single(
