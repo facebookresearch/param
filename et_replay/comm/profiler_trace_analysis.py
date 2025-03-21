@@ -352,9 +352,7 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         f.write("\n")
 
         for k, v in comm_bw_summary.items():
-            f.write(
-                f"{k[0]:>50s} {k[1]:>15s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]/1e3:>10.3f} "
-            )
+            f.write(f"{k[0]:>50s} {k[1]:>15s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]/1e3:>10.3f} ")
             for i in range(2, len(v)):
                 f.write(f"{v[i]:>8.2f}|")
             f.write("\n")
