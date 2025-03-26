@@ -436,9 +436,7 @@ class commsCollBench(paramCommsBench):
         }
         return results
 
-    def runColl(self, comm_fn=None, dcheck=False):
-        if self.collectiveArgs.graph_launches > 0:
-            return self.run_coll_cuda_graph(comm_fn, dcheck)
+    def run_coll_non_graph(self, comm_fn=None, dcheck=False):
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
         elapsedCPUTimeNS = 0.0
@@ -549,6 +547,13 @@ class commsCollBench(paramCommsBench):
             "memSize": memSize,
         }
         return results
+
+    def runColl(self, comm_fn=None, dcheck=False):
+        return (
+            self.run_coll_non_graph(comm_fn, dcheck)
+            if self.collectiveArgs.graph_launches == 0
+            else self.run_coll_cuda_graph(comm_fn, dcheck)
+        )
 
     def runPt2Pt(self):
         self.backendFuncs.sync_barrier(self.collectiveArgs)
