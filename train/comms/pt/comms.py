@@ -368,7 +368,9 @@ class commsCollBench(paramCommsBench):
         self.backendFuncs.sync_barrier(
             self.collectiveArgs, desc="run_coll_cuda_graph_begin"
         )
-        elapsedTimeNS = 0.0
+        elapsedCPUTimeNS = 0.0
+        start_event = self.backendFuncs.create_event(self.collectiveArgs)
+        end_event = self.backendFuncs.create_event(self.collectiveArgs)
 
         # 1. Warmup phase
         # launch collective on a separate stream and sync with current_stream
@@ -393,6 +395,7 @@ class commsCollBench(paramCommsBench):
 
         # 3. Replay
         start = time.monotonic()  # available only in py3
+        self.backendFuncs.record_event(start_event, self.collectiveArgs)
         for _ in range(self.collectiveArgs.graph_launches):
             if self.collectiveArgs.enable_profiler:
                 comms_utils.sampleProfiler()
@@ -400,14 +403,26 @@ class commsCollBench(paramCommsBench):
             # [optional] we can feed new input data to ipTensor for each replay
             g.replay()
 
+        self.backendFuncs.record_event(end_event, self.collectiveArgs)
         self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+
         end = time.monotonic()  # available only in py3
 
         ensureTensorFlush(self.collectiveArgs.opTensor)
 
-        elapsedTimeNS += (
+        elapsedCPUTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
+        elapsedDeviceTimeMs = self.backendFuncs.elapsed_time(start_event, end_event)
+        elapsedDeviceTimeNS = elapsedDeviceTimeMs * 1e6
+        elapsedTimeNS = (
+            elapsedDeviceTimeNS
+            if self.collectiveArgs.use_device_time
+            else elapsedCPUTimeNS
+        )
+        logger.debug(
+            f"elapsedCPUTimeNS={elapsedCPUTimeNS}, elapsedDeviceTimeNS={elapsedDeviceTimeNS}."
+        )
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
 
