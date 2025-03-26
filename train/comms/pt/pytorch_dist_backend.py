@@ -7,12 +7,12 @@ import logging
 import os
 from itertools import cycle
 from time import sleep
-from typing import Dict, List, Optional
 
 import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+
 from param_bench.train.comms.pt.param_profile import paramProfile
 from param_bench.train.comms.pt.pytorch_backend_utils import (
     backendFunctions,
@@ -663,11 +663,12 @@ class PyTorchDistBackend(backendFunctions):
         for waitReq in collectiveArgs.waitObj:
             if waitReq is not None:
                 waitReq.wait()
-        collectiveArgs.waitObj.clear()
-        collectiveArgs.waitObjIds.clear()
 
         if devSync:
             self.device_sync(collectiveArgs)
+
+        collectiveArgs.waitObj.clear()
+        collectiveArgs.waitObjIds.clear()
 
     def create_event(self, collectiveArgs):
         dev_str = (
@@ -1085,6 +1086,7 @@ class PyTorchDistBackend(backendFunctions):
             if isinstance(self.commsParams, dict)
             else self.commsParams.backend
         )
+
         # Import ucc plugin
         if backend == "ucc":
             # try OSS/setup.py

@@ -17,23 +17,10 @@ from collections import OrderedDict
 from collections.abc import Callable
 from contextlib import ContextDecorator
 from io import StringIO
-from typing import Any, Dict, List, Optional, Tuple, Union
-
-try:
-    from param_bench.train.comms.pt.fb.internals import (
-        fbInitProfiler,
-        fbSampleProfiler,
-        fbStartProfiler,
-        initialize_collectiveArgs_internal,
-        remove_quantization_handlers,
-    )
-
-    has_internal_libs = True
-except ImportError:
-    has_internal_libs = False
-
+from typing import Any
 
 import torch
+
 from param_bench.train.comms.pt.param_profile import paramTimer
 from param_bench.train.comms.pt.pytorch_backend_utils import (
     backendFunctions,
@@ -47,6 +34,39 @@ from torch._C._distributed_c10d import ProcessGroup
 random.seed()
 
 logger = logging.getLogger(__name__)
+
+try:
+    from param_bench.train.comms.pt.fb.internals import (
+        fbInitProfiler,
+        fbSampleProfiler,
+        fbStartProfiler,
+        initialize_collectiveArgs_internal,
+        remove_quantization_handlers,
+    )
+
+    has_internal_libs = True
+    logger.info("Successfully import internal libs")
+except ImportError:
+    has_internal_libs = False
+    logger.info("Iinternal libs not found.")
+
+try:
+    from param_bench.train.comms.pt.fb.mixins import (
+        name_aliases_ext,
+        ParamCommsBenchMixin,
+    )
+
+    logger.info("Successfully imported ParamCommsBenchMixin")
+except ImportError:
+    logger.warning(
+        "ParamCommsBenchMixin does not exist or module not found. Default to empty class."
+    )
+
+    class ParamCommsBenchMixin:
+        pass  # Define empty class if it does not exist
+
+    name_aliases_ext = {}
+
 
 default_master_ip = "127.0.0.1"
 default_master_port = "29500"
@@ -206,10 +226,7 @@ def fixBeginSize(commsParams: commsParamsHolder, world_size: int) -> None:
         None
     """
     # ensures we will have atleast one member/rank
-    if commsParams.collective in (
-        "all_to_all",
-        "all_to_allv",
-        "all_to_all_single",
+    if "all_to_all" in commsParams.collective or commsParams.collective in (
         "all_gather",
         "all_gather_base",
         "gather",
@@ -392,17 +409,14 @@ def checkQuantArgs(
     Returns:
         None
     """
-    if collective not in (
-        "all_to_all",
-        "all_to_allv",
-        "all_to_all_single",
+    if "all_to_all" not in collective and collective not in (
         "reduce",
         "all_reduce",
     ):
         raise NotImplementedError(
             f"quantized communication for {collective} is currently unsupported."
         )
-    if collective in ("all_to_all", "all_to_allv", "all_to_all_single"):
+    if "all_to_all" in collective:
         if (beginSize // 4) % quant_a2a_embedding_dim != 0:
             logger.warning(
                 f"begin size {beginSize} must be a multiple of --quant-a2a-embedding-dim {quant_a2a_embedding_dim} for all_to_all operation"
@@ -452,6 +466,7 @@ def paramToCommName(name: str, supported_comms: list[str] = None) -> str:
         "reducescatterbase": "reduce_scatter_base",
         "recvanysource": "recv",
     }
+    name_aliases.update(name_aliases_ext)
 
     new_name = name.lower()
 
@@ -934,7 +949,7 @@ class commsComputParamsHolder(commsParamsHolder):
         self.bag_size = args.bag_size
 
 
-class paramCommsBench(ABC):
+class ParamCommsBenchBase(ABC):
     """Abstract class for any param comms benchmark."""
 
     def __init__(self, supportedNwstacks: list[str] = None) -> None:
@@ -1570,6 +1585,8 @@ class paramCommsBench(ABC):
             "scatter": self._prep_reduce_scatter,
             "pt2pt": self._prep_pt2pt,
         }
+        if hasattr(self, "dispatchDictExt") and self.dispatchDictExt is not None:
+            dispatchDict.update(self.dispatchDictExt)
 
         function_to_call = dispatchDict.get(commOp)
         if function_to_call is not None:
@@ -1814,6 +1831,11 @@ class paramCommsBench(ABC):
                 )
         else:
             os.environ["MASTER_PORT"] = args.master_port
+
+
+class paramCommsBench(ParamCommsBenchMixin, ParamCommsBenchBase):
+    def __init__(self, supportedNwstacks: list[str] = None) -> None:
+        super().__init__(supportedNwstacks)
 
 
 def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):

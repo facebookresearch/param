@@ -5,15 +5,29 @@
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
 
 import torch
-
 from param_bench.train.comms.pt.param_profile import paramTimer
-
 from torch.distributed import ProcessGroup
 
 logger = logging.getLogger(__name__)
+
+try:
+    from param_bench.train.comms.pt.fb.mixins import (
+        CollectiveArgsMixin,
+        supportedCollectivesExt,
+    )
+
+    logger.info("Successfully imported CollectiveArgsMixin")
+except ImportError:
+    logger.warning(
+        "CollectiveArgsMixin does not exist or module not found. Default to empty class."
+    )
+
+    class CollectiveArgsMixin:
+        pass  # Define empty class if it does not exist
+
+    supportedCollectivesExt = []
 
 supportedDevices = ["cpu", "cuda", "rocm", "tpu"]
 supportedC10dBackends = ["nccl", "gloo", "mpi", "ucc", "xla"]
@@ -33,7 +47,7 @@ supportedCollectives = [
     "multicast",
     "gather",
     "scatter",
-]
+] + supportedCollectivesExt
 pt2ptPatterns = [
     "one2one",
     "pairwise",
@@ -46,7 +60,7 @@ supportedP2pOps = [
 ]
 
 
-class collectiveArgsHolder:
+class CollectiveArgsBase:
     """Class holding object for all the parameters related to a collective operation/experiment."""
 
     def __init__(self) -> None:
@@ -131,6 +145,11 @@ class collectiveArgsHolder:
         self.graph_launches = 0
 
 
+class collectiveArgsHolder(CollectiveArgsMixin, CollectiveArgsBase):
+    def __init__(self) -> None:
+        super().__init__()
+
+
 class backendFunctions(ABC):
     """Abstract base class, provides common abstraction for all the backends."""
 
@@ -178,10 +197,7 @@ class backendFunctions(ABC):
                     2 * (collectiveArgs.world_size - 1) / (collectiveArgs.world_size)
                 )
             busBW = algBW * mulFactor
-        elif collective in (
-            "all_to_all_single",
-            "all_to_all",
-            "all_to_allv",
+        elif "all_to_all" in collective or collective in (
             "gather",
             "all_gather",
             "reduce_scatter",

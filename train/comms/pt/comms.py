@@ -911,11 +911,7 @@ class commsCollBench(paramCommsBench):
         # Push the list to device, then do an all-gather.
         timeElapsedTensor = torch.tensor(
             timeUsElapsedList,
-            device=(
-                self.backendFuncs.get_device()
-                if commsParams.backend == "nccl"
-                else torch.device("cpu")
-            ),
+            device=(self.backendFuncs.get_device()),
         )
         collectiveArgs.opTensor = None
         if commsParams.backend != "xla":
@@ -1051,10 +1047,7 @@ class commsCollBench(paramCommsBench):
         dequantTimeTensorList,
     ):
         # convernt num_elements to # of elements per rank
-        if commsParams.collective in (
-            "all_to_all",
-            "all_to_allv",
-            "all_to_all_single",
+        if "all_to_all" in commsParams.collective or commsParams.collective in (
             "reduce_scatter",
             "reduce_scatter_v",
             "reduce_scatter_base",
