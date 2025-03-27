@@ -7,12 +7,12 @@ import logging
 import os
 from itertools import cycle
 from time import sleep
-from typing import Dict, List, Optional
 
 import numpy as np
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+
 from param_bench.train.comms.pt.param_profile import paramProfile
 from param_bench.train.comms.pt.pytorch_backend_utils import (
     backendFunctions,
@@ -663,32 +663,12 @@ class PyTorchDistBackend(backendFunctions):
         for waitReq in collectiveArgs.waitObj:
             if waitReq is not None:
                 waitReq.wait()
-        collectiveArgs.waitObj.clear()
-        collectiveArgs.waitObjIds.clear()
 
         if devSync:
             self.device_sync(collectiveArgs)
 
-    def create_event(self, collectiveArgs):
-        dev_str = (
-            self.commsParams["device"]
-            if isinstance(self.commsParams, dict)
-            else self.commsParams.device
-        )
-        if dev_str == "cuda":
-            return torch.cuda.Event(enable_timing=True)
-        return None
-
-    def record_event(self, event, collectiveArgs):
-        # Check if the start_event is not None, which means it's a CUDA event
-        if event is not None:
-            # Record the start event on the current CUDA stream
-            event.record(self.get_current_stream(device=collectiveArgs.device))
-
-    def elapsed_time(self, start_event, end_event):
-        if start_event is not None and end_event is not None:
-            return start_event.elapsed_time(end_event)
-        return 0
+        collectiveArgs.waitObj.clear()
+        collectiveArgs.waitObjIds.clear()
 
     # retFlag not used
     def complete_single_op(self, collectiveArgs, retFlag=False):
@@ -1085,6 +1065,7 @@ class PyTorchDistBackend(backendFunctions):
             if isinstance(self.commsParams, dict)
             else self.commsParams.backend
         )
+
         # Import ucc plugin
         if backend == "ucc":
             # try OSS/setup.py

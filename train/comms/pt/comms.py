@@ -184,12 +184,6 @@ class commsCollBench(paramCommsBench):
             help="Select some ranks to send/receive 0B messages",
         )
         parser.add_argument(
-            "--use-device-time",
-            action="store_true",
-            default=False,
-            help="use device time measurement",
-        )
-        parser.add_argument(
             "--graph-launches",
             type=int,
             default=0,
@@ -368,7 +362,9 @@ class commsCollBench(paramCommsBench):
         self.backendFuncs.sync_barrier(
             self.collectiveArgs, desc="run_coll_cuda_graph_begin"
         )
-        elapsedTimeNS = 0.0
+        elapsedCPUTimeNS = 0.0
+        start_event = self.backendFuncs.create_event(self.collectiveArgs)
+        end_event = self.backendFuncs.create_event(self.collectiveArgs)
 
         # 1. Warmup phase
         # launch collective on a separate stream and sync with current_stream
@@ -393,6 +389,7 @@ class commsCollBench(paramCommsBench):
 
         # 3. Replay
         start = time.monotonic()  # available only in py3
+        self.backendFuncs.record_event(start_event, self.collectiveArgs)
         for _ in range(self.collectiveArgs.graph_launches):
             if self.collectiveArgs.enable_profiler:
                 comms_utils.sampleProfiler()
@@ -400,14 +397,26 @@ class commsCollBench(paramCommsBench):
             # [optional] we can feed new input data to ipTensor for each replay
             g.replay()
 
+        self.backendFuncs.record_event(end_event, self.collectiveArgs)
         self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+
         end = time.monotonic()  # available only in py3
 
         ensureTensorFlush(self.collectiveArgs.opTensor)
 
-        elapsedTimeNS += (
+        elapsedCPUTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
+        elapsedDeviceTimeMs = self.backendFuncs.elapsed_time(start_event, end_event)
+        elapsedDeviceTimeNS = elapsedDeviceTimeMs * 1e6
+        elapsedTimeNS = (
+            elapsedDeviceTimeNS
+            if self.collectiveArgs.use_device_time
+            else elapsedCPUTimeNS
+        )
+        logger.debug(
+            f"elapsedCPUTimeNS={elapsedCPUTimeNS}, elapsedDeviceTimeNS={elapsedDeviceTimeNS}."
+        )
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
 
@@ -436,17 +445,11 @@ class commsCollBench(paramCommsBench):
         }
         return results
 
-    def runColl(self, comm_fn=None, dcheck=False):
-        if self.collectiveArgs.graph_launches > 0:
-            return self.run_coll_cuda_graph(comm_fn, dcheck)
+    def run_coll_non_graph(self, comm_fn=None, dcheck=False):
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
-        elapsedCPUTimeNS = 0.0
-        elapsedDeviceTimeNS = 0.0
+        elapsedTimeNS = 0.0
         is_blocking = not self.collectiveArgs.asyncOp
-        # Initialize CUDA events for device timing
-        start_event = self.backendFuncs.create_event(self.collectiveArgs)
-        end_event = self.backendFuncs.create_event(self.collectiveArgs)
 
         for nIter in range(
             self.collectiveArgs.numWarmupIters + self.collectiveArgs.numIters
@@ -458,22 +461,16 @@ class commsCollBench(paramCommsBench):
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
                 ensureTensorFlush(self.collectiveArgs.opTensor)
                 # Start measuring time after warmup iterations
-                elapsedCPUTimeNS = 0.0
-                elapsedDeviceTimeNS = 0.0
+                elapsedTimeNS = 0.0
                 self.collectiveArgs.quant_time.reset()
                 self.collectiveArgs.dequant_time.reset()
-                self.backendFuncs.record_event(
-                    start_event, self.collectiveArgs
-                )  # record start event for non-blocking operation
             # reset tensor values for data validation check
             if dcheck:
                 self.setTensorVal(self.collectiveArgs.opTensor)
             # for blocking mode, do barrier before starting collective
             if is_blocking:
                 self.backendFuncs.sync_barrier(self.collectiveArgs)
-                self.backendFuncs.record_event(
-                    start_event, self.collectiveArgs
-                )  # record start event for blocking operation
+
             start = time.monotonic()  # available only in py3
             with paramStreamGuard(
                 stream=self.backendFuncs.get_current_stream(
@@ -488,47 +485,29 @@ class commsCollBench(paramCommsBench):
                 ]
                 for _ in range(self.collectiveArgs.numCollPerIter):
                     comm_fn(self.collectiveArgs)
+
             if is_blocking:  # should be sychronous, wait for the collective
-                self.backendFuncs.record_event(
-                    end_event, self.collectiveArgs
-                )  # record end event for blocking operation
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-                elapsedDeviceTimeMs = self.backendFuncs.elapsed_time(
-                    start_event, end_event
-                )
-                elapsedDeviceTimeNS += elapsedDeviceTimeMs * 1e6  # Convert ms to ns
+
             # Measuring time.
-            elapsedCPUTimeNS += (
+            elapsedTimeNS += (
                 time.monotonic() - start
             ) * 1e9  # keeping time in NS, helps in divising data by nanosecond
+
         start = time.monotonic()  # available only in py3
-        # if not blocking, record second end event here
-        if not is_blocking:
-            self.backendFuncs.record_event(
-                end_event, self.collectiveArgs
-            )  # record end event for non-blocking operations
         self.backendFuncs.complete_accel_ops(self.collectiveArgs)
         end = time.monotonic()  # available only in py3
+
         ensureTensorFlush(self.collectiveArgs.opTensor)
 
-        elapsedCPUTimeNS += (
+        elapsedTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
-        if not is_blocking:
-            elapsedDeviceTimeMs = self.backendFuncs.elapsed_time(start_event, end_event)
-            elapsedDeviceTimeNS = elapsedDeviceTimeMs * 1e6  # Convert ms to ns
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
-        logger.debug(
-            f"elapsedCPUTimeNS={elapsedCPUTimeNS}, elapsedDeviceTimeNS={elapsedDeviceTimeNS}."
-        )
-        ElapsedTimeNS = (
-            elapsedDeviceTimeNS
-            if self.collectiveArgs.use_device_time
-            else elapsedCPUTimeNS
-        )
+
         avgIterNS, algBW = comms_utils.getAlgBW(
-            ElapsedTimeNS,
+            elapsedTimeNS,
             memSize,
             self.collectiveArgs.numIters * self.collectiveArgs.numCollPerIter,
         )
@@ -549,6 +528,13 @@ class commsCollBench(paramCommsBench):
             "memSize": memSize,
         }
         return results
+
+    def runColl(self, comm_fn=None, dcheck=False):
+        return (
+            self.run_coll_non_graph(comm_fn, dcheck)
+            if self.collectiveArgs.graph_launches == 0
+            else self.run_coll_cuda_graph(comm_fn, dcheck)
+        )
 
     def runPt2Pt(self):
         self.backendFuncs.sync_barrier(self.collectiveArgs)
@@ -884,7 +870,6 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.asyncOp = False if commsParams.blockingFlag == 1 else True
         self.collectiveArgs.numCollPerIter = commsParams.num_coll
         self.collectiveArgs.include_0B = commsParams.include_0B
-        self.collectiveArgs.use_device_time = commsParams.use_device_time
         self.collectiveArgs.graph_launches = commsParams.graph_launches
 
         if commsParams.bitwidth < 32:
@@ -911,11 +896,7 @@ class commsCollBench(paramCommsBench):
         # Push the list to device, then do an all-gather.
         timeElapsedTensor = torch.tensor(
             timeUsElapsedList,
-            device=(
-                self.backendFuncs.get_device()
-                if commsParams.backend == "nccl"
-                else torch.device("cpu")
-            ),
+            device=(self.backendFuncs.get_device()),
         )
         collectiveArgs.opTensor = None
         if commsParams.backend != "xla":
@@ -1051,10 +1032,7 @@ class commsCollBench(paramCommsBench):
         dequantTimeTensorList,
     ):
         # convernt num_elements to # of elements per rank
-        if commsParams.collective in (
-            "all_to_all",
-            "all_to_allv",
-            "all_to_all_single",
+        if "all_to_all" in commsParams.collective or commsParams.collective in (
             "reduce_scatter",
             "reduce_scatter_v",
             "reduce_scatter_base",
