@@ -184,12 +184,6 @@ class commsCollBench(paramCommsBench):
             help="Select some ranks to send/receive 0B messages",
         )
         parser.add_argument(
-            "--use-device-time",
-            action="store_true",
-            default=False,
-            help="use device time measurement",
-        )
-        parser.add_argument(
             "--graph-launches",
             type=int,
             default=0,
@@ -454,12 +448,8 @@ class commsCollBench(paramCommsBench):
     def run_coll_non_graph(self, comm_fn=None, dcheck=False):
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
-        elapsedCPUTimeNS = 0.0
-        elapsedDeviceTimeNS = 0.0
+        elapsedTimeNS = 0.0
         is_blocking = not self.collectiveArgs.asyncOp
-        # Initialize CUDA events for device timing
-        start_event = self.backendFuncs.create_event(self.collectiveArgs)
-        end_event = self.backendFuncs.create_event(self.collectiveArgs)
 
         for nIter in range(
             self.collectiveArgs.numWarmupIters + self.collectiveArgs.numIters
@@ -471,22 +461,16 @@ class commsCollBench(paramCommsBench):
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
                 ensureTensorFlush(self.collectiveArgs.opTensor)
                 # Start measuring time after warmup iterations
-                elapsedCPUTimeNS = 0.0
-                elapsedDeviceTimeNS = 0.0
+                elapsedTimeNS = 0.0
                 self.collectiveArgs.quant_time.reset()
                 self.collectiveArgs.dequant_time.reset()
-                self.backendFuncs.record_event(
-                    start_event, self.collectiveArgs
-                )  # record start event for non-blocking operation
             # reset tensor values for data validation check
             if dcheck:
                 self.setTensorVal(self.collectiveArgs.opTensor)
             # for blocking mode, do barrier before starting collective
             if is_blocking:
                 self.backendFuncs.sync_barrier(self.collectiveArgs)
-                self.backendFuncs.record_event(
-                    start_event, self.collectiveArgs
-                )  # record start event for blocking operation
+
             start = time.monotonic()  # available only in py3
             with paramStreamGuard(
                 stream=self.backendFuncs.get_current_stream(
@@ -501,47 +485,29 @@ class commsCollBench(paramCommsBench):
                 ]
                 for _ in range(self.collectiveArgs.numCollPerIter):
                     comm_fn(self.collectiveArgs)
+
             if is_blocking:  # should be sychronous, wait for the collective
-                self.backendFuncs.record_event(
-                    end_event, self.collectiveArgs
-                )  # record end event for blocking operation
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-                elapsedDeviceTimeMs = self.backendFuncs.elapsed_time(
-                    start_event, end_event
-                )
-                elapsedDeviceTimeNS += elapsedDeviceTimeMs * 1e6  # Convert ms to ns
+
             # Measuring time.
-            elapsedCPUTimeNS += (
+            elapsedTimeNS += (
                 time.monotonic() - start
             ) * 1e9  # keeping time in NS, helps in divising data by nanosecond
+
         start = time.monotonic()  # available only in py3
-        # if not blocking, record second end event here
-        if not is_blocking:
-            self.backendFuncs.record_event(
-                end_event, self.collectiveArgs
-            )  # record end event for non-blocking operations
         self.backendFuncs.complete_accel_ops(self.collectiveArgs)
         end = time.monotonic()  # available only in py3
+
         ensureTensorFlush(self.collectiveArgs.opTensor)
 
-        elapsedCPUTimeNS += (
+        elapsedTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
-        if not is_blocking:
-            elapsedDeviceTimeMs = self.backendFuncs.elapsed_time(start_event, end_event)
-            elapsedDeviceTimeNS = elapsedDeviceTimeMs * 1e6  # Convert ms to ns
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
-        logger.debug(
-            f"elapsedCPUTimeNS={elapsedCPUTimeNS}, elapsedDeviceTimeNS={elapsedDeviceTimeNS}."
-        )
-        ElapsedTimeNS = (
-            elapsedDeviceTimeNS
-            if self.collectiveArgs.use_device_time
-            else elapsedCPUTimeNS
-        )
+
         avgIterNS, algBW = comms_utils.getAlgBW(
-            ElapsedTimeNS,
+            elapsedTimeNS,
             memSize,
             self.collectiveArgs.numIters * self.collectiveArgs.numCollPerIter,
         )
@@ -904,7 +870,6 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.asyncOp = False if commsParams.blockingFlag == 1 else True
         self.collectiveArgs.numCollPerIter = commsParams.num_coll
         self.collectiveArgs.include_0B = commsParams.include_0B
-        self.collectiveArgs.use_device_time = commsParams.use_device_time
         self.collectiveArgs.graph_launches = commsParams.graph_launches
 
         if commsParams.bitwidth < 32:
