@@ -1,6 +1,7 @@
 # (c) Meta Platforms, Inc. and affiliates. Confidential and proprietary.
 from __future__ import annotations
 
+import math
 import json
 
 import logging
@@ -189,22 +190,17 @@ def _parse_comms_op_node(  # noqa: C901
             comm_args.root = comm_args.groupRanks[recorded_rank]
             comm_args.groupRanks = comm_args.groupRanks
 
-        if comm_args.comms == "all_to_allv":
+        if comm_args.comms == "all_to_all":
+            # flatten each tensor and store the # of elements into split field
+            comm_args.inSplit = [math.prod(i) for i in node.input_shapes[0]]
+            comm_args.outSplit = [math.prod(i) for i in node.output_shapes[0]]
+        elif comm_args.comms == "all_to_allv":
             if not comm_args.worldSize:
                 # if no pg info provided, use total ranks as world size
                 comm_args.worldSize = total_ranks
-            comm_args.inSplit = (
-                json.loads(node.commArgs.in_split_size)
-                if json.loads(node.commArgs.in_split_size)
-                else [int(comm_args.inMsgSize / comm_args.worldSize)]
-                * comm_args.worldSize
-            )
-            comm_args.outSplit = (
-                json.loads(node.commArgs.out_split_size)
-                if json.loads(node.commArgs.out_split_size)
-                else [int(comm_args.outMsgSize / comm_args.worldSize)]
-                * comm_args.worldSize
-            )
+            comm_args.inSplit = json.loads(node.commArgs.in_split_size)
+            comm_args.outSplit = json.loads(node.commArgs.out_split_size)
+        
         comms_op_list.append(comm_args)
 
     return comms_op_list
