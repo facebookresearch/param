@@ -241,6 +241,7 @@ def pick_comm_bw_(trace_data, comm_bw_data):
     ]
     for evt in nccl_events:
         knl_name = evt["name"][: evt["name"].index("(")]
+        coll_name = evt["args"]["Collective name"]
         data_size = _calculate_event_data_size(evt)
         ranks_count = evt["args"]["Group size"]
 
@@ -248,7 +249,9 @@ def pick_comm_bw_(trace_data, comm_bw_data):
         pg_id = int(evt["args"]["Process Group Name"])
         pg = (*ranks, pg_id) if ranks and rank == min(ranks) else None
 
-        comm_bw_data[(knl_name, data_size, ranks_count)].append(
+        # TODO: calculation of unbalanced all2all bw needs to be improved
+        # all2all is implemented by single ncclDevKernel_SendRecv() in NCCL
+        comm_bw_data[(knl_name, coll_name, data_size, ranks_count)].append(
             [
                 evt["dur"],
                 evt["args"]["algbw (GB/sec)"],
@@ -331,25 +334,27 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         )
 
         f.write(
-            f'\n{" ":>70s}|{" ":>5s}|{"AVG.":^19s}|{"p01":^8s}|{"p50":^8s}|{"p90":^8s}|{"p99":^8s}|\n'
+            f'\n{" ":>86s}|{" ":>5s}|{"AVG.":^19s}|{"p01":^8s}|{"p50":^8s}|{"p90":^8s}|{"p99":^8s}|\n'
         )
 
         f.write(
-            f'{"kernel":>50s} {"size":>12s} {"#rks":>6s}|{"#pgs":>5s}|{"  dur":>10s} '
+            f'{"kernel":>50s} {"coll":>15s} {"size":>12s} {"#rks":>6s}|{"#pgs":>5s}|{"  dur":>10s} '
         )
         for _ in range(5):  # average, p01, p50, p90, p99
             f.write(f'{" busbw":>8s}|')
         f.write("\n")
 
         f.write(
-            f'{"      ":>50s} {" (B)":>12s} {"    ":>6s}|{"    ":>5s}|{" (ms)":>10s} '
+            f'{"      ":>66s} {" (B)":>12s} {"    ":>6s}|{"    ":>5s}|{" (ms)":>10s} '
         )
         for _ in range(5):  # average, p50, p90, p99
             f.write(f'{"(GB/s)":>8s}|')
         f.write("\n")
 
         for k, v in comm_bw_summary.items():
-            f.write(f"{k[0]:>50s} {k[1]:>12d} {k[2]:>6d}|{v[0]:>5d}|{v[1]/1e3:>10.3f} ")
+            f.write(
+                f"{k[0]:>50s} {k[1]:>15s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]/1e3:>10.3f} "
+            )
             for i in range(2, len(v)):
                 f.write(f"{v[i]:>8.2f}|")
             f.write("\n")

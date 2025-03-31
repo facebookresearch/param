@@ -876,16 +876,17 @@ class paramCommsBench(ABC):
             opTensor = self.backendFuncs.alloc_random(
                 [numElementsOut], curDevice, dtype, scaleFactor
             )
-        # all_to_allv requires tensors to specify split
+        # recorded splits in trace is only for dim 0, but tensor in replay has been flattened.
+        # need to recalculate the splits for flattened 1D tensor
         self.collectiveArgs.opTensor_split = (
-            curComm.outSplit
-            if (curComm.outSplit is not None)
-            else [(numElementsOut // world_size) for _ in range(world_size)]
+            [numElementsOut // sum(curComm.outSplit) * i for i in curComm.outSplit]
+            if curComm.outSplit
+            else None
         )
         self.collectiveArgs.ipTensor_split = (
-            curComm.inSplit
-            if (curComm.inSplit is not None)
-            else [(numElementsIn // world_size) for _ in range(world_size)]
+            [numElementsIn // sum(curComm.inSplit) * i for i in curComm.inSplit]
+            if curComm.inSplit
+            else None
         )
         return (ipTensor, opTensor)
 
@@ -937,37 +938,22 @@ class paramCommsBench(ABC):
         scaleFactor: float,
         allocate: bool = True,
     ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
-        # all_to_all requires two tensor lists, e.g., List[torch.Tensor]
-
         ipTensor = []
         opTensor = []
         if allocate:
-            if commsParams.dcheck == 1:
-                for _ in range(world_size):
-                    ipTensor.append(
-                        self.backendFuncs.alloc_ones(
-                            [(numElementsIn // world_size)],
-                            curDevice,
-                            commsParams.dtype,
-                            self.initVal,
-                        )
-                    )
-            else:
-                for _ in range(world_size):
-                    ipTensor.append(
-                        self.backendFuncs.alloc_random(
-                            [(numElementsIn // world_size)],
-                            curDevice,
-                            commsParams.dtype,
-                            scaleFactor,
-                        )
-                    )
-            for _ in range(world_size):
-                opTensor.append(
-                    self.backendFuncs.alloc_random(
-                        [(numElementsOut // world_size)], curDevice, dtype, scaleFactor
-                    )
-                )
+            alloc_func = (
+                self.backendFuncs.alloc_ones
+                if commsParams.dcheck == 1
+                else self.backendFuncs.alloc_random
+            )
+            ipTensor = [
+                alloc_func(i, curDevice, commsParams.dtype, self.initVal)
+                for i in curComm.inSplit
+            ]
+            opTensor = [
+                alloc_func(i, curDevice, commsParams.dtype, self.initVal)
+                for i in curComm.outSplit
+            ]
         return (ipTensor, opTensor)
 
     def _prep_all_gather(
