@@ -227,24 +227,12 @@ class PyTorchDistBackend(BaseBackend):
                     "Not using batched embedding tables because extend distributed package not in use"
                 )
 
-            if isinstance(collectiveArgs.opTensor, list):
-                work = dist.all_to_all(
-                    collectiveArgs.opTensor,
-                    collectiveArgs.ipTensor,
-                    group=self.get_collective_group(collectiveArgs),
-                    async_op=collectiveArgs.asyncOp,
-                )
-            else:
-                work = dist.all_to_all_single(
-                    collectiveArgs.opTensor
-                    if not pair
-                    else collectiveArgs.opTensor_pair,
-                    collectiveArgs.ipTensor
-                    if not pair
-                    else collectiveArgs.ipTensor_pair,
-                    group=self.get_collective_group(collectiveArgs),
-                    async_op=collectiveArgs.asyncOp,
-                )
+            work = dist.all_to_all(
+                collectiveArgs.opTensor,
+                collectiveArgs.ipTensor,
+                group=self.get_collective_group(collectiveArgs),
+                async_op=collectiveArgs.asyncOp,
+            )
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(work)

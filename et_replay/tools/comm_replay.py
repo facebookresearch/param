@@ -1099,7 +1099,7 @@ class commsTraceReplayBench(paramCommsBench):
 
             if groupRank >= 0:
                 commDesc = f"{str(curComm.comms)}: NumElemsIn={curComm.inMsgSize}, NumElemsOut={curComm.outMsgSize}, Dtype={curComm.dtype}"
-                if curComm.comms == "all_to_allv":
+                if curComm.comms in ("all_to_all", "all_to_allv"):
                     commDesc += (
                         f", InSplit={curComm.inSplit}, OutSplit={curComm.outSplit}"
                     )
