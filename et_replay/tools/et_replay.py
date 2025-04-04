@@ -1459,7 +1459,10 @@ class ExgrReplayManager:
                 outputs = []
                 if output_count == 0:
                     if node.kernel_backend == "triton":
-                        exec(f"func.run(*inputs[:-1], stream={inputs[-1]})")
+                        # The last entry in inputs is stream
+                        # ET captured the raw pointer of cudaStream_t,
+                        # but triton needs the stream object, hard code to 0 for now
+                        exec("func.run(*inputs[:-1], stream=0)")
                     else:
                         func(*inputs)
                 else:
