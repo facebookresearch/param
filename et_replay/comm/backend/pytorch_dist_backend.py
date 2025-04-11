@@ -940,18 +940,6 @@ class PyTorchDistBackend(BaseBackend):
         self.computeFunc["sub_num"] = self.sub_num
         self.computeFunc["copy"] = self.copy
 
-        backend = (
-            self.commsParams["backend"]
-            if isinstance(self.commsParams, dict)
-            else self.commsParams.backend
-        )
-        # Import Fairring
-        if backend == "fairring":
-            try:
-                import fairring  # pyre-ignore[21]:
-            except ImportError:
-                raise RuntimeError("Unable to import Fairring")
-
     def get_new_pg(self, group_ranks, backend, pg_desc=""):
         if self.use_ext_dist:
             return extend_distributed.new_extend_process_group(
