@@ -4,9 +4,9 @@ import json
 import logging
 import os
 import uuid
-from typing import Any, Dict
+from typing import Any
 
-from et_replay import ExecutionTrace
+from et_replay.execution_trace import ExecutionTrace
 
 
 def get_tmp_trace_filename() -> str:

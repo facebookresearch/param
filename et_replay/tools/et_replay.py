@@ -185,7 +185,7 @@ class ExgrReplayManager:
         self.profile_step_label = "ProfilerStep#"
 
         try:
-            from param_bench.et_replay.vendor_internal.fb_internal import (
+            from et_replay.vendor_internal.fb_internal import (
                 add_internal_parallel_nodes_parents,
             )
         except ImportError:
@@ -271,9 +271,7 @@ class ExgrReplayManager:
             # Input et trace should be explicitly specified after --input.
             if "://" in self.args.input:
                 try:
-                    from param_bench.et_replay.vendor_internal.fb_internal import (
-                        read_remote_trace,
-                    )
+                    from et_replay.vendor_internal.fb_internal import read_remote_trace
                 except ImportError:
                     logger.info("FB internals not present")
                     exit(1)
@@ -300,7 +298,7 @@ class ExgrReplayManager:
             # Different processes should read different traces based on global_rank_id.
             if "://" in self.args.trace_path:
                 try:
-                    from param_bench.et_replay.vendor_internal.fb_internal import (
+                    from et_replay.vendor_internal.fb_internal import (
                         read_remote_skip_node_file,
                         read_remote_trace,
                     )
@@ -1848,9 +1846,7 @@ class ExgrReplayManager:
         end_time = datetime.now()
 
         try:
-            from param_bench.et_replay.vendor_internal.fb_internal import (
-                generate_query_url,
-            )
+            from et_replay.vendor_internal.fb_internal import generate_query_url
         except ImportError:
             logger.info("FB internals not present")
         else:

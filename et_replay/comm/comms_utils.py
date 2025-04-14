@@ -20,7 +20,7 @@ from io import StringIO
 from typing import Any
 
 try:
-    from param_bench.et_replay.vendor_internals import (
+    from et_replay.vendor_internal.fb_internal import (
         initialize_collectiveArgs_internal,
         remove_quantization_handlers,
     )
