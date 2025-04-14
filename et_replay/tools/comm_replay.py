@@ -30,7 +30,7 @@ from et_replay.comm.param_profile import paramProfile, paramTimer
 from torch.profiler import ProfilerActivity
 
 try:
-    from param_bench.et_replay.vendor_internal.fb_internal import (
+    from et_replay.vendor_internal.fb_internal import (
         get_fb_profiler_activities,
         get_fb_profiler_trace_handler,
     )
