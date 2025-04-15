@@ -22,6 +22,7 @@ from param_bench.train.comms.pt.comms_utils import (
     ensureTensorFlush,
     MultilineFormatter,
     paramCommsBench,
+    paramDeviceTimer,
     paramStreamGuard,
 )
 from param_bench.train.comms.pt.logger_utils import (
@@ -188,6 +189,12 @@ class commsCollBench(paramCommsBench):
             type=int,
             default=0,
             help="Number of graph launches for each data-size",
+        )
+        parser.add_argument(
+            "--use-device-time",
+            action="store_true",
+            default=False,
+            help="use device time measurement",
         )
         return parser.parse_known_args()
 
@@ -436,7 +443,9 @@ class commsCollBench(paramCommsBench):
     def run_coll_non_graph(self, comm_fn=None, dcheck=False):
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
-        elapsedTimeNS = 0.0
+        elapsedCPUTimeNS = 0.0
+        if self.collectiveArgs.use_device_time:
+            device_timer = paramDeviceTimer("device_timer", self.backendFuncs)
         is_blocking = not self.collectiveArgs.asyncOp
 
         for nIter in range(
@@ -449,7 +458,9 @@ class commsCollBench(paramCommsBench):
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
                 ensureTensorFlush(self.collectiveArgs.opTensor)
                 # Start measuring time after warmup iterations
-                elapsedTimeNS = 0.0
+                elapsedCPUTimeNS = 0.0
+                if self.collectiveArgs.use_device_time:
+                    device_timer.reset()
                 self.collectiveArgs.quant_time.reset()
                 self.collectiveArgs.dequant_time.reset()
             # reset tensor values for data validation check
@@ -467,6 +478,7 @@ class commsCollBench(paramCommsBench):
                 curDevice=self.collectiveArgs.device,
                 backendFuncs=self.backendFuncs,
                 is_blocking=False,
+                timer=device_timer if self.collectiveArgs.use_device_time else None,
             ):
                 self.collectiveArgs.group = self.collectiveArgs.groups[
                     self.collectiveArgs.pgId
@@ -476,9 +488,11 @@ class commsCollBench(paramCommsBench):
 
             if is_blocking:  # should be sychronous, wait for the collective
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+                if self.collectiveArgs.use_device_time:
+                    device_timer.elapsedTime()
 
             # Measuring time.
-            elapsedTimeNS += (
+            elapsedCPUTimeNS += (
                 time.monotonic() - start
             ) * 1e9  # keeping time in NS, helps in divising data by nanosecond
 
@@ -488,12 +502,18 @@ class commsCollBench(paramCommsBench):
 
         ensureTensorFlush(self.collectiveArgs.opTensor)
 
-        elapsedTimeNS += (
+        elapsedCPUTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
-
+        if self.collectiveArgs.use_device_time:
+            elapsedTimeNS = device_timer.elapsedTimeNS
+            logger.debug(
+                f"elapsedCPUTimeNS={elapsedCPUTimeNS/self.collectiveArgs.numIters}, elapsedDeviceTimeNS={device_timer.elapsedTimeNS/self.collectiveArgs.numIters}."
+            )
+        else:
+            elapsedTimeNS = elapsedCPUTimeNS
         avgIterNS, algBW = comms_utils.getAlgBW(
             elapsedTimeNS,
             memSize,
@@ -859,6 +879,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.numCollPerIter = commsParams.num_coll
         self.collectiveArgs.include_0B = commsParams.include_0B
         self.collectiveArgs.graph_launches = commsParams.graph_launches
+        self.collectiveArgs.use_device_time = commsParams.use_device_time
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
