@@ -17,7 +17,7 @@ import numpy as np
 import torch
 
 from et_replay.comm import comms_utils, commsTraceParser, profiler_trace_analysis
-from et_replay.comm.backend.base_backend import supportedP2pOps
+from et_replay.comm.backend.base_backend import supportedC10dBackends, supportedP2pOps
 from et_replay.comm.comms_utils import (
     bootstrap_info_holder,
     commsArgs,
@@ -1427,7 +1427,10 @@ class commsTraceReplayBench(paramCommsBench):
             None
         """
         # init backend and corresponding function pointers
-        if commsParams.nw_stack == "pytorch-dist":
+        if (
+            commsParams.nw_stack == "pytorch-dist"
+            and commsParams.backend in supportedC10dBackends
+        ):
             from et_replay.comm.backend.pytorch_dist_backend import PyTorchDistBackend
 
             self.backendFuncs = PyTorchDistBackend(bootstrap_info, commsParams)
@@ -1436,8 +1439,21 @@ class commsTraceReplayBench(paramCommsBench):
 
             self.backendFuncs = PyTorchTPUBackend(bootstrap_info, commsParams)
         else:
-            logger.error("Unsopported NW stack! ")
-            comms_utils.gracefulExit()
+            # check for customized backend
+            try:
+                logging.warning(
+                    f"Attempt loading customized backend {commsParams.backend} if registered. Note that this is not officially supported. Use it with caution and at your own risk."
+                )
+                from et_replay.comm.backend.base_backend import customized_backend
+
+                self.backendFuncs = customized_backend[commsParams.backend](
+                    bootstrap_info, commsParams
+                )
+            except KeyError as e:
+                logger.error(
+                    f"Unsupported NW stack for backend {commsParams.backend}: {e}"
+                )
+                comms_utils.gracefulExit()
 
         self.backendFuncs.initialize_backend(
             bootstrap_info.master_ip,
