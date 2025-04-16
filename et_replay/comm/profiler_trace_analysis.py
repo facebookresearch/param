@@ -260,6 +260,13 @@ def pick_iter_e2e_time_(trace_data, tl):
 
 def pick_comm_bw_(trace_data, comm_bw_data):
     rank = trace_data["distributedInfo"]["rank"]
+    
+    group_ranks_to_pg_id = defaultdict(list)
+    for pg in trace_data["distributedInfo"]["pg_config"]:
+        group_ranks_to_pg_id[tuple(pg["ranks"])].append(int(pg["pg_name"]))
+    for ranks in group_ranks_to_pg_id:
+        group_ranks_to_pg_id[ranks].sort()
+
     nccl_events = [
         i
         for i in trace_data["traceEvents"]
@@ -275,10 +282,10 @@ def pick_comm_bw_(trace_data, comm_bw_data):
 
         ranks = _parse_ranks(evt["args"]["Process Group Ranks"], ranks_count)
         pg_id = int(evt["args"]["Process Group Name"])
-        pg = (*ranks, pg_id) if ranks and rank == min(ranks) else None
+        # If there are multiple process groups with the same ranks, the last element
+        # of this tuple is the idential index to differentiate them across ranks.
+        pg = (*ranks, group_ranks_to_pg_id[tuple(ranks)].index(pg_id))
 
-        # TODO: calculation of unbalanced all2all bw needs to be improved
-        # all2all is implemented by single ncclDevKernel_SendRecv() in NCCL
         comm_bw_data[(knl_name, coll_name, data_size, ranks_count)].append(
             [
                 evt["dur"],
@@ -318,11 +325,12 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         if not fpath.is_file():
             continue
         
-        global_rank = int(re.search(r"rank-(\d+)", fpath.name).group(1))
         with open(fpath.path, "r", encoding="utf-8") as f:
             trace = json.load(f)
-
+        
+        global_rank = trace["distributedInfo"]["rank"]
         calculate_bw_(trace, global_rank)
+        
         with open(
             os.path.join(processed_trace_dir, fpath.name), "w", encoding="utf-8"
         ) as f:
