@@ -2,6 +2,7 @@ import ast
 import json
 import logging
 import os
+import re
 import pathlib
 from collections import defaultdict
 from typing import Any, Callable, Dict
@@ -138,8 +139,28 @@ def _get_event_busbw_factor(evt):
 
     return correction_factor_func(group_size)
 
+def _calculate_busbw_for_uneven_all_to_all(evt, global_rank):
+    group_size = evt["args"]["Group size"]
+    local_rank = _parse_ranks(evt["args"]["Process Group Ranks"], group_size).index(global_rank)
+    in_elems_count = evt["args"]["In msg nelems"]
+    out_elems_count = evt["args"]["Out msg nelems"]
+    in_split_size = ast.literal_eval(evt["args"]["In split size"])
+    out_split_size = ast.literal_eval(evt["args"]["Out split size"])
+    dtype_size = _dtype_size_map[evt["args"]["dtype"]]
+    
+    if in_split_size:
+        send_elems = in_elems_count - in_split_size[local_rank]
+    else:
+        send_elems = in_elems_count / group_size * (group_size - 1)
+    
+    if out_split_size:
+        recv_elems = out_elems_count - out_split_size[local_rank]
+    else:
+        recv_elems = out_elems_count / group_size * (group_size - 1)
+    
+    return round(max(send_elems, recv_elems) * dtype_size / evt["dur"] * 1e-3, 2)
 
-def calculate_bw_(trace_data):
+def calculate_bw_(trace_data, global_rank):
     nccl_events = [
         i
         for i in trace_data["traceEvents"]
@@ -163,7 +184,14 @@ def calculate_bw_(trace_data):
 
             algbw = _calculate_algbw(evt)
             busbw_factor = _get_event_busbw_factor(evt)
-            busbw = round(algbw * busbw_factor, 2)
+            if (coll_name in ["all_to_all", "all_to_allv"] 
+                and (ast.literal_eval(evt['args']['In split size']) 
+                    or ast.literal_eval(evt['args']['Out split size']))
+                ):
+                # calculate busbw for uneven all_to_all
+                busbw = _calculate_busbw_for_uneven_all_to_all(evt, global_rank)
+            else:
+                busbw = round(algbw * busbw_factor, 2)
 
             evt["args"]["algbw (GB/sec)"] = algbw
             evt["args"]["busbw (GB/sec)"] = busbw
@@ -282,18 +310,19 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
     # list of shared bw
     sbw_lst = []
 
-    # key is (kernel_name, data size, ranks number)
+    # key is (kernel_name, coll name, data size, ranks count)
     # value is list of [dur, algbw, busbw, pg]
     comm_bw_data = defaultdict(list)
 
     for fpath in os.scandir(trace_dir):
         if not fpath.is_file():
             continue
-
+        
+        global_rank = int(re.search(r"rank-(\d+)", fpath.name).group(1))
         with open(fpath.path, "r", encoding="utf-8") as f:
             trace = json.load(f)
 
-        calculate_bw_(trace)
+        calculate_bw_(trace, global_rank)
         with open(
             os.path.join(processed_trace_dir, fpath.name), "w", encoding="utf-8"
         ) as f:
