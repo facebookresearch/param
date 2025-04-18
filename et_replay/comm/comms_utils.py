@@ -107,7 +107,6 @@ def fixBeginSize(commsParams: commsParamsHolder, world_size: int) -> None:
     if commsParams.collective in (
         "all_to_all",
         "all_to_allv",
-        "all_to_all_single",
         "all_gather",
         "all_gather_base",
         "gather",
@@ -293,14 +292,13 @@ def checkQuantArgs(
     if collective not in (
         "all_to_all",
         "all_to_allv",
-        "all_to_all_single",
         "reduce",
         "all_reduce",
     ):
         raise NotImplementedError(
             f"quantized communication for {collective} is currently unsupported."
         )
-    if collective in ("all_to_all", "all_to_allv", "all_to_all_single"):
+    if collective in ("all_to_all", "all_to_allv"):
         if (beginSize // 4) % quant_a2a_embedding_dim != 0:
             logger.warning(
                 f"begin size {beginSize} must be a multiple of --quant-a2a-embedding-dim {quant_a2a_embedding_dim} for all_to_all operation"
@@ -342,7 +340,6 @@ def paramToCommName(name: str, supported_comms: list[str] | None = None) -> str:
         "alltoall": "all_to_all",
         "alltoallv": "all_to_allv",
         "alltoallbase": "all_to_allv",
-        "alltoallsingle": "all_to_all_single",
         "allreduce": "all_reduce",
         "allgather": "all_gather",
         "allgatherbase": "all_gather_base",
@@ -885,41 +882,6 @@ class paramCommsBench(ABC):
             [numElementsIn // max(sum(curComm.inSplit), 1) * i for i in curComm.inSplit] if curComm.inSplit else None
         return (ipTensor, opTensor)
 
-    def _prep_all_to_all_single(
-        self,
-        ipTensor: torch.Tensor,
-        curComm: commsArgs,
-        commsParams: commsParamsHolderBase,
-        numElementsIn: int,
-        numElementsOut: int,
-        world_size: int,
-        curDevice: str,
-        dtype: torch.dtype,
-        scaleFactor: float,
-        allocate: bool = True,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        ipTensor = torch.Tensor()
-        opTensor = torch.Tensor()
-        if allocate:
-            if commsParams.dcheck == 1:
-                ipTensor = self.backendFuncs.alloc_ones(
-                    [numElementsIn],
-                    curDevice,
-                    commsParams.dtype,
-                    self.initVal,
-                )
-            else:
-                ipTensor = self.backendFuncs.alloc_random(
-                    [numElementsIn],
-                    curDevice,
-                    commsParams.dtype,
-                    scaleFactor,
-                )
-            opTensor = self.backendFuncs.alloc_random(
-                [numElementsOut], curDevice, dtype, scaleFactor
-            )
-        return (ipTensor, opTensor)
-
     def _prep_all_to_all(
         self,
         ipTensor: list[torch.Tensor],
@@ -1225,7 +1187,6 @@ class paramCommsBench(ABC):
         # TODO: consider using this dictionary to check valid keywords rather than silently defaulting
 
         dispatchDict = {
-            "all_to_all_single": self._prep_all_to_all_single,
             "all_to_allv": self._prep_all_to_allv,
             "all_to_all": self._prep_all_to_all,
             "all_gather": self._prep_all_gather,
