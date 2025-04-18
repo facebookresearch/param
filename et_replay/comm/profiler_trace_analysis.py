@@ -2,6 +2,7 @@ import ast
 import json
 import logging
 import os
+import re
 import pathlib
 from collections import defaultdict
 from typing import Any, Callable, Dict
@@ -138,8 +139,42 @@ def _get_event_busbw_factor(evt):
 
     return correction_factor_func(group_size)
 
+def _is_uneven_all_to_all_evt(evt):
+    coll_name = _get_dict_value(
+        evt["args"],
+        "Collective name",
+        f'Missing "Collective name" in event: {evt}'
+        )
+    return (coll_name in ["all_to_all", "all_to_allv"] 
+            and (ast.literal_eval(evt['args']['In split size'])
+                 or ast.literal_eval(evt['args']['Out split size']))
+           )
 
-def calculate_bw_(trace_data):
+def _get_uneven_all_to_all_data_size(evt, global_rank):
+    group_size = evt["args"]["Group size"]
+    local_rank = _parse_ranks(evt["args"]["Process Group Ranks"], group_size).index(global_rank)
+    in_elems_count = evt["args"]["In msg nelems"]
+    out_elems_count = evt["args"]["Out msg nelems"]
+    in_split_size = ast.literal_eval(evt["args"]["In split size"])
+    out_split_size = ast.literal_eval(evt["args"]["Out split size"])
+    dtype_size = _dtype_size_map[evt["args"]["dtype"]]
+    
+    if in_split_size:
+        send_elems = in_elems_count - in_split_size[local_rank]
+    else:
+        send_elems = in_elems_count / group_size * (group_size - 1)
+    
+    if out_split_size:
+        recv_elems = out_elems_count - out_split_size[local_rank]
+    else:
+        recv_elems = out_elems_count / group_size * (group_size - 1)
+    
+    return max(send_elems, recv_elems) * dtype_size
+
+def _calculate_busbw_for_uneven_all_to_all(evt, global_rank):
+    return round(_get_uneven_all_to_all_data_size(evt, global_rank) / evt["dur"] * 1e-3, 2)
+
+def calculate_bw_(trace_data, global_rank):
     nccl_events = [
         i
         for i in trace_data["traceEvents"]
@@ -163,7 +198,11 @@ def calculate_bw_(trace_data):
 
             algbw = _calculate_algbw(evt)
             busbw_factor = _get_event_busbw_factor(evt)
-            busbw = round(algbw * busbw_factor, 2)
+            if _is_uneven_all_to_all_evt(evt):
+                # calculate busbw for uneven all_to_all
+                busbw = _calculate_busbw_for_uneven_all_to_all(evt, global_rank)
+            else:
+                busbw = round(algbw * busbw_factor, 2)
 
             evt["args"]["algbw (GB/sec)"] = algbw
             evt["args"]["busbw (GB/sec)"] = busbw
@@ -178,7 +217,7 @@ def calculate_bw_(trace_data):
             logger.error(f"- Error: {err_msg}")
 
 
-def calculate_sbw(trace_data):
+def calculate_sbw(trace_data, global_rank):
     # calculate shared bw per rank
     nccl_events = [
         i
@@ -193,6 +232,8 @@ def calculate_sbw(trace_data):
 
     total_data_size = sum(
         _calculate_event_data_size(evt) * _get_event_busbw_factor(evt)
+        if not _is_uneven_all_to_all_evt(evt)
+        else _get_uneven_all_to_all_data_size(evt, global_rank)
         for evt in nccl_events
     )
 
@@ -232,6 +273,13 @@ def pick_iter_e2e_time_(trace_data, tl):
 
 def pick_comm_bw_(trace_data, comm_bw_data):
     rank = trace_data["distributedInfo"]["rank"]
+    
+    group_ranks_to_pg_id = defaultdict(list)
+    for pg in trace_data["distributedInfo"]["pg_config"]:
+        group_ranks_to_pg_id[tuple(pg["ranks"])].append(int(pg["pg_name"]))
+    for ranks in group_ranks_to_pg_id:
+        group_ranks_to_pg_id[ranks].sort()
+
     nccl_events = [
         i
         for i in trace_data["traceEvents"]
@@ -247,10 +295,10 @@ def pick_comm_bw_(trace_data, comm_bw_data):
 
         ranks = _parse_ranks(evt["args"]["Process Group Ranks"], ranks_count)
         pg_id = int(evt["args"]["Process Group Name"])
-        pg = (*ranks, pg_id) if ranks and rank == min(ranks) else None
+        # If there are multiple process groups with the same ranks, the last element
+        # of this tuple is the idential index to differentiate them across ranks.
+        pg = (*ranks, group_ranks_to_pg_id[tuple(ranks)].index(pg_id))
 
-        # TODO: calculation of unbalanced all2all bw needs to be improved
-        # all2all is implemented by single ncclDevKernel_SendRecv() in NCCL
         comm_bw_data[(knl_name, coll_name, data_size, ranks_count)].append(
             [
                 evt["dur"],
@@ -282,24 +330,26 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
     # list of shared bw
     sbw_lst = []
 
-    # key is (kernel_name, data size, ranks number)
+    # key is (kernel_name, coll name, data size, ranks count)
     # value is list of [dur, algbw, busbw, pg]
     comm_bw_data = defaultdict(list)
 
     for fpath in os.scandir(trace_dir):
         if not fpath.is_file():
             continue
-
+        
         with open(fpath.path, "r", encoding="utf-8") as f:
             trace = json.load(f)
-
-        calculate_bw_(trace)
+        
+        global_rank = trace["distributedInfo"]["rank"]
+        calculate_bw_(trace, global_rank)
+        
         with open(
             os.path.join(processed_trace_dir, fpath.name), "w", encoding="utf-8"
         ) as f:
             json.dump(trace, f)
 
-        sbw_lst.append(calculate_sbw(trace))
+        sbw_lst.append(calculate_sbw(trace, global_rank))
 
         pick_iter_e2e_time_(trace, iter_e2e_time)
         pick_comm_bw_(trace, comm_bw_data)
@@ -330,7 +380,7 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
             f"avg. E2ETime of iters among all ranks: {sum(iter_e2e_time) / len(iter_e2e_time) / 1e3 :.3f} ms\n"
         )
         f.write(
-            f"avg. SharedBW (i.e. sum(data_size * busbw_factor) / GPU_comm_busy_time  per rank) among all ranks: {sum(sbw_lst) / len(sbw_lst) :.3f} GB/s\n"
+            f"avg. SharedBW (i.e. sum(busbw_data_size) / GPU_comm_busy_time  per rank) among all ranks: {sum(sbw_lst) / len(sbw_lst) :.3f} GB/s\n"
         )
 
         f.write(
@@ -352,9 +402,7 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         f.write("\n")
 
         for k, v in comm_bw_summary.items():
-            f.write(
-                f"{k[0]:>50s} {k[1]:>15s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]/1e3:>10.3f} "
-            )
+            f.write(f"{k[0]:>50s} {k[1]:>15s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]/1e3:>10.3f} ")
             for i in range(2, len(v)):
                 f.write(f"{v[i]:>8.2f}|")
             f.write("\n")
