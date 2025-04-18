@@ -139,7 +139,18 @@ def _get_event_busbw_factor(evt):
 
     return correction_factor_func(group_size)
 
-def _calculate_busbw_for_uneven_all_to_all(evt, global_rank):
+def _is_uneven_all_to_all_evt(evt):
+    coll_name = _get_dict_value(
+        evt["args"],
+        "Collective name",
+        f'Missing "Collective name" in event: {evt}'
+        )
+    return (coll_name in ["all_to_all", "all_to_allv"] 
+            and (ast.literal_eval(evt['args']['In split size'])
+                 or ast.literal_eval(evt['args']['Out split size']))
+           )
+
+def _get_uneven_all_to_all_data_size(evt, global_rank):
     group_size = evt["args"]["Group size"]
     local_rank = _parse_ranks(evt["args"]["Process Group Ranks"], group_size).index(global_rank)
     in_elems_count = evt["args"]["In msg nelems"]
@@ -158,7 +169,10 @@ def _calculate_busbw_for_uneven_all_to_all(evt, global_rank):
     else:
         recv_elems = out_elems_count / group_size * (group_size - 1)
     
-    return round(max(send_elems, recv_elems) * dtype_size / evt["dur"] * 1e-3, 2)
+    return max(send_elems, recv_elems) * dtype_size
+
+def _calculate_busbw_for_uneven_all_to_all(evt, global_rank):
+    return round(_get_uneven_all_to_all_data_size(evt, global_rank) / evt["dur"] * 1e-3, 2)
 
 def calculate_bw_(trace_data, global_rank):
     nccl_events = [
@@ -184,10 +198,7 @@ def calculate_bw_(trace_data, global_rank):
 
             algbw = _calculate_algbw(evt)
             busbw_factor = _get_event_busbw_factor(evt)
-            if (coll_name in ["all_to_all", "all_to_allv"] 
-                and (ast.literal_eval(evt['args']['In split size']) 
-                    or ast.literal_eval(evt['args']['Out split size']))
-                ):
+            if _is_uneven_all_to_all_evt(evt):
                 # calculate busbw for uneven all_to_all
                 busbw = _calculate_busbw_for_uneven_all_to_all(evt, global_rank)
             else:
@@ -206,7 +217,7 @@ def calculate_bw_(trace_data, global_rank):
             logger.error(f"- Error: {err_msg}")
 
 
-def calculate_sbw(trace_data):
+def calculate_sbw(trace_data, global_rank):
     # calculate shared bw per rank
     nccl_events = [
         i
@@ -221,6 +232,8 @@ def calculate_sbw(trace_data):
 
     total_data_size = sum(
         _calculate_event_data_size(evt) * _get_event_busbw_factor(evt)
+        if not _is_uneven_all_to_all_evt(evt)
+        else _get_uneven_all_to_all_data_size(evt, global_rank)
         for evt in nccl_events
     )
 
@@ -336,7 +349,7 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         ) as f:
             json.dump(trace, f)
 
-        sbw_lst.append(calculate_sbw(trace))
+        sbw_lst.append(calculate_sbw(trace, global_rank))
 
         pick_iter_e2e_time_(trace, iter_e2e_time)
         pick_comm_bw_(trace, comm_bw_data)
@@ -367,7 +380,7 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
             f"avg. E2ETime of iters among all ranks: {sum(iter_e2e_time) / len(iter_e2e_time) / 1e3 :.3f} ms\n"
         )
         f.write(
-            f"avg. SharedBW (i.e. sum(data_size * busbw_factor) / GPU_comm_busy_time  per rank) among all ranks: {sum(sbw_lst) / len(sbw_lst) :.3f} GB/s\n"
+            f"avg. SharedBW (i.e. sum(busbw_data_size) / GPU_comm_busy_time  per rank) among all ranks: {sum(sbw_lst) / len(sbw_lst) :.3f} GB/s\n"
         )
 
         f.write(
