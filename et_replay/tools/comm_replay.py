@@ -7,6 +7,7 @@
 
 
 import argparse
+import gzip
 import json
 import logging
 import os
@@ -1606,8 +1607,13 @@ class commsTraceReplayBench(paramCommsBench):
                 trace_file_path = self.trace_file
 
             # Read the json file from local disk
-            with open(trace_file_path) as f:
-                self.comms_trace = json.load(f)
+            # with open(trace_file_path) as f:
+            with (
+                gzip.open(trace_file_path, "rb")
+                if trace_file_path.endswith("gz")
+                else open(trace_file_path)
+            ) as execution_data:
+                self.comms_trace = json.load(execution_data)
 
     def readTrace(self, remotePath: str, rank: int) -> None:
         """
