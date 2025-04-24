@@ -29,6 +29,13 @@ try:
 except ImportError:
     has_internal_libs = False
 
+try:
+    import et_replay.comm.backend.vendor_internal.fb_internals  # noqa: F401
+
+    loaded_internals = True
+except ImportError:
+    loaded_internals = False
+
 
 import numpy as np
 import torch
