@@ -18,7 +18,7 @@ from et_replay.comm.backend.base_backend import BaseBackend, collectiveArgsHolde
 from et_replay.comm.param_profile import paramProfile
 
 try:
-    from param_bench.train.comms.pt.fb.internals import (
+    from param_bench.et_replay.comm.vendor_internal.fb_internals import (
         all_to_all_internal,
         all_to_allv_internal,
         extend_distributed,

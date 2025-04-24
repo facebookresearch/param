@@ -72,7 +72,7 @@ def writeCommDetails(commsTracePerf: list, rank: int, folder: str = "./") -> Non
     if "://" in comms_file:  # assume that "://" in directory path means remote store
         saveToLocal = False
         try:
-            from param_bench.train.comms.pt.fb.internals import (
+            from param_bench.et_replay.comm.vendor_internal.fb_internals import (
                 writeRemoteTrace as writeFbRemoteTrace,
             )
 
@@ -1493,7 +1493,7 @@ class commsTraceReplayBench(paramCommsBench):
             curHwDevice,
         ) = comms_utils.get_rank_details(
             self.backendFuncs
-        )  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes
+        )  # Getting ranks from backendFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes
 
         self.collectiveArgs.group = group  # default group
         self.collectiveArgs.groups = self.backendFuncs.get_groups()
@@ -1581,7 +1581,7 @@ class commsTraceReplayBench(paramCommsBench):
                 raw_comms_trace = comms_utils.commonUrlRead(remotePath=remotePath)
             else:
                 try:
-                    from param_bench.train.comms.pt.fb.internals import (
+                    from param_bench.et_replay.comm.vendor_internal.fb_internals import (
                         readRemoteTrace as readFbRemoteTrace,
                     )
 
