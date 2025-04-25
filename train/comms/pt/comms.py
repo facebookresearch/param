@@ -377,6 +377,8 @@ class commsCollBench(paramCommsBench):
         s.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(s):
             for _ in range(self.collectiveArgs.numWarmupIters):
+                if self.collectiveArgs.enable_profiler:
+                    comms_utils.sampleProfiler()
                 comm_fn(self.collectiveArgs)
         torch.cuda.current_stream().wait_stream(s)
 
@@ -1313,7 +1315,9 @@ class commsCollBench(paramCommsBench):
                     rank=self.backendFuncs.get_global_rank(),
                     device=self.collectiveArgs.device,
                     numWarmupIters=self.collectiveArgs.numWarmupIters,
-                    numIters=self.collectiveArgs.numIters,
+                    numIters=self.collectiveArgs.graph_launches
+                    if self.collectiveArgs.graph_launches
+                    else self.collectiveArgs.numIters,
                 )
 
             # self.collectiveArgs has all the information on the experiment.
