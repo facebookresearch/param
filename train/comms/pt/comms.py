@@ -196,7 +196,6 @@ class commsCollBench(paramCommsBench):
             default=False,
             help="use device time measurement",
         )
-        return parser.parse_known_args()
 
     def _checkPt2Pt(self, args):
         if args.pt2pt is None:
@@ -1500,7 +1499,8 @@ def main():
         formatter_class=MultilineFormatter,
         allow_abbrev=False,
     )
-    args, _ = collBenchObj.readArgs(parser)
+    collBenchObj.readArgs(parser)
+    args, _ = parser.parse_known_args()
 
     comms_env_params = comms_utils.read_comms_env_vars()
     if comms_env_params["global_rank"] == 0 or (

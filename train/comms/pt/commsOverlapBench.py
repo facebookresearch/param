@@ -94,7 +94,6 @@ class commsOverlapBench(commsCollBench):
             default=False,
             help="Toggle to enable overlapping collective pair with two pgs",
         )  # overlap collective pair with two pgs
-        return parser.parse_known_args()
 
     # Check arguments that may be custmized per benchmark in a single run
     # does not depend on data type
@@ -1016,7 +1015,8 @@ def main():
         formatter_class=MultilineFormatter,
         allow_abbrev=False,
     )
-    args, leftovers = collBenchObj.readArgs(parser)
+    collBenchObj.readArgs(parser)
+    args, _ = parser.parse_known_args()
 
     comms_env_params = comms_utils.read_comms_env_vars()
     if comms_env_params["global_rank"] == 0 or (
