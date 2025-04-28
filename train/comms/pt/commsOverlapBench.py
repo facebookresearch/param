@@ -290,29 +290,6 @@ class commsOverlapBench(commsCollBench):
         }
         return results
 
-        self.backendFuncs.sync_barrier(self.collectiveArgs)
-        # warm-up
-        memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
-        self.getPingLatency(self.collectiveArgs.numWarmupIters)
-        self.getPingPongLatency(self.collectiveArgs.numWarmupIters)
-        self.getUniBW(self.collectiveArgs.numWarmupIters, memSize)
-        self.getBiBW(self.collectiveArgs.numWarmupIters, memSize)
-        self.backendFuncs.sync_barrier(self.collectiveArgs, "runpt2pt_begin")
-        # pt2pt benchmark
-        pingPerIterNS = self.getPingLatency(self.collectiveArgs.numIters)
-        pingPongPerIterNS = self.getPingPongLatency(self.collectiveArgs.numIters)
-        avgUniBW = self.getUniBW(self.collectiveArgs.numIters, memSize)
-        avgBiBW = self.getBiBW(self.collectiveArgs.numIters, memSize)
-        self.backendFuncs.sync_barrier(self.collectiveArgs, "runpt2pt")
-        results = {
-            "pingPerIterNS": pingPerIterNS,
-            "pingPongPerIterNS": pingPongPerIterNS,
-            "avgUniBW": avgUniBW,
-            "avgBiBW": avgBiBW,
-            "memSize": memSize,
-        }
-        return results
-
     def initCollectiveArgs(self, commsParams):
         # lint was complaining that benchTime was too complex!
         (
