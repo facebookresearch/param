@@ -159,6 +159,12 @@ def _get_uneven_all_to_all_data_size(evt, global_rank):
     out_split_size = ast.literal_eval(evt["args"]["Out split size"])
     dtype_size = _dtype_size_map[evt["args"]["dtype"]]
     
+    if (in_split_size and in_split_size[-1] == Ellipsis) or \
+       (out_split_size and out_split_size[-1] == Ellipsis):
+        in_split_size = []
+        out_split_size = []
+        logger.warning(f'Fallback to even all2all bw calculation for event: {evt}')
+    
     if in_split_size:
         send_elems = in_elems_count - in_split_size[local_rank]
     else:
