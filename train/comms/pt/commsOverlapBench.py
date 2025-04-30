@@ -20,6 +20,7 @@ from param_bench.train.comms.pt.comms import commsCollBench
 from param_bench.train.comms.pt.comms_utils import (
     ensureTensorFlush,
     MultilineFormatter,
+    paramDeviceTimer,
     paramStreamGuard,
 )
 from param_bench.train.comms.pt.logger_utils import (
@@ -161,7 +162,7 @@ class commsOverlapBench(commsCollBench):
     def runColl(self, comm_fn=None, comm_fn_pair_list=None, dcheck=False):
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
-        elapsedTimeNS = 0.0
+        elapsedCPUTimeNS = 0.0
         is_blocking = not self.collectiveArgs.asyncOp
         enable_comms_pair = (
             False if (comm_fn_pair_list is None or comm_fn_pair_list == []) else True
@@ -183,7 +184,9 @@ class commsOverlapBench(commsCollBench):
                     for opTensor_pair in self.collectiveArgs.opTensor_pair:
                         ensureTensorFlush(opTensor_pair)
                 # Start measuring time after warmup iterations
-                elapsedTimeNS = 0.0
+                elapsedCPUTimeNS = 0.0
+                if self.collectiveArgs.comm_dev_time:
+                    self.collectiveArgs.comm_dev_time.reset()
                 self.collectiveArgs.quant_time.reset()
                 self.collectiveArgs.dequant_time.reset()
             # reset tensor values for data validation check
@@ -201,13 +204,15 @@ class commsOverlapBench(commsCollBench):
                 curDevice=self.collectiveArgs.device,
                 backendFuncs=self.backendFuncs,
                 is_blocking=False,
+                timer=self.collectiveArgs.comm_dev_time,
             ):
                 self.collectiveArgs.group = self.collectiveArgs.groups[
                     self.collectiveArgs.pgId
                 ]
                 for _ in range(self.collectiveArgs.numCollPerIter):
                     comm_fn(self.collectiveArgs)
-
+            if self.collectiveArgs.comm_dev_time:
+                self.collectiveArgs.comm_dev_time.elapsedTime()
             if enable_comms_pair:
                 for pairIdx in range(len(comm_fn_pair_list)):
                     comm_fn_pair = comm_fn_pair_list[pairIdx]
@@ -217,6 +222,7 @@ class commsOverlapBench(commsCollBench):
                         curDevice=self.collectiveArgs.device,
                         backendFuncs=self.backendFuncs,
                         is_blocking=False,
+                        timer=self.collectiveArgs.comm_dev_time,
                     ):
                         # post another collecitve if on comms pair mode, otherwise it's noop
                         self.collectiveArgs.group = self.collectiveArgs.groups[
@@ -227,9 +233,11 @@ class commsOverlapBench(commsCollBench):
 
             if is_blocking:  # should be sychronous, wait for the collective
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+                if self.collectiveArgs.comm_dev_time:
+                    self.collectiveArgs.comm_dev_time.elapsedTime()
 
             # Measuring time.
-            elapsedTimeNS += (
+            elapsedCPUTimeNS += (
                 time.monotonic() - start
             ) * 1e9  # keeping time in NS, helps in divising data by nanosecond
 
@@ -242,11 +250,18 @@ class commsOverlapBench(commsCollBench):
             for opTensor_pair in self.collectiveArgs.opTensor_pair:
                 ensureTensorFlush(opTensor_pair)
 
-        elapsedTimeNS += (
+        elapsedCPUTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
+        if self.collectiveArgs.comm_dev_time:
+            elapsedTimeNS = self.collectiveArgs.comm_dev_time.elapsedTimeNS
+            logger.debug(
+                f"elapsedCPUTimeNS={elapsedCPUTimeNS/self.collectiveArgs.numIters}, elapsedDeviceTimeNS={elapsedTimeNS/self.collectiveArgs.numIters}."
+            )
+        else:
+            elapsedTimeNS = elapsedCPUTimeNS
 
         avgIterNS, algBW = comms_utils.getAlgBW(
             elapsedTimeNS,
@@ -374,6 +389,11 @@ class commsOverlapBench(commsCollBench):
         self.collectiveArgs.asyncOp = False if commsParams.blockingFlag == 1 else True
         self.collectiveArgs.numCollPerIter = commsParams.num_coll
         self.collectiveArgs.include_0B = commsParams.include_0B
+        self.collectiveArgs.use_device_time = commsParams.use_device_time
+        if commsParams.use_device_time:
+            self.collectiveArgs.comm_dev_time = paramDeviceTimer(
+                name="comm_timer", backendFuncs=self.backendFuncs
+            )
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
