@@ -6,12 +6,25 @@ import re
 import pathlib
 from collections import defaultdict
 from typing import Any, Callable, Dict
+import functools
+import time
 
 import numpy as np
 from intervaltree import Interval, IntervalTree
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+def timer_decorator(func):
+    """Decorator that prints the execution time of a function"""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        print(f"{func.__name__} took {end_time - start_time:.2f} seconds")
+        return result
+    return wrapper
 
 # refer to:
 # https://github.com/pytorch/pytorch/blob/2cc01cc6d3ad2aff47e8460667ba654b2e4c9f21/c10/core/ScalarType.h#L61
@@ -293,14 +306,16 @@ def pick_comm_bw_(trace_data, comm_bw_data):
         and i["name"].startswith(("ncclDevKernel_", "ncclKernel_"))
         and "algbw (GB/sec)" in i["args"]
     ]
+    pg_name2config = {pg["pg_name"]: pg for pg in trace_data["distributedInfo"]["pg_config"]}
     for evt in nccl_events:
         knl_name = evt["name"][: evt["name"].index("(")]
         coll_name = evt["args"]["Collective name"]
         data_size = _calculate_event_data_size(evt)
-        ranks_count = evt["args"]["Group size"]
 
-        ranks = _parse_ranks(evt["args"]["Process Group Ranks"], ranks_count)
+        ranks_count = evt["args"]["Group size"]
         pg_id = int(evt["args"]["Process Group Name"])
+        ranks = pg_name2config[evt["args"]["Process Group Name"]]['ranks']
+        
         # If there are multiple process groups with the same ranks, the last element
         # of this tuple is the idential index to differentiate them across ranks.
         pg = (*ranks, group_ranks_to_pg_id[tuple(ranks)].index(pg_id))
@@ -314,7 +329,7 @@ def pick_comm_bw_(trace_data, comm_bw_data):
             ]
         )
 
-
+@timer_decorator
 def analyze_profiler_trace(trace_dir: str, report_dir: str):
     """
     Analyse input PyTorch profiler trace (i.e. Kineto trace) and generate report.
