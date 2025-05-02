@@ -870,6 +870,7 @@ class paramCommsBench(ABC):
         opTensor = torch.Tensor()
         if allocate:
             # all_to_allv requires two tensors
+            # ipTensor has been allocated outside of this function, just pass in
             opTensor = self.backendFuncs.alloc_random(
                 [numElementsOut], curDevice, dtype, scaleFactor
             )
@@ -898,9 +899,11 @@ class paramCommsBench(ABC):
         ipTensor = []
         opTensor = []
         if allocate:
-            alloc_func = self.backendFuncs.alloc_ones if commsParams.dcheck == 1 else self.backendFuncs.alloc_random
-            ipTensor = [alloc_func(i, curDevice, commsParams.dtype, self.initVal) for i in curComm.inSplit]
-            opTensor = [alloc_func(i, curDevice, commsParams.dtype, self.initVal) for i in curComm.outSplit]
+            i_alloc_func = self.backendFuncs.alloc_ones if commsParams.dcheck == 1 else self.backendFuncs.alloc_random
+            i_scale_factor = self.initVal if commsParams.dcheck == 1 else scaleFactor
+            ipTensor = [i_alloc_func([i], curDevice, commsParams.dtype, i_scale_factor) for i in curComm.inSplit]
+            
+            opTensor = [self.backendFuncs.alloc_random([i], curDevice, commsParams.dtype, scaleFactor) for i in curComm.outSplit]
         return (ipTensor, opTensor)
 
     def _prep_all_gather(
