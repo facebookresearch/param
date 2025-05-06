@@ -8,6 +8,7 @@ version = "0.5.0"
 dependencies = [
     "numpy",
     "intervaltree",
+    "pydot",
 ]
 
 [tool.setuptools.package-dir]
