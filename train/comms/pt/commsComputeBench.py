@@ -262,81 +262,16 @@ class commsComputeBench(commsCollBench):
         return results
 
     def initCollectiveArgs(self, commsParams):
-        # lint was complaining that benchTime was too complex!
-        (
-            local_rank,
-            global_rank,
-            world_size,
-            group,
-            curDevice,
-            curHwDevice,
-        ) = comms_utils.get_rank_details(
-            self.backendFuncs
-        )  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes.
-        groups = self.backendFuncs.get_groups()
-        num_pgs = len(groups)
-
-        # global world size
-        self.comm_size = world_size
-
-        # Update world_size with the number of ranks in the group.
         # FIXME: only support one global group for comms-compute mode
         self.collectiveArgs.pgId = 0
-        myGroup = groups[self.collectiveArgs.pgId]
-        world_size = self.backendFuncs.get_group_size(myGroup)
-        myGroupRanks = commsParams.groupRanks[self.collectiveArgs.pgId]
-
-        self.global_rank = global_rank
-        self.report = (
-            True
-            if global_rank == 0 or (commsParams.enable_local_report and local_rank == 0)
-            else False
-        )
-
-        if commsParams.sizes is not None:
-            allSizes = commsParams.sizes
-            if self.report:
-                logger.info(
-                    f"Benchmarking with user-specified message sizes {allSizes}, --b and --e are ignored"
-                )
-        else:
-            comms_utils.fixBeginSize(
-                commsParams, world_size
-            )  # Ensuring that all-reduce and all-to-all has atleast one member per rank.
-            allSizes = comms_utils.getSizes(
-                commsParams.beginSize,
-                commsParams.endSize,
-                commsParams.stepFactor,
-                commsParams.stepBytes,
-            )  # Given the begin-size, end-size, step-factor what are the message sizes to iterate on.
-
-        self.collectiveArgs.group = group
-        self.collectiveArgs.groups = groups
-        self.collectiveArgs.num_pgs = num_pgs
-        self.collectiveArgs.device = curDevice
-        self.collectiveArgs.world_size = world_size
-        self.collectiveArgs.numIters = commsParams.numIters
-        self.collectiveArgs.numWarmupIters = commsParams.numWarmupIters
-        self.collectiveArgs.global_rank = global_rank
-        self.collectiveArgs.backendFuncs = self.backendFuncs
-        self.collectiveArgs.collective = commsParams.collective
-        op = self.backendFuncs.get_reduce_op("sum")
-        self.collectiveArgs.op = op
-        # Update root rank for current PG, as torch.dist requires the global rank
-        self.collectiveArgs.srcOrDst = myGroupRanks[commsParams.srcOrDst]
-        self.collectiveArgs.src_ranks = commsParams.src_ranks
-        self.collectiveArgs.dst_ranks = commsParams.dst_ranks
-
-        self.collectiveArgs.pt2pt = commsParams.pt2pt
-        self.collectiveArgs.window = commsParams.window
-        self.collectiveArgs.asyncOp = False if commsParams.blockingFlag == 1 else True
+        (
+            global_rank,
+            world_size,
+            allSizes,
+        ) = super().initCollectiveArgs(commsParams)
         self.collectiveArgs.numComputePerIter = commsParams.num_compute
-        self.collectiveArgs.numCollPerIter = commsParams.num_coll
         self.collectiveArgs.use_triton = commsParams.use_triton
-        self.collectiveArgs.include_0B = commsParams.include_0B
-
-        if commsParams.bitwidth < 32:
-            comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
+        curDevice = self.backendFuncs.get_device()
 
         computeFunc = self.backendFuncs.noop
         if (
@@ -421,17 +356,6 @@ class commsComputeBench(commsCollBench):
         else:
             self.collectiveArgs.comm_dev_time = None
             self.collectiveArgs.compute_dev_time = None
-
-        self.backendFuncs.sync_barrier(self.collectiveArgs)
-        if self.report:
-            print(
-                f"[Rank {global_rank:>3}] allSizes: {allSizes} element_size: {commsParams.element_size}"
-                + f" local_rank: {local_rank}, num_pg {self.collectiveArgs.num_pgs}, groupSize {self.collectiveArgs.world_size}"
-            )
-        if self.collectiveArgs.collective == "pt2pt":
-            self.checkPt2PtRanks()
-        else:
-            self.checkCollectiveRanks()
 
         return (
             global_rank,
