@@ -233,7 +233,7 @@ class PyTorchDistBackend(BaseBackend):
                 group=self.get_collective_group(collectiveArgs),
                 async_op=collectiveArgs.asyncOp,
             )
-
+            
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(work)
 
@@ -241,6 +241,7 @@ class PyTorchDistBackend(BaseBackend):
             return work
 
     def all_to_allv(self, collectiveArgs, retFlag=False, pair=False):
+        # cpp layer all_to_allv is corresponding to python layer all_to_all_single
         # pair=True mode does not support quantization
         if (
             collectiveArgs.all2all_qcomm
@@ -294,25 +295,6 @@ class PyTorchDistBackend(BaseBackend):
                 group=collectiveArgs.group,
                 async_op=collectiveArgs.asyncOp,
             )
-
-        if collectiveArgs.asyncOp:
-            collectiveArgs.waitObj.append(work)
-
-        if retFlag:
-            return work
-
-    def all_to_all_single(self, collectiveArgs, retFlag=False, pair=False):
-        # does not support quantization
-        if collectiveArgs.all2all_qcomm:
-            logger.warn("all_to_all_single does not support quantization")
-            return
-
-        work = dist.all_to_all_single(
-            collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
-            collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
-            group=collectiveArgs.group,
-            async_op=collectiveArgs.asyncOp,
-        )
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(work)
