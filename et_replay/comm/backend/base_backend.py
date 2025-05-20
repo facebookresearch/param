@@ -127,7 +127,6 @@ class BaseBackend(ABC):
     def __init__(self) -> None:
         self.tcp_store = None
         self.collectiveFunc = {
-            "all_to_all_single": self.all_to_all_single,  # pyre-ignore[16]:
             "all_to_all": self.all_to_all,
             "all_to_allv": self.all_to_allv,
             "all_reduce": self.all_reduce,

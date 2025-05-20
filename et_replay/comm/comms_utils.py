@@ -114,7 +114,6 @@ def fixBeginSize(commsParams: commsParamsHolder, world_size: int) -> None:
     if commsParams.collective in (
         "all_to_all",
         "all_to_allv",
-        "all_to_all_single",
         "all_gather",
         "all_gather_base",
         "gather",
@@ -300,14 +299,13 @@ def checkQuantArgs(
     if collective not in (
         "all_to_all",
         "all_to_allv",
-        "all_to_all_single",
         "reduce",
         "all_reduce",
     ):
         raise NotImplementedError(
             f"quantized communication for {collective} is currently unsupported."
         )
-    if collective in ("all_to_all", "all_to_allv", "all_to_all_single"):
+    if collective in ("all_to_all", "all_to_allv"):
         if (beginSize // 4) % quant_a2a_embedding_dim != 0:
             logger.warning(
                 f"begin size {beginSize} must be a multiple of --quant-a2a-embedding-dim {quant_a2a_embedding_dim} for all_to_all operation"
@@ -349,7 +347,6 @@ def paramToCommName(name: str, supported_comms: list[str] | None = None) -> str:
         "alltoall": "all_to_all",
         "alltoallv": "all_to_allv",
         "alltoallbase": "all_to_allv",
-        "alltoallsingle": "all_to_all_single",
         "allreduce": "all_reduce",
         "allgather": "all_gather",
         "allgatherbase": "all_gather_base",
@@ -880,56 +877,26 @@ class paramCommsBench(ABC):
         opTensor = torch.Tensor()
         if allocate:
             # all_to_allv requires two tensors
+            # ipTensor has been allocated outside of this function, just pass in
             opTensor = self.backendFuncs.alloc_random(
                 [numElementsOut], curDevice, dtype, scaleFactor
             )
         # recorded splits in trace is only for dim 0, but tensor in replay has been flattened.
         # need to recalculate the splits for flattened 1D tensor
+        # corner case: one rank sends zeor data out, but receives data from other ranks, and vice versa.
         self.collectiveArgs.opTensor_split = (
-            [numElementsOut // sum(curComm.outSplit) * i for i in curComm.outSplit]
+            [
+                numElementsOut // max(sum(curComm.outSplit), 1) * i
+                for i in curComm.outSplit
+            ]
             if curComm.outSplit
             else None
         )
         self.collectiveArgs.ipTensor_split = (
-            [numElementsIn // sum(curComm.inSplit) * i for i in curComm.inSplit]
+            [numElementsIn // max(sum(curComm.inSplit), 1) * i for i in curComm.inSplit]
             if curComm.inSplit
             else None
         )
-        return (ipTensor, opTensor)
-
-    def _prep_all_to_all_single(
-        self,
-        ipTensor: torch.Tensor,
-        curComm: commsArgs,
-        commsParams: commsParamsHolderBase,
-        numElementsIn: int,
-        numElementsOut: int,
-        world_size: int,
-        curDevice: str,
-        dtype: torch.dtype,
-        scaleFactor: float,
-        allocate: bool = True,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        ipTensor = torch.Tensor()
-        opTensor = torch.Tensor()
-        if allocate:
-            if commsParams.dcheck == 1:
-                ipTensor = self.backendFuncs.alloc_ones(
-                    [numElementsIn],
-                    curDevice,
-                    commsParams.dtype,
-                    self.initVal,
-                )
-            else:
-                ipTensor = self.backendFuncs.alloc_random(
-                    [numElementsIn],
-                    curDevice,
-                    commsParams.dtype,
-                    scaleFactor,
-                )
-            opTensor = self.backendFuncs.alloc_random(
-                [numElementsOut], curDevice, dtype, scaleFactor
-            )
         return (ipTensor, opTensor)
 
     def _prep_all_to_all(
@@ -948,17 +915,21 @@ class paramCommsBench(ABC):
         ipTensor = []
         opTensor = []
         if allocate:
-            alloc_func = (
+            i_alloc_func = (
                 self.backendFuncs.alloc_ones
                 if commsParams.dcheck == 1
                 else self.backendFuncs.alloc_random
             )
+            i_scale_factor = self.initVal if commsParams.dcheck == 1 else scaleFactor
             ipTensor = [
-                alloc_func(i, curDevice, commsParams.dtype, self.initVal)
+                i_alloc_func([i], curDevice, commsParams.dtype, i_scale_factor)
                 for i in curComm.inSplit
             ]
+
             opTensor = [
-                alloc_func(i, curDevice, commsParams.dtype, self.initVal)
+                self.backendFuncs.alloc_random(
+                    [i], curDevice, commsParams.dtype, scaleFactor
+                )
                 for i in curComm.outSplit
             ]
         return (ipTensor, opTensor)
@@ -1247,7 +1218,6 @@ class paramCommsBench(ABC):
         # TODO: consider using this dictionary to check valid keywords rather than silently defaulting
 
         dispatchDict = {
-            "all_to_all_single": self._prep_all_to_all_single,
             "all_to_allv": self._prep_all_to_allv,
             "all_to_all": self._prep_all_to_all,
             "all_gather": self._prep_all_gather,
