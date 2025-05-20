@@ -22,6 +22,7 @@ from param_bench.train.comms.pt.comms_utils import (
     ensureTensorFlush,
     MultilineFormatter,
     paramCommsBench,
+    paramDeviceTimer,
     paramStreamGuard,
 )
 from param_bench.train.comms.pt.logger_utils import (
@@ -189,7 +190,12 @@ class commsCollBench(paramCommsBench):
             default=0,
             help="Number of graph launches for each data-size",
         )
-        return parser.parse_known_args()
+        parser.add_argument(
+            "--use-device-time",
+            action="store_true",
+            default=False,
+            help="use device time measurement",
+        )
 
     def _checkPt2Pt(self, args):
         if args.pt2pt is None:
@@ -363,8 +369,6 @@ class commsCollBench(paramCommsBench):
             self.collectiveArgs, desc="run_coll_cuda_graph_begin"
         )
         elapsedCPUTimeNS = 0.0
-        start_event = self.backendFuncs.create_event(self.collectiveArgs)
-        end_event = self.backendFuncs.create_event(self.collectiveArgs)
 
         # 1. Warmup phase
         # launch collective on a separate stream and sync with current_stream
@@ -372,6 +376,8 @@ class commsCollBench(paramCommsBench):
         s.wait_stream(torch.cuda.current_stream())
         with torch.cuda.stream(s):
             for _ in range(self.collectiveArgs.numWarmupIters):
+                if self.collectiveArgs.enable_profiler:
+                    comms_utils.sampleProfiler()
                 comm_fn(self.collectiveArgs)
         torch.cuda.current_stream().wait_stream(s)
 
@@ -389,7 +395,6 @@ class commsCollBench(paramCommsBench):
 
         # 3. Replay
         start = time.monotonic()  # available only in py3
-        self.backendFuncs.record_event(start_event, self.collectiveArgs)
         for _ in range(self.collectiveArgs.graph_launches):
             if self.collectiveArgs.enable_profiler:
                 comms_utils.sampleProfiler()
@@ -397,7 +402,6 @@ class commsCollBench(paramCommsBench):
             # [optional] we can feed new input data to ipTensor for each replay
             g.replay()
 
-        self.backendFuncs.record_event(end_event, self.collectiveArgs)
         self.backendFuncs.complete_accel_ops(self.collectiveArgs)
 
         end = time.monotonic()  # available only in py3
@@ -407,16 +411,8 @@ class commsCollBench(paramCommsBench):
         elapsedCPUTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
-        elapsedDeviceTimeMs = self.backendFuncs.elapsed_time(start_event, end_event)
-        elapsedDeviceTimeNS = elapsedDeviceTimeMs * 1e6
-        elapsedTimeNS = (
-            elapsedDeviceTimeNS
-            if self.collectiveArgs.use_device_time
-            else elapsedCPUTimeNS
-        )
-        logger.debug(
-            f"elapsedCPUTimeNS={elapsedCPUTimeNS}, elapsedDeviceTimeNS={elapsedDeviceTimeNS}."
-        )
+        elapsedTimeNS = elapsedCPUTimeNS
+        logger.debug(f"elapsedCPUTimeNS={elapsedCPUTimeNS}")
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
 
@@ -448,7 +444,7 @@ class commsCollBench(paramCommsBench):
     def run_coll_non_graph(self, comm_fn=None, dcheck=False):
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
-        elapsedTimeNS = 0.0
+        elapsedCPUTimeNS = 0.0
         is_blocking = not self.collectiveArgs.asyncOp
 
         for nIter in range(
@@ -461,7 +457,9 @@ class commsCollBench(paramCommsBench):
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
                 ensureTensorFlush(self.collectiveArgs.opTensor)
                 # Start measuring time after warmup iterations
-                elapsedTimeNS = 0.0
+                elapsedCPUTimeNS = 0.0
+                if self.collectiveArgs.use_device_time:
+                    self.collectiveArgs.comm_dev_time.reset()
                 self.collectiveArgs.quant_time.reset()
                 self.collectiveArgs.dequant_time.reset()
             # reset tensor values for data validation check
@@ -479,6 +477,7 @@ class commsCollBench(paramCommsBench):
                 curDevice=self.collectiveArgs.device,
                 backendFuncs=self.backendFuncs,
                 is_blocking=False,
+                timer=self.collectiveArgs.comm_dev_time,
             ):
                 self.collectiveArgs.group = self.collectiveArgs.groups[
                     self.collectiveArgs.pgId
@@ -488,9 +487,11 @@ class commsCollBench(paramCommsBench):
 
             if is_blocking:  # should be sychronous, wait for the collective
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+                if self.collectiveArgs.comm_dev_time:
+                    self.collectiveArgs.comm_dev_time.elapsedTime()
 
             # Measuring time.
-            elapsedTimeNS += (
+            elapsedCPUTimeNS += (
                 time.monotonic() - start
             ) * 1e9  # keeping time in NS, helps in divising data by nanosecond
 
@@ -500,12 +501,18 @@ class commsCollBench(paramCommsBench):
 
         ensureTensorFlush(self.collectiveArgs.opTensor)
 
-        elapsedTimeNS += (
+        elapsedCPUTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
-
+        if self.collectiveArgs.use_device_time:
+            elapsedTimeNS = self.collectiveArgs.comm_dev_time.elapsedTimeNS
+            logger.debug(
+                f"elapsedCPUTimeNS={elapsedCPUTimeNS/self.collectiveArgs.numIters}, elapsedDeviceTimeNS={elapsedTimeNS/self.collectiveArgs.numIters}."
+            )
+        else:
+            elapsedTimeNS = elapsedCPUTimeNS
         avgIterNS, algBW = comms_utils.getAlgBW(
             elapsedTimeNS,
             memSize,
@@ -871,6 +878,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.numCollPerIter = commsParams.num_coll
         self.collectiveArgs.include_0B = commsParams.include_0B
         self.collectiveArgs.graph_launches = commsParams.graph_launches
+        self.collectiveArgs.use_device_time = commsParams.use_device_time
 
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
@@ -885,6 +893,13 @@ class commsCollBench(paramCommsBench):
             self.checkPt2PtRanks()
         else:
             self.checkCollectiveRanks()
+
+        if self.collectiveArgs.use_device_time:
+            self.collectiveArgs.comm_dev_time = paramDeviceTimer(
+                name="comm_timer", backendFuncs=self.backendFuncs
+            )
+        else:
+            self.collectiveArgs.comm_dev_time = None
 
         return (
             global_rank,
@@ -1304,7 +1319,9 @@ class commsCollBench(paramCommsBench):
                     rank=self.backendFuncs.get_global_rank(),
                     device=self.collectiveArgs.device,
                     numWarmupIters=self.collectiveArgs.numWarmupIters,
-                    numIters=self.collectiveArgs.numIters,
+                    numIters=self.collectiveArgs.graph_launches
+                    if self.collectiveArgs.graph_launches
+                    else self.collectiveArgs.numIters,
                 )
 
             # self.collectiveArgs has all the information on the experiment.
@@ -1487,7 +1504,8 @@ def main():
         formatter_class=MultilineFormatter,
         allow_abbrev=False,
     )
-    args, _ = collBenchObj.readArgs(parser)
+    collBenchObj.readArgs(parser)
+    args, _ = parser.parse_known_args()
 
     comms_env_params = comms_utils.read_comms_env_vars()
     if comms_env_params["global_rank"] == 0 or (

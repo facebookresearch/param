@@ -2,21 +2,16 @@
 `et_replay` is a tool designed for replaying Chakra Execution Traces (ET) from machine learning models.
 
 ## Installation
-To install `param`, use the following commands:
+To install `et_replay`, use the following commands:
 
 ```bash
 $ git clone --recurse-submodules git@github.com:facebookresearch/param.git
-$ conda create -n param python=3.8.0
-$ conda activate param
+$ conda create -n et_replay python=3.10
+$ conda activate et_replay
 $ cd param
 $ pip3 install -r requirements.txt
-$ cd train/comms/pt/
+$ cd et_replay
 $ pip3 install .
-$ cd -
-$ cd train/compute/python/
-$ pip3 install -r requirements.txt
-$ pip3 install .
-$ cd -
 ```
 
 ## Running et_replay
@@ -28,7 +23,7 @@ $ python -m param_bench.train.compute.python.pytorch.run_benchmark -c train/comp
 
 After collecting the trace, replay it with the following command. Set the warm-up iteration count to at least 1 to exclude tensor transfer time to GPUs.
 ```bash
-$ python -m param_bench.train.compute.python.tools.et_replay --input <trace_path> --warmup-iter 10 --iter 50 --compute --profile-replay
+$ python -m et_replay.tools.et_replay --input <trace_path> --warmup-iter 10 --iter 50 --compute --profile-replay
 ```
 
 > Note: When analyzing performance values from et_replay, refer to the collected Kineto traces rather than the execution time reported by et_replay. Kineto traces are only collected when --profile-replay is provided.

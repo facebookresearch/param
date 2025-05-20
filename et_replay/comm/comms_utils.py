@@ -20,7 +20,7 @@ from io import StringIO
 from typing import Any
 
 try:
-    from param_bench.et_replay.vendor_internals import (
+    from et_replay.vendor_internal.fb_internal import (
         initialize_collectiveArgs_internal,
         remove_quantization_handlers,
     )
@@ -28,6 +28,13 @@ try:
     has_internal_libs = True
 except ImportError:
     has_internal_libs = False
+
+try:
+    import et_replay.comm.backend.vendor_internal.fb_internals  # noqa: F401
+
+    loaded_internals = True
+except ImportError:
+    loaded_internals = False
 
 
 import numpy as np

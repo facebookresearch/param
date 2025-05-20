@@ -7,6 +7,7 @@
 
 
 import argparse
+import gzip
 import json
 import logging
 import os
@@ -17,7 +18,7 @@ import numpy as np
 import torch
 
 from et_replay.comm import comms_utils, commsTraceParser, profiler_trace_analysis
-from et_replay.comm.backend.base_backend import supportedP2pOps
+from et_replay.comm.backend.base_backend import supportedC10dBackends, supportedP2pOps
 from et_replay.comm.comms_utils import (
     bootstrap_info_holder,
     commsArgs,
@@ -30,7 +31,7 @@ from et_replay.comm.param_profile import paramProfile, paramTimer
 from torch.profiler import ProfilerActivity
 
 try:
-    from param_bench.et_replay.vendor_internal.fb_internal import (
+    from et_replay.vendor_internal.fb_internal import (
         get_fb_profiler_activities,
         get_fb_profiler_trace_handler,
     )
@@ -71,7 +72,7 @@ def writeCommDetails(commsTracePerf: list, rank: int, folder: str = "./") -> Non
     if "://" in comms_file:  # assume that "://" in directory path means remote store
         saveToLocal = False
         try:
-            from param_bench.train.comms.pt.fb.internals import (
+            from param_bench.et_replay.comm.vendor_internal.fb_internals import (
                 writeRemoteTrace as writeFbRemoteTrace,
             )
 
@@ -1427,7 +1428,10 @@ class commsTraceReplayBench(paramCommsBench):
             None
         """
         # init backend and corresponding function pointers
-        if commsParams.nw_stack == "pytorch-dist":
+        if (
+            commsParams.nw_stack == "pytorch-dist"
+            and commsParams.backend in supportedC10dBackends
+        ):
             from et_replay.comm.backend.pytorch_dist_backend import PyTorchDistBackend
 
             self.backendFuncs = PyTorchDistBackend(bootstrap_info, commsParams)
@@ -1436,8 +1440,21 @@ class commsTraceReplayBench(paramCommsBench):
 
             self.backendFuncs = PyTorchTPUBackend(bootstrap_info, commsParams)
         else:
-            logger.error("Unsopported NW stack! ")
-            comms_utils.gracefulExit()
+            # check for customized backend
+            try:
+                logging.warning(
+                    f"Attempt loading customized backend {commsParams.backend} if registered. Note that this is not officially supported. Use it with caution and at your own risk."
+                )
+                from et_replay.comm.backend.base_backend import customized_backend
+
+                self.backendFuncs = customized_backend[commsParams.backend](
+                    bootstrap_info, commsParams
+                )
+            except KeyError as e:
+                logger.error(
+                    f"Unsupported NW stack for backend {commsParams.backend}: {e}"
+                )
+                comms_utils.gracefulExit()
 
         self.backendFuncs.initialize_backend(
             bootstrap_info.master_ip,
@@ -1476,7 +1493,7 @@ class commsTraceReplayBench(paramCommsBench):
             curHwDevice,
         ) = comms_utils.get_rank_details(
             self.backendFuncs
-        )  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes
+        )  # Getting ranks from backendFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes
 
         self.collectiveArgs.group = group  # default group
         self.collectiveArgs.groups = self.backendFuncs.get_groups()
@@ -1564,7 +1581,7 @@ class commsTraceReplayBench(paramCommsBench):
                 raw_comms_trace = comms_utils.commonUrlRead(remotePath=remotePath)
             else:
                 try:
-                    from param_bench.train.comms.pt.fb.internals import (
+                    from param_bench.et_replay.comm.vendor_internal.fb_internals import (
                         readRemoteTrace as readFbRemoteTrace,
                     )
 
@@ -1590,8 +1607,13 @@ class commsTraceReplayBench(paramCommsBench):
                 trace_file_path = self.trace_file
 
             # Read the json file from local disk
-            with open(trace_file_path) as f:
-                self.comms_trace = json.load(f)
+            # with open(trace_file_path) as f:
+            with (
+                gzip.open(trace_file_path, "rb")
+                if trace_file_path.endswith("gz")
+                else open(trace_file_path)
+            ) as execution_data:
+                self.comms_trace = json.load(execution_data)
 
     def readTrace(self, remotePath: str, rank: int) -> None:
         """

@@ -3,7 +3,7 @@ from unittest import mock
 
 import torch
 
-from comms_utils import commsArgs
+from param_bench.train.comms.pt.comms_utils import commsArgs
 
 from param_bench.train.comms.pt.commsTraceReplay import commsTraceReplayBench
 from param_bench.train.comms.pt.tests.mocks.backend_mock import MockBackendFunction

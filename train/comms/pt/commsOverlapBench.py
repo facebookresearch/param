@@ -20,6 +20,7 @@ from param_bench.train.comms.pt.comms import commsCollBench
 from param_bench.train.comms.pt.comms_utils import (
     ensureTensorFlush,
     MultilineFormatter,
+    paramDeviceTimer,
     paramStreamGuard,
 )
 from param_bench.train.comms.pt.logger_utils import (
@@ -94,7 +95,6 @@ class commsOverlapBench(commsCollBench):
             default=False,
             help="Toggle to enable overlapping collective pair with two pgs",
         )  # overlap collective pair with two pgs
-        return parser.parse_known_args()
 
     # Check arguments that may be custmized per benchmark in a single run
     # does not depend on data type
@@ -162,7 +162,7 @@ class commsOverlapBench(commsCollBench):
     def runColl(self, comm_fn=None, comm_fn_pair_list=None, dcheck=False):
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
-        elapsedTimeNS = 0.0
+        elapsedCPUTimeNS = 0.0
         is_blocking = not self.collectiveArgs.asyncOp
         enable_comms_pair = (
             False if (comm_fn_pair_list is None or comm_fn_pair_list == []) else True
@@ -184,7 +184,9 @@ class commsOverlapBench(commsCollBench):
                     for opTensor_pair in self.collectiveArgs.opTensor_pair:
                         ensureTensorFlush(opTensor_pair)
                 # Start measuring time after warmup iterations
-                elapsedTimeNS = 0.0
+                elapsedCPUTimeNS = 0.0
+                if self.collectiveArgs.comm_dev_time:
+                    self.collectiveArgs.comm_dev_time.reset()
                 self.collectiveArgs.quant_time.reset()
                 self.collectiveArgs.dequant_time.reset()
             # reset tensor values for data validation check
@@ -202,13 +204,15 @@ class commsOverlapBench(commsCollBench):
                 curDevice=self.collectiveArgs.device,
                 backendFuncs=self.backendFuncs,
                 is_blocking=False,
+                timer=self.collectiveArgs.comm_dev_time,
             ):
                 self.collectiveArgs.group = self.collectiveArgs.groups[
                     self.collectiveArgs.pgId
                 ]
                 for _ in range(self.collectiveArgs.numCollPerIter):
                     comm_fn(self.collectiveArgs)
-
+            if self.collectiveArgs.comm_dev_time:
+                self.collectiveArgs.comm_dev_time.elapsedTime()
             if enable_comms_pair:
                 for pairIdx in range(len(comm_fn_pair_list)):
                     comm_fn_pair = comm_fn_pair_list[pairIdx]
@@ -218,6 +222,7 @@ class commsOverlapBench(commsCollBench):
                         curDevice=self.collectiveArgs.device,
                         backendFuncs=self.backendFuncs,
                         is_blocking=False,
+                        timer=self.collectiveArgs.comm_dev_time,
                     ):
                         # post another collecitve if on comms pair mode, otherwise it's noop
                         self.collectiveArgs.group = self.collectiveArgs.groups[
@@ -228,9 +233,11 @@ class commsOverlapBench(commsCollBench):
 
             if is_blocking:  # should be sychronous, wait for the collective
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
+                if self.collectiveArgs.comm_dev_time:
+                    self.collectiveArgs.comm_dev_time.elapsedTime()
 
             # Measuring time.
-            elapsedTimeNS += (
+            elapsedCPUTimeNS += (
                 time.monotonic() - start
             ) * 1e9  # keeping time in NS, helps in divising data by nanosecond
 
@@ -243,11 +250,18 @@ class commsOverlapBench(commsCollBench):
             for opTensor_pair in self.collectiveArgs.opTensor_pair:
                 ensureTensorFlush(opTensor_pair)
 
-        elapsedTimeNS += (
+        elapsedCPUTimeNS += (
             end - start
         ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
+        if self.collectiveArgs.comm_dev_time:
+            elapsedTimeNS = self.collectiveArgs.comm_dev_time.elapsedTimeNS
+            logger.debug(
+                f"elapsedCPUTimeNS={elapsedCPUTimeNS/self.collectiveArgs.numIters}, elapsedDeviceTimeNS={elapsedTimeNS/self.collectiveArgs.numIters}."
+            )
+        else:
+            elapsedTimeNS = elapsedCPUTimeNS
 
         avgIterNS, algBW = comms_utils.getAlgBW(
             elapsedTimeNS,
@@ -291,75 +305,12 @@ class commsOverlapBench(commsCollBench):
         }
         return results
 
-        self.backendFuncs.sync_barrier(self.collectiveArgs)
-        # warm-up
-        memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
-        self.getPingLatency(self.collectiveArgs.numWarmupIters)
-        self.getPingPongLatency(self.collectiveArgs.numWarmupIters)
-        self.getUniBW(self.collectiveArgs.numWarmupIters, memSize)
-        self.getBiBW(self.collectiveArgs.numWarmupIters, memSize)
-        self.backendFuncs.sync_barrier(self.collectiveArgs, "runpt2pt_begin")
-        # pt2pt benchmark
-        pingPerIterNS = self.getPingLatency(self.collectiveArgs.numIters)
-        pingPongPerIterNS = self.getPingPongLatency(self.collectiveArgs.numIters)
-        avgUniBW = self.getUniBW(self.collectiveArgs.numIters, memSize)
-        avgBiBW = self.getBiBW(self.collectiveArgs.numIters, memSize)
-        self.backendFuncs.sync_barrier(self.collectiveArgs, "runpt2pt")
-        results = {
-            "pingPerIterNS": pingPerIterNS,
-            "pingPongPerIterNS": pingPongPerIterNS,
-            "avgUniBW": avgUniBW,
-            "avgBiBW": avgBiBW,
-            "memSize": memSize,
-        }
-        return results
-
     def initCollectiveArgs(self, commsParams):
-        # lint was complaining that benchTime was too complex!
         (
-            local_rank,
             global_rank,
             world_size,
-            group,
-            curDevice,
-            curHwDevice,
-        ) = comms_utils.get_rank_details(
-            self.backendFuncs
-        )  # Getting ranks from backednFuncs object, since we cannot use MPI (e.g.: TPU) to launch all the processes.
-        groups = self.backendFuncs.get_groups()
-        num_pgs = len(groups)
-
-        # global world size
-        self.comm_size = world_size
-
-        # Update world_size with the number of ranks in the group.
-        myGroup = groups[self.collectiveArgs.pgId]
-        world_size = self.backendFuncs.get_group_size(myGroup)
-        myGroupRanks = commsParams.groupRanks[self.collectiveArgs.pgId]
-
-        self.global_rank = global_rank
-        self.report = (
-            True
-            if global_rank == 0 or (commsParams.enable_local_report and local_rank == 0)
-            else False
-        )
-
-        if commsParams.sizes is not None:
-            allSizes = commsParams.sizes
-            if self.report:
-                logger.info(
-                    f"Benchmarking with user-specified message sizes {allSizes}, --b and --e are ignored"
-                )
-        else:
-            comms_utils.fixBeginSize(
-                commsParams, world_size
-            )  # Ensuring that all-reduce and all-to-all has atleast one member per rank.
-            allSizes = comms_utils.getSizes(
-                commsParams.beginSize,
-                commsParams.endSize,
-                commsParams.stepFactor,
-                commsParams.stepBytes,
-            )  # Given the begin-size, end-size, step-factor what are the message sizes to iterate on.
+            allSizes,
+        ) = super().initCollectiveArgs(commsParams)
 
         if commsParams.sizes_pair is not None:
             allSizes_pair = commsParams.sizes_pair
@@ -369,23 +320,6 @@ class commsOverlapBench(commsCollBench):
                 )
         else:
             allSizes_pair = allSizes
-
-        self.collectiveArgs.group = group
-        self.collectiveArgs.groups = groups
-        self.collectiveArgs.num_pgs = num_pgs
-        self.collectiveArgs.device = curDevice
-        self.collectiveArgs.world_size = world_size
-        self.collectiveArgs.numIters = commsParams.numIters
-        self.collectiveArgs.numWarmupIters = commsParams.numWarmupIters
-        self.collectiveArgs.global_rank = global_rank
-        self.collectiveArgs.backendFuncs = self.backendFuncs
-        self.collectiveArgs.collective = commsParams.collective
-        op = self.backendFuncs.get_reduce_op("sum")
-        self.collectiveArgs.op = op
-        # Update root rank for current PG, as torch.dist requires the global rank
-        self.collectiveArgs.srcOrDst = myGroupRanks[commsParams.srcOrDst]
-        self.collectiveArgs.src_ranks = commsParams.src_ranks
-        self.collectiveArgs.dst_ranks = commsParams.dst_ranks
         self.collectiveArgs.pair = commsParams.pair
         self.collectiveArgs.collective_pair = commsParams.collective_pair
         if self.collectiveArgs.pair:
@@ -393,33 +327,10 @@ class commsOverlapBench(commsCollBench):
                 self.backendFuncs.get_new_stream()
                 for _ in self.collectiveArgs.collective_pair
             ]
-        self.collectiveArgs.pt2pt = commsParams.pt2pt
-        self.collectiveArgs.window = commsParams.window
-        self.collectiveArgs.asyncOp = False if commsParams.blockingFlag == 1 else True
-        self.collectiveArgs.numCollPerIter = commsParams.num_coll
-        self.collectiveArgs.include_0B = commsParams.include_0B
-
-        if commsParams.bitwidth < 32:
-            comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
-
-        self.backendFuncs.sync_barrier(self.collectiveArgs)
-        if self.report:
-            print(
-                f"[Rank {global_rank:>3}] allSizes: {allSizes} element_size: {commsParams.element_size}"
-                + f" local_rank: {local_rank}, num_pg {self.collectiveArgs.num_pgs}, groupSize {self.collectiveArgs.world_size}"
-            )
-        if self.collectiveArgs.collective == "pt2pt":
-            self.checkPt2PtRanks()
-        else:
-            self.checkCollectiveRanks()
 
         return (
-            local_rank,
             global_rank,
             world_size,
-            group,
-            curDevice,
-            curHwDevice,
             allSizes,
             allSizes_pair,
         )
@@ -750,12 +661,8 @@ class commsOverlapBench(commsCollBench):
     def benchComm(self, index, commsParams, backendFuncs):
         # Get NW stack specific parameters
         (
-            local_rank,
             global_rank,
             world_size,
-            group,
-            curDevice,
-            curHwDevice,
             allSizes,
             allSizes_pair,
         ) = self.initCollectiveArgs(commsParams)
@@ -1016,7 +923,8 @@ def main():
         formatter_class=MultilineFormatter,
         allow_abbrev=False,
     )
-    args, leftovers = collBenchObj.readArgs(parser)
+    collBenchObj.readArgs(parser)
+    args, _ = parser.parse_known_args()
 
     comms_env_params = comms_utils.read_comms_env_vars()
     if comms_env_params["global_rank"] == 0 or (

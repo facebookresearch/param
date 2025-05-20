@@ -18,7 +18,7 @@ from et_replay.comm.backend.base_backend import BaseBackend, collectiveArgsHolde
 from et_replay.comm.param_profile import paramProfile
 
 try:
-    from param_bench.train.comms.pt.fb.internals import (
+    from param_bench.et_replay.comm.vendor_internal.fb_internals import (
         all_to_all_internal,
         all_to_allv_internal,
         extend_distributed,
@@ -939,18 +939,6 @@ class PyTorchDistBackend(BaseBackend):
         self.computeFunc["add_num"] = self.add_num
         self.computeFunc["sub_num"] = self.sub_num
         self.computeFunc["copy"] = self.copy
-
-        backend = (
-            self.commsParams["backend"]
-            if isinstance(self.commsParams, dict)
-            else self.commsParams.backend
-        )
-        # Import Fairring
-        if backend == "fairring":
-            try:
-                import fairring  # pyre-ignore[21]:
-            except ImportError:
-                raise RuntimeError("Unable to import Fairring")
 
     def get_new_pg(self, group_ranks, backend, pg_desc=""):
         if self.use_ext_dist:

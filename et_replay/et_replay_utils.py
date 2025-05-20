@@ -514,7 +514,7 @@ def dfs_traverse(node):
 
 if "://" in \"{et_input}\":
     try:
-        from param_bench.train.compute.python.tools.fb.internals import (
+        from param_bench.et_replay.comm.vendor_internal.fb_internals import (
             read_remote_trace,
         )
     except ImportError:
@@ -650,7 +650,7 @@ print("Avg execution time per iteration is {{}}ms".format((time.time_ns() - star
 end_time = datetime.now()
 
 try:
-    from param_bench.train.compute.python.tools.fb.internals import (
+    from param_bench.et_replay.vendor_internal.fb_internal import (
         generate_query_url,
     )
 except ImportError:

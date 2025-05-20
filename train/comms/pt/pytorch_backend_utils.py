@@ -142,6 +142,7 @@ class CollectiveArgsBase:
 
         self.include_0B = False
         self.graph_launches = 0
+        self.use_device_time = False
 
 
 class collectiveArgsHolder(CollectiveArgsMixin, CollectiveArgsBase):
