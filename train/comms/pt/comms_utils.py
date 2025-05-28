@@ -1551,7 +1551,7 @@ class ParamCommsBenchBase(ABC):
         numElementsIn = curComm.inMsgSize
         # numElementsOut is only meaningful for out-of-place collectives and pt2pt
         numElementsOut = curComm.outMsgSize
-        world_size = self.collectiveArgs.world_size
+        world_size = curComm.worldSize
         dtype = commsParams.dtype
         curDevice = commsParams.device
         # seed to generate random value; let's use a small value to avoid potential "overflow when unpacking long"

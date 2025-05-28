@@ -194,6 +194,8 @@ class commsOverlapBench(commsCollBench):
                 self.setTensorVal(self.collectiveArgs.opTensor)
             # for blocking mode, do barrier before starting collective
             if is_blocking:
+                # set default group to sync among all global ranks
+                self.collectiveArgs.group = self.backendFuncs.get_default_group()
                 self.backendFuncs.sync_barrier(self.collectiveArgs)
 
             start = time.monotonic()  # available only in py3
@@ -728,9 +730,11 @@ class commsOverlapBench(commsCollBench):
                 commsArgs = comms_utils.commsArgs()
                 commsArgs.inMsgSize = self.collectiveArgs.numElements_pair
                 commsArgs.outMsgSize = self.collectiveArgs.numElements_pair
-                commsArgs.worldSize = world_size
 
                 for pairIdx in range(len(commsParams.collective_pair)):
+                    commsArgs.worldSize = self.collectiveArgs.world_size_pair[
+                        pairIdx + 1
+                    ]
                     commsArgs.comms = commsParams.collective_pair[pairIdx]
                     (
                         ipTensor_pair,
@@ -860,6 +864,7 @@ class commsOverlapBench(commsCollBench):
                 i + 1: list(map(int, val.replace("[", "").replace("]", "").split(",")))
                 for i, val in enumerate(process_groups_pair)
             }
+            self.collectiveArgs.world_size_pair = [len(v) for v in groupRanks.values()]
 
             self.collectiveArgs.pairPgId = [
                 i + 1 for i in range(len(pair_collectives_list))
