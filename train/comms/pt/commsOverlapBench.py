@@ -229,7 +229,11 @@ class commsOverlapBench(commsCollBench):
                             self.collectiveArgs.pairPgId[pairIdx]
                         ]
                         for _ in range(self.collectiveArgs.numCollPerIter):
-                            comm_fn_pair(self.collectiveArgs, pair=enable_comms_pair)
+                            comm_fn_pair(
+                                self.collectiveArgs,
+                                pair=enable_comms_pair,
+                                pairIdx=pairIdx,
+                            )
 
             if is_blocking:  # should be sychronous, wait for the collective
                 self.backendFuncs.complete_accel_ops(self.collectiveArgs)
@@ -735,12 +739,12 @@ class commsOverlapBench(commsCollBench):
                         curComm=commsArgs,
                         commsParams=commsParams,
                     )
-                if len(self.collectiveArgs.ipTensor_pair) < pairIdx + 1:
-                    self.collectiveArgs.ipTensor_pair.append(ipTensor_pair)
-                    self.collectiveArgs.opTensor_pair.append(opTensor_pair)
-                else:
-                    self.collectiveArgs.ipTensor_pair[pairIdx] = ipTensor_pair
-                    self.collectiveArgs.opTensor_pair[pairIdx] = opTensor_pair
+                    if len(self.collectiveArgs.ipTensor_pair) < pairIdx + 1:
+                        self.collectiveArgs.ipTensor_pair.append(ipTensor_pair)
+                        self.collectiveArgs.opTensor_pair.append(opTensor_pair)
+                    else:
+                        self.collectiveArgs.ipTensor_pair[pairIdx] = ipTensor_pair
+                        self.collectiveArgs.opTensor_pair[pairIdx] = opTensor_pair
 
             self.collectiveArgs.data_type = commsParams.data_type
             if commsParams.size_start_profiler == curSize:

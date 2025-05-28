@@ -889,8 +889,8 @@ class PyTorchDistBackend(backendFunctions):
     def clear_memory(self, collectiveArgs):
         del collectiveArgs.ipTensor
         del collectiveArgs.opTensor
-
-        for i in range(len(collectiveArgs.ipTensor_pair)):
+        # Deleting items in reverse order to avoid index shifting issues
+        for i in range(len(collectiveArgs.ipTensor_pair) - 1, -1, -1):
             del collectiveArgs.ipTensor_pair[i]
             del collectiveArgs.opTensor_pair[i]
 
