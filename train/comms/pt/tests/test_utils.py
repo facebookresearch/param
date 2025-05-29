@@ -27,7 +27,7 @@ class commsParamsTest:
     def __init__(self):
         # A holding object for common input parameters, add as needed to test
         self.nw_stack = "pytorch_dist"
-        self.dtype = "Int"
+        self.dtype = "int"
         self.backend = "nccl"
         self.device = "cpu"
         self.blockingFlag = 1

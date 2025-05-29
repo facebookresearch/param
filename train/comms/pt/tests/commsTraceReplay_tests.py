@@ -43,7 +43,7 @@ class TestPrepComms(unittest.TestCase):
         commsParams = commsParamsTest()
         commsParams.dcheck = 1
         commsParams.device = "cpu"
-        curComm = commsArgs(comms="recv", dtype="Int", inMsgSize=1, outMsgSize=1)
+        curComm = commsArgs(comms="recv", dtype="int", inMsgSize=1, outMsgSize=1)
         testBench.shrink = False
         testBench.collectiveArgs.world_size = 1
         (iptensor, optensor) = testBench.prepComms(curComm, commsParams)
@@ -62,7 +62,7 @@ class TestPrepComms(unittest.TestCase):
         commsParams.device = "cpu"
         curComm = commsArgs(
             comms="all_to_allv",
-            dtype="Int",
+            dtype="int",
             inMsgSize=4,
             outMsgSize=4,
             inSplit=[1, 1, 1, 1],
@@ -86,7 +86,7 @@ class TestPrepComms(unittest.TestCase):
         commsParams.dcheck = 1
         commsParams.device = "cpu"
         curComm = commsArgs(
-            comms="all_gather", dtype="Int", inMsgSize=4, outMsgSize=4, worldSize=4
+            comms="all_gather", dtype="int", inMsgSize=4, outMsgSize=4, worldSize=4
         )
         testBench.shrink = True
         testBench.collectiveArgs.world_size = 1
@@ -171,9 +171,13 @@ class TestinitTraceStat(unittest.TestCase):
     def test_dry_run(self):
         test_trace = [
             createCommsArgs(
-                comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]
+                comms="test",
+                dtype="int",
+                inMsgSize=1,
+                outMsgSize=1,
+                markerStack=["test_stack"],
             ),
-            createCommsArgs(comms="all_gather", inMsgSize=2, outMsgSize=2),
+            createCommsArgs(comms="all_gather", dtype="int", inMsgSize=2, outMsgSize=2),
             createCommsArgs(comms="wait", markerStack=["test_stack"]),
         ]
         testBench = commsTraceReplayBench()
@@ -183,9 +187,9 @@ class TestinitTraceStat(unittest.TestCase):
         # Only 2 messages had msg sizes
         self.assertEqual(2, len(testBench.collInMsgBytes))
         self.assertEqual(2, len(testBench.collOutMsgBytes))
-        # The sum of the sizes of all all_gather msgs is 2 for in and out
-        self.assertEqual(2, sum(testBench.collInMsgBytes["all_gather"]))
-        self.assertEqual(2, sum(testBench.collOutMsgBytes["all_gather"]))
+        # The sum of the sizes of all all_gather msgs is 8 (2 x 4 bytes) for in and out
+        self.assertEqual(8, sum(testBench.collInMsgBytes["all_gather"]))
+        self.assertEqual(8, sum(testBench.collOutMsgBytes["all_gather"]))
         # Dry run records comm blocks. We have two colls in test_stack
         self.assertEqual(2, len(testBench.comms_blocks["test_stack"]))
         # check values of comm_blocks
@@ -202,9 +206,13 @@ class TestinitTraceStat(unittest.TestCase):
     def test_not_dry_run(self):
         test_trace = [
             createCommsArgs(
-                comms="test", inMsgSize=1, outMsgSize=1, markerStack=["test_stack"]
+                comms="test",
+                dtype="int",
+                inMsgSize=1,
+                outMsgSize=1,
+                markerStack=["test_stack"],
             ),
-            createCommsArgs(comms="all_gather", inMsgSize=2, outMsgSize=2),
+            createCommsArgs(comms="all_gather", dtype="int", inMsgSize=2, outMsgSize=2),
             createCommsArgs(comms="wait", markerStack=["test_stack"]),
         ]
         testBench = commsTraceReplayBench()
@@ -213,9 +221,9 @@ class TestinitTraceStat(unittest.TestCase):
         # Only 2 messages had msg sizes
         self.assertEqual(2, len(testBench.collInMsgBytes))
         self.assertEqual(2, len(testBench.collOutMsgBytes))
-        # The sum of the sizes of all all_gather msgs is 2 for in and out
-        self.assertEqual(2, sum(testBench.collInMsgBytes["all_gather"]))
-        self.assertEqual(2, sum(testBench.collOutMsgBytes["all_gather"]))
+        # The sum of the sizes of all all_gather msgs is 8 (2 x 4 bytes) for in and out
+        self.assertEqual(8, sum(testBench.collInMsgBytes["all_gather"]))
+        self.assertEqual(8, sum(testBench.collOutMsgBytes["all_gather"]))
         # Not dry run does not record comm blocks.
         self.assertEqual(0, len(testBench.comms_blocks["test_stack"]))
 
@@ -233,6 +241,13 @@ class TestInitBench(unittest.TestCase):
         args.num_msg = 1000
         args.auto_shrink = False
         args.do_warm_up = False
+        args.num_replays = 1
+        args.profiler_num_replays = 1
+        args.reuse_tensors = False
+        args.output_ranks = "0"
+        args.profiler_num_replays_start = 0
+        args.disable_parallel_read = False
+        args.use_one_trace = False
         testBench.initBench(commsParams, args)
         # check if parameters are being set
         self.assertEqual(True, args.use_timestamp, testBench.use_timestamp)
