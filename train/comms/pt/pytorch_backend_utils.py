@@ -40,6 +40,7 @@ supportedCollectives = [
     "all_gather_v",
     "all_gather_object",
     "broadcast",
+    "broadcast_object_list",
     "reduce_scatter",
     "reduce_scatter_v",
     "reduce_scatter_base",
@@ -162,6 +163,7 @@ class backendFunctions(ABC):
             "all_to_allv": self.all_to_allv,
             "all_reduce": self.all_reduce,
             "broadcast": self.broadcast,
+            "broadcast_object_list": self.broadcast_object_list,
             "gather": self.gather,
             "all_gather": self.all_gather,
             "all_gather_base": self.all_gather_base,
@@ -213,7 +215,13 @@ class backendFunctions(ABC):
                     collectiveArgs.world_size
                 )
             busBW = algBW * mulFactor
-        elif collective in ("reduce", "broadcast", "incast", "multicast"):
+        elif collective in (
+            "reduce",
+            "broadcast",
+            "broadcast_object_list",
+            "incast",
+            "multicast",
+        ):
             busBW = algBW
         else:
             logger.error(

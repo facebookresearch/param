@@ -1601,13 +1601,34 @@ class ParamCommsBenchBase(ABC):
         if allocate:
             if commsParams.dcheck == 1:
                 # use predictable values for data validation check
-                ipTensor = self.backendFuncs.alloc_ones(
-                    [numElementsIn], curDevice, dtype, scaleFactor=self.initVal
-                )
+                if commOp in ("broadcast_object_list",):
+                    # *_object_list performs pickle operations for EACH element in the list, wrapping the tensor into a list to avoid excessive CPU->GPU copies.
+                    ipTensor = [
+                        self.backendFuncs.alloc_ones(
+                            [numElementsIn],
+                            "cpu",
+                            dtype,
+                            scaleFactor=self.initVal,
+                        )
+                    ]
+                else:
+                    ipTensor = self.backendFuncs.alloc_ones(
+                        [numElementsIn],
+                        curDevice,
+                        dtype,
+                        scaleFactor=self.initVal,
+                    )
             else:
-                ipTensor = self.backendFuncs.alloc_random(
-                    [numElementsIn], curDevice, dtype, scaleFactor
-                )
+                if commOp in ("broadcast_object_list",):
+                    ipTensor = [
+                        self.backendFuncs.alloc_random(
+                            [numElementsIn], "cpu", dtype, scaleFactor
+                        )
+                    ]
+                else:
+                    ipTensor = self.backendFuncs.alloc_random(
+                        [numElementsIn], curDevice, dtype, scaleFactor
+                    )
         else:
             ipTensor = []
         # TODO: consider using this dictionary to check valid keywords rather than silently defaulting

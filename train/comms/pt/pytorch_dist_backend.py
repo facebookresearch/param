@@ -591,6 +591,23 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    def broadcast_object_list(
+        self, collectiveArgs, retFlag=False, pair=False, pairIdx=0
+    ):
+        retObj = dist.broadcast_object_list(
+            object_list=(
+                collectiveArgs.opTensor
+                if not pair
+                else collectiveArgs.opTensor_pair[pairIdx]
+            ),
+            src=collectiveArgs.srcOrDst,
+            group=self.get_collective_group(collectiveArgs),
+            device=collectiveArgs.device,
+        )
+
+        if retFlag:
+            return retObj
+
     # One-to-many pattern
     def multicast(self, collectiveArgs):
         if collectiveArgs.global_rank == collectiveArgs.srcOrDst:
