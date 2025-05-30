@@ -394,6 +394,38 @@ class PyTorchDistBackend(backendFunctions):
         if retFlag:
             return retObj
 
+    def all_gather_object(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        if self.use_ext_dist:
+            retObj = collectiveArgs.group.all_gather_object(
+                object_list=(
+                    collectiveArgs.opTensor
+                    if not pair
+                    else collectiveArgs.opTensor_pair[pairIdx]
+                ),
+                obj=(
+                    collectiveArgs.ipTensor
+                    if not pair
+                    else collectiveArgs.ipTensor_pair[pairIdx]
+                ),
+            )
+        else:
+            retObj = dist.all_gather_object(
+                object_list=(
+                    collectiveArgs.opTensor
+                    if not pair
+                    else collectiveArgs.opTensor_pair[pairIdx]
+                ),
+                obj=(
+                    collectiveArgs.ipTensor
+                    if not pair
+                    else collectiveArgs.ipTensor_pair[pairIdx]
+                ),
+                group=collectiveArgs.group,
+            )
+
+        if retFlag:
+            return retObj
+
     def gather(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
         if pair:
             ipTensors = collectiveArgs.ipTensor_pair[pairIdx]

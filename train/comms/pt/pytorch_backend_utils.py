@@ -38,6 +38,7 @@ supportedCollectives = [
     "all_to_allv",
     "all_gather",
     "all_gather_v",
+    "all_gather_object",
     "broadcast",
     "reduce_scatter",
     "reduce_scatter_v",
@@ -164,6 +165,7 @@ class backendFunctions(ABC):
             "gather": self.gather,
             "all_gather": self.all_gather,
             "all_gather_base": self.all_gather_base,
+            "all_gather_object": self.all_gather_object,
             "reduce": self.reduce,
             "reduce_scatter": self.reduce_scatter,
             "reduce_scatter_base": self.reduce_scatter_base,
@@ -204,6 +206,7 @@ class backendFunctions(ABC):
             "reduce_scatter_base",
             "scatter",
             "all_gather_base",
+            "all_gather_object",
         ):
             if collectiveArgs.world_size != 0:
                 mulFactor = (collectiveArgs.world_size - 1) / (

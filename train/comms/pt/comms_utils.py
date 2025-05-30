@@ -1281,6 +1281,46 @@ class ParamCommsBenchBase(ABC):
                 )
         return (ipTensor, opTensor)
 
+    def _prep_all_gather_object(
+        self,
+        ipTensor: torch.tensor,
+        curComm: commsArgs,
+        commsParams: commsParamsHolderBase,
+        numElementsIn: int,
+        numElementsOut: int,
+        world_size: int,
+        curDevice: str,
+        dtype: torch.dtype,
+        scaleFactor: float,
+        allocate: bool = True,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        opTensor = []
+        # Ensure the input tensor is on CPU
+        curDevice = "cpu"
+
+        if not commsParams.size_from_trace:
+            numElementsIn = numElementsIn // world_size
+
+        if allocate:
+            if commsParams.dcheck == 1:
+                ipTensor = self.backendFuncs.alloc_ones(
+                    [numElementsIn],
+                    curDevice,
+                    dtype,
+                    scaleFactor=self.initVal,
+                )
+            else:
+                ipTensor = self.backendFuncs.alloc_random(
+                    [numElementsIn], curDevice, dtype, scaleFactor
+                )
+            for _ in range(world_size):
+                opTensor.append(
+                    self.backendFuncs.alloc_random(
+                        [numElementsIn], curDevice, dtype, scaleFactor
+                    )
+                )
+        return (ipTensor, opTensor)
+
     def _prep_all_gather_base(
         self,
         ipTensor: torch.tensor,
@@ -1577,6 +1617,7 @@ class ParamCommsBenchBase(ABC):
             "all_to_allv": self._prep_all_to_allv,
             "all_to_all": self._prep_all_to_all,
             "all_gather": self._prep_all_gather,
+            "all_gather_object": self._prep_all_gather_object,
             "gather": self._prep_all_gather,
             "all_gather_base": self._prep_all_gather_base,
             "incast": self._prep_incast,
