@@ -672,9 +672,10 @@ class commsTraceReplayBench(paramCommsBench):
 
             curComm.inMsgSize = newNumElemsIn
             curComm.outMsgSize = newNumElemsOut
+            curComm.worldSize = cur_world_size
 
             logger.debug(
-                f"shrink message sizes to curInNumElem {curComm.inMsgSize}, curOutNumElem {curComm.outMsgSize}"
+                f"shrink message sizes to curInNumElem {curComm.inMsgSize}, curOutNumElem {curComm.outMsgSize}, curWorldSize {curComm.worldSize}"
             )
 
         # Use exactly specified inMsgSize/outMsgSize if call from trace replay
