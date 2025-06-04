@@ -1,29 +1,25 @@
-# Execution Trace Replay (et_replay)
-`et_replay` is a tool designed for replaying Chakra Execution Traces (ET) from machine learning models.
+# License
+Chakra replay is released under the Apache 2.0 license. Please see the LICENSE file for more information.
+
+# Execution Trace Replay (chakra_replay)
+`chakra_replay` is a tool designed for replaying Chakra Execution Traces (ET) from machine learning models.
 
 ## Installation
-To install `et_replay`, use the following commands:
+To install `chakra_replay`, use the following commands:
 
 ```bash
-$ git clone --recurse-submodules git@github.com:facebookresearch/param.git
-$ conda create -n et_replay python=3.10
-$ conda activate et_replay
-$ cd param
+$ git clone --recurse-submodules git@github.com:pytorch-labs/chakra_replay.git
+$ conda create -n chakra_replay python=3.10
+$ conda activate chakra_replay
+$ cd chakra_replay
 $ pip3 install -r requirements.txt
-$ cd et_replay
 $ pip3 install .
 ```
 
 ## Running et_replay
-To use et_replay, execution traces are required.
-Start by collecting an execution trace using the command below. This command runs a benchmark with specific configurations and enables execution tracing.
+Replay the trace with the following command. Set the warm-up iteration count to at least 1 to exclude tensor transfer time to GPUs.
 ```bash
-$ python -m param_bench.train.compute.python.pytorch.run_benchmark -c train/compute/python/examples/pytorch/configs/simple_add.json --et
-```
-
-After collecting the trace, replay it with the following command. Set the warm-up iteration count to at least 1 to exclude tensor transfer time to GPUs.
-```bash
-$ python -m et_replay.tools.et_replay --input <trace_path> --warmup-iter 10 --iter 50 --compute --profile-replay
+$ python -m tools.et_replay --input <trace_path> --warmup-iter 10 --iter 50 --compute --profile-replay
 ```
 
 > Note: When analyzing performance values from et_replay, refer to the collected Kineto traces rather than the execution time reported by et_replay. Kineto traces are only collected when --profile-replay is provided.
