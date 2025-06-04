@@ -497,9 +497,13 @@ def ensureTensorFlush(tensors: list[torch.Tensor] | torch.Tensor) -> float:
     x = None
     if isinstance(tensors, list) and len(tensors) > 0 and len(tensors[-1]) > 0:
         # some collectives like allgather use a list of tensors
-        x = tensors[-1][-1].item()  # to ensure collective won't be optimized away.
+        x = (
+            tensors[-1].flatten()[-1].item()
+        )  # to ensure collective won't be optimized away.
     elif isinstance(tensors, torch.Tensor) and tensors.nelement() > 0:
-        x = tensors[-1].item()  # to ensure collective won't be optimized away.
+        x = tensors.flatten()[
+            -1
+        ].item()  # to ensure collective won't be optimized away.
 
     return x
 
