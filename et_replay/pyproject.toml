@@ -13,7 +13,6 @@ dependencies = [
 
 [tool.setuptools.package-dir]
 "et_replay" = "."
-"param_bench" = ".."
 
 [project.scripts]
 comm_replay = "et_replay.tools.comm_replay:main"
