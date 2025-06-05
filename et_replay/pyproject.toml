@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [tool.setuptools.package-dir]
-"et_replay" = "."
+"et_replay" = "et_replay"
 
 [project.scripts]
 comm_replay = "et_replay.tools.comm_replay:main"

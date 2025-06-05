@@ -3,7 +3,7 @@ import json
 import os
 import unittest
 
-from et_replay import ExecutionTrace
+from et_replay.execution_trace import ExecutionTrace
 from et_replay.tools.validate_trace import TraceValidator
 
 CURR_DIR = os.path.dirname(os.path.realpath(__file__))
