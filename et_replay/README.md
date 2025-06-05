@@ -5,12 +5,11 @@
 To install `et_replay`, use the following commands:
 
 ```bash
-$ git clone --recurse-submodules git@github.com:facebookresearch/param.git
+$ git clone https://github.com/pytorch-labs/chakra_replay/
 $ conda create -n et_replay python=3.10
 $ conda activate et_replay
-$ cd param
+$ cd chakra_replay
 $ pip3 install -r requirements.txt
-$ cd et_replay
 $ pip3 install .
 ```
 
