@@ -14,15 +14,17 @@ $ pip3 install .
 ```
 
 ## Running et_replay
-To use et_replay, execution traces are required.
-Start by collecting an execution trace using the command below. This command runs a benchmark with specific configurations and enables execution tracing.
+Unzip tests/inputs/resnet_et.json.gz
 ```bash
-$ python -m param_bench.train.compute.python.pytorch.run_benchmark -c train/compute/python/examples/pytorch/configs/simple_add.json --et
+gzip -d tests/inputs/resnet_et.json.gz
 ```
-
-After collecting the trace, replay it with the following command. Set the warm-up iteration count to at least 1 to exclude tensor transfer time to GPUs.
+Replay it with the following command.
 ```bash
-$ python -m et_replay.tools.et_replay --input <trace_path> --warmup-iter 10 --iter 50 --compute --profile-replay
+$ python3 -m et_replay.tools.et_replay --input tests/inputs/resnet_et.json -c --profile-replay
 ```
 
 > Note: When analyzing performance values from et_replay, refer to the collected Kineto traces rather than the execution time reported by et_replay. Kineto traces are only collected when --profile-replay is provided.
+
+## License
+
+PARAM benchmarks is released under the MIT license. Please see the [`LICENSE`](LICENSE) file for more information.

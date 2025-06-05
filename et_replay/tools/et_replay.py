@@ -176,17 +176,6 @@ class ExgrReplayManager:
         # is between two consecutive label nodes.
         self.profile_step_label = "ProfilerStep#"
 
-        try:
-            from et_replay.vendor_internal.fb_internal import (
-                add_internal_parallel_nodes_parents,
-            )
-        except ImportError:
-            logger.info("FB internals not present")
-        else:
-            self.parallel_nodes_parents = add_internal_parallel_nodes_parents(
-                self.parallel_nodes_parents
-            )
-
         self.profile_step_node_ids = []
 
         # Only use for memory profile.

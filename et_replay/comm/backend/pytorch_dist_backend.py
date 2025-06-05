@@ -604,9 +604,9 @@ class PyTorchDistBackend(BaseBackend):
 
     def barrier_all_ranks(self):
         dist.barrier(
-            device_ids=[self.get_device().index]
-            if dist.get_backend() == "nccl"
-            else None
+            device_ids=(
+                [self.get_device().index] if dist.get_backend() == "nccl" else None
+            )
         )
 
     def sync_barrier(self, collectiveArgs, desc="dummy"):
