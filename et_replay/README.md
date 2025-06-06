@@ -27,4 +27,4 @@ $ python3 -m et_replay.tools.et_replay --input tests/inputs/resnet_et.json -c --
 
 ## License
 
-PARAM benchmarks is released under the MIT license. Please see the [`LICENSE`](LICENSE) file for more information.
+Chakra replay is released under Apache-2.0 license. Please see the [`LICENSE`](LICENSE) file for more information.
