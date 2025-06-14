@@ -692,6 +692,8 @@ class PyTorchDistBackend(backendFunctions):
             return req
 
     def batch_isend_irecv(self, collectiveArgs, retFlag=False):
+        if not collectiveArgs.p2pOps:
+            return
         reqs = dist.batch_isend_irecv(collectiveArgs.p2pOps)
 
         collectiveArgs.p2pOps.clear()
