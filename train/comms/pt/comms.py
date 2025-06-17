@@ -1453,8 +1453,15 @@ class commsCollBench(paramCommsBench):
             from param_bench.train.comms.pt.pytorch_dist_backend import (
                 PyTorchDistBackend,
             )
+            from param_bench.train.comms.pt.pytorch_nvshmem_backend import (
+                PyTorchNVShmemBackend,
+            )
 
-            backendObj = PyTorchDistBackend(bootstrap_info, commsParams)
+            backendObj = (
+                PyTorchNVShmemBackend(bootstrap_info, commsParams)
+                if commsParams.use_nvshmem
+                else PyTorchDistBackend(bootstrap_info, commsParams)
+            )
         elif commsParams.nw_stack == "pytorch-xla-tpu":
             from param_bench.train.comms.pt.pytorch_tpu_backend import PyTorchTPUBackend
 

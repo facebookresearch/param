@@ -20,6 +20,7 @@ from io import StringIO
 from typing import Any
 
 import torch
+import torch.distributed._symmetric_memory as symm_mem
 
 from param_bench.train.comms.pt.param_profile import paramTimer
 from param_bench.train.comms.pt.pytorch_backend_utils import (
@@ -805,6 +806,7 @@ class commsParamsHolderBase:
         self.nw_stack = args.nw_stack
         self.dtype = args.dtype
         self.backend = args.backend
+        self.use_nvshmem = args.use_nvshmem
         self.device = args.device
         self.blockingFlag = args.z
         # quantization
@@ -1118,6 +1120,20 @@ class ParamCommsBenchBase(ABC):
             if (curComm.inSplit is not None)
             else [(numElementsIn // world_size) for _ in range(world_size)]
         )
+        if commsParams.use_nvshmem:
+            # input and output splits also needs to be in symmetric memory
+            # to enable nvshmem alltoallv collective op.
+            symm_ip_tensor_split = torch.tensor(
+                self.collectiveArgs.ipTensor_split, device=curDevice, dtype=torch.int64
+            )
+            # In case of nvshmem op we only need to provide input splits in index 0,
+            # output splits and offsets will be computed by the op internally and placed
+            # in indices 1 and 2.
+            self.collectiveArgs.in_out_splits = self.backendFuncs.alloc_empty(
+                (3, world_size), curDevice, torch.int64
+            )
+
+            self.collectiveArgs.in_out_splits[0].copy_(symm_ip_tensor_split)
         return (ipTensor, opTensor)
 
     def _prep_all_to_all_single(
@@ -1591,6 +1607,8 @@ class ParamCommsBenchBase(ABC):
 
         if commOp in ("wait", "barrier"):
             return ([], [])
+        if commsParams.use_nvshmem:
+            symm_mem.enable_symm_mem_for_group(self.collectiveArgs.group.group_name)
 
         numElementsIn = curComm.inMsgSize
         # numElementsOut is only meaningful for out-of-place collectives and pt2pt
@@ -1748,6 +1766,12 @@ class ParamCommsBenchBase(ABC):
             default=("nccl" if self.isCudaAvail() else "gloo"),
             choices=supportedC10dBackends + list(customized_backend.keys()),
             help="The backend to be used in PyTorch distributed process group",
+        )  #  backend used for the network stack
+        parser.add_argument(
+            "--use-nvshmem",
+            action="store_true",
+            default=False,
+            help="Whether to use NVSHMEM backend for NCCL-like collectives",
         )  #  backend used for the network stack
         parser.add_argument(
             "--z",
