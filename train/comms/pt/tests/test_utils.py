@@ -37,6 +37,7 @@ class commsParamsTest:
         self.quant_threshold = 1
         self.dcheck = 1
         self.num_pgs = 1
+        self.use_nvshmem = False
 
 
 class bootstrap_info_test:
