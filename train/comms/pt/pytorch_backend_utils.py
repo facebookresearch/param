@@ -180,6 +180,22 @@ class backendFunctions(ABC):
 
         self.computeFunc = {"gemm": self.gemm}
 
+    def set_up(self) -> None:
+        """
+        This is called once before each set of benchmark runs
+        (including warm up iterations and actual runs),
+        to give a chance for the collective to do the one-time setup.
+        """
+        return
+
+    def tear_down(self) -> None:
+        """
+        This is called once after each set of benchmark runs
+        (including warm up iterations and actual runs),
+        to give a chance for the collective to perform clean-ups.
+        """
+        return
+
     def getBusBW(
         self, collective: str, algBW: float, collectiveArgs: collectiveArgsHolder
     ) -> float:

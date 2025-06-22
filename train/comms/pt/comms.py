@@ -18,6 +18,7 @@ import torch
 from param_bench.train.comms.pt import comms_utils
 from param_bench.train.comms.pt.comms_utils import (
     bootstrap_info_holder,
+    commsParamsHolder,
     commsParamsHolderBase,
     ensureTensorFlush,
     MultilineFormatter,
@@ -34,6 +35,7 @@ from param_bench.train.comms.pt.logger_utils import (
 )
 
 from param_bench.train.comms.pt.pytorch_backend_utils import (
+    backendFunctions,
     pt2ptPatterns,
     supportedC10dBackends,
     supportedCollectives,
@@ -1279,6 +1281,9 @@ class commsCollBench(paramCommsBench):
         if self.report:
             self.printPreamble(commsParams)
 
+        backendFuncs.set_up()
+        self.tear_down_fns.append(backendFuncs.tear_down)
+
         for curSize in allSizes:
             results = {}
             timeUsElapsedList = []
@@ -1500,6 +1505,9 @@ class commsCollBench(paramCommsBench):
         except ValueError as ve:
             logger.critical(repr(ve))
             raise
+        finally:
+            for fn in self.tear_down_fns:
+                fn()
 
 
 def main():
@@ -1561,7 +1569,7 @@ def main():
         commsParams = comms_utils.commsParamsHolder(
             args, bootstrap_info, element_size, collBenchObj.benchTime, groupRanks
         )
-
+        collBenchObj.backendFuncs.commsParams = commsParams
         collBenchObj.runBench(commsParams)
 
 

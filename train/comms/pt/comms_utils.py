@@ -49,7 +49,7 @@ try:
     logger.info("Successfully import internal libs")
 except ImportError:
     has_internal_libs = False
-    logger.info("Iinternal libs not found.")
+    logger.info("Internal libs not found.")
 
 try:
     from param_bench.train.comms.pt.fb.mixins import (
@@ -981,6 +981,7 @@ class ParamCommsBenchBase(ABC):
         }
         self.supportedDtype = list(self.dtypeMap.keys())
         self.backendFuncs: backendFunctions = None
+        self.tear_down_fns: list[Callable[[], None]] = []
 
         self.collectiveArgs = collectiveArgsHolder()
         self.comm_size = 1
