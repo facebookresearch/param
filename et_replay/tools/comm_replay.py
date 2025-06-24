@@ -731,6 +731,10 @@ class commsTraceReplayBench(paramCommsBench):
                     newNumElemsOut = sum(curComm.outSplit)
             elif commOp == "all_gather":
                 newNumElemsOut = newNumElemsIn * cur_world_size
+            elif commOp == "reduce_scatter":
+                newNumElemsIn = newNumElemsOut * cur_world_size
+            else:
+                raise RuntimeError("Unsupported collective for shrinking")
 
             curComm.inMsgSize = newNumElemsIn
             curComm.outMsgSize = newNumElemsOut
@@ -1089,11 +1093,10 @@ class commsTraceReplayBench(paramCommsBench):
 
             # Get the name of the collective from the comm object
             collName = paramToCommName(curComm.comms)
-            (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
+
             # Skip comm if the local process doesn't belong to the PG or encounter an unexpected collective
             if (
                 collName not in self.allowList
-                or groupRank == -1
                 or (
                     collName in ("send", "isend")
                     and curComm.src_rank != self.backendFuncs.get_global_rank()
@@ -1106,6 +1109,7 @@ class commsTraceReplayBench(paramCommsBench):
                 logger.warn(f"Skip collective {collName} id = {curComm.id}")
                 return
 
+            (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
             if groupRank >= 0:
                 commDesc = f"{str(curComm.comms)}: NumElemsIn={curComm.inMsgSize}, NumElemsOut={curComm.outMsgSize}, Dtype={curComm.dtype}"
                 if curComm.comms in ("all_to_all", "all_to_allv"):
@@ -1120,6 +1124,11 @@ class commsTraceReplayBench(paramCommsBench):
                 logger.info(
                     f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc} id = {curComm.id}"
                 )
+            else:
+                logger.warn(
+                    f"Skip collective {collName} id = {curComm.id} as groupRank = {groupRank}"
+                )
+                return
 
             # read fields and prepare the tensors
             (
