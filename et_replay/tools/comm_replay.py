@@ -584,7 +584,7 @@ class commsTraceReplayBench(paramCommsBench):
         Reset collective group to default PG
         """
         self.collectiveArgs.group = self.backendFuncs.get_default_group()
-        self.world_size = self.backendFuncs.get_world_size()
+        self.collectiveArgs.world_size = self.backendFuncs.get_world_size()
 
     def getCommGroupInfo(
         self, curComm: commsArgs, commsParams: commsParamsHolderBase
@@ -687,41 +687,25 @@ class commsTraceReplayBench(paramCommsBench):
             )  # match world size to the size of the current PG
         else:  # use default process group if no pg_id is provided or shrink is enabled
             self.collectiveArgs.group = self.backendFuncs.get_default_group()
-            self.world_size = self.backendFuncs.get_world_size()
+            self.collectiveArgs.world_size = self.backendFuncs.get_world_size()
 
         commOp = paramToCommName(curComm.comms)
         if commOp in ("wait", "barrier", "batch_isend_irecv"):
             return (torch.Tensor(), torch.Tensor())
 
-        # for all_to_allv, we can shrink the size if running on smaller scale
-        # this is for sanity test or debug purpose only since we don't always get to run very large scale
+        # For all_to_allv, we can shrink the size if running on smaller scale.
+        # This is for sanity test or debug purpose only since we don't always get to run very large scale
         if self.shrink:
-            cur_world_size = self.collectiveArgs.world_size
-            real_world_size = cur_world_size
-
-            if curComm.worldSize is not None:
-                real_world_size = curComm.worldSize
-            else:
-                # if the trace does not record world size, we may use a2av splits to infer it
-                if commOp == "all_to_allv":
-                    in_split_len = len(curComm.inSplit)
-                    out_split_len = len(curComm.outSplit)
-                    if in_split_len > 0:
-                        real_world_size = in_split_len
-                    elif out_split_len > 0:
-                        real_world_size = out_split_len
-
-            newNumElemsIn = (curComm.inMsgSize // real_world_size) * cur_world_size
-            newNumElemsOut = (curComm.outMsgSize // real_world_size) * cur_world_size
-
+            newNumElemsIn = curComm.inMsgSize
+            newNumElemsOut = curComm.outMsgSize
             if commOp == "all_to_allv":
                 curComm.outSplit = (
-                    curComm.outSplit[:cur_world_size]
+                    curComm.outSplit[: self.collectiveArgs.world_size]
                     if (curComm.outSplit is not None)
                     else []
                 )
                 curComm.inSplit = (
-                    curComm.inSplit[:cur_world_size]
+                    curComm.inSplit[: self.collectiveArgs.world_size]
                     if (curComm.inSplit is not None)
                     else []
                 )
@@ -729,18 +713,19 @@ class commsTraceReplayBench(paramCommsBench):
                     newNumElemsIn = sum(curComm.inSplit)
                 if len(curComm.outSplit) > 0:
                     newNumElemsOut = sum(curComm.outSplit)
-            elif commOp == "all_gather":
-                newNumElemsOut = newNumElemsIn * cur_world_size
-            elif commOp == "reduce_scatter":
-                newNumElemsIn = newNumElemsOut * cur_world_size
-            else:
-                raise RuntimeError("Unsupported collective for shrinking")
+                logger.info(
+                    f"All2All: shrink message sizes for {commOp} to inSplit: {curComm.inSplit}, outSplit: {curComm.outSplit} for world_size: {self.collectiveArgs.world_size}"
+                )
+            elif commOp == "all_gather" or commOp == "all_gather_base":
+                newNumElemsOut = newNumElemsIn * self.collectiveArgs.world_size
+            elif commOp == "reduce_scatter" or commOp == "reduce_scatter_base":
+                newNumElemsIn = newNumElemsOut * self.collectiveArgs.world_size
 
             curComm.inMsgSize = newNumElemsIn
             curComm.outMsgSize = newNumElemsOut
 
-            logger.debug(
-                f"shrink message sizes to curInNumElem {curComm.inMsgSize}, curOutNumElem {curComm.outMsgSize}"
+            logger.info(
+                f"shrink message sizes for {commOp} to curInNumElem {curComm.inMsgSize}, curOutNumElem {curComm.outMsgSize} for world_size: {self.collectiveArgs.world_size}"
             )
 
         return self.generate_io_tensors(curComm, commsParams, regenerateTensors)
@@ -1111,6 +1096,11 @@ class commsTraceReplayBench(paramCommsBench):
 
             (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
             if groupRank >= 0:
+                # read fields and prepare the tensors
+                (
+                    self.collectiveArgs.ipTensor,
+                    self.collectiveArgs.opTensor,
+                ) = self.prepComms(curComm, commsParams, not self.reuse_tensors)
                 commDesc = f"{str(curComm.comms)}: NumElemsIn={curComm.inMsgSize}, NumElemsOut={curComm.outMsgSize}, Dtype={curComm.dtype}"
                 if curComm.comms in ("all_to_all", "all_to_allv"):
                     commDesc += (
@@ -1129,12 +1119,6 @@ class commsTraceReplayBench(paramCommsBench):
                     f"Skip collective {collName} id = {curComm.id} as groupRank = {groupRank}"
                 )
                 return
-
-            # read fields and prepare the tensors
-            (
-                self.collectiveArgs.ipTensor,
-                self.collectiveArgs.opTensor,
-            ) = self.prepComms(curComm, commsParams, not self.reuse_tensors)
 
             if not warmup and self.colls_per_batch > 0 and self.coll_in_batch_num == 0:
                 batch_begin = time.monotonic()
@@ -1622,7 +1606,7 @@ class commsTraceReplayBench(paramCommsBench):
             else:
                 # Single file mode: use self.trace_file as is
                 trace_file_path = self.trace_file
-
+            logger.info(f"[Rank-{rank}] reading trace from {trace_file_path}")
             # Read the json file from local disk
             # with open(trace_file_path) as f:
             with (
