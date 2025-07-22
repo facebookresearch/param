@@ -226,3 +226,13 @@ def build_triton_func(n, resources_dir, async_compile, device):
         func = async_compile.triton("triton_", code, device_str=device)
 
     return func, 0
+
+
+def import_third_party_modules(modules: list[str]):
+    for module in modules:
+        try:
+            print(f"Importing third party module: {module}")
+            __import__(module)
+        except ImportError:
+            print(f"Failed to import {module}")
+            raise

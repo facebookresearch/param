@@ -41,10 +41,10 @@ from et_replay.et_replay_utils import (
     build_triton_func,
     get_input_tensors,
     get_output_tensors,
+    import_third_party_modules,
     is_tensor,
     is_tensor_list,
     TORCH_DTYPES_RNG,
-    TORCH_DTYPES_RNG_str,
 )
 from et_replay.execution_trace import ExecutionTrace, NodeType
 from et_replay.tools.comm_replay import commsTraceReplayBench
@@ -200,6 +200,8 @@ class ExgrReplayManager:
         self.op_allocated_mem = {}
         self.op_reserved_mem = {}
 
+        self.replay_config = None
+
         # actual_skip_nodes is a dictinary which records the skipped node name
         # and the reason to skip it.
         # Dict {name => skip reason}
@@ -296,7 +298,7 @@ class ExgrReplayManager:
             if "://" in self.args.trace_path:
                 try:
                     from et_replay.vendor_internal.fb_internal import (
-                        read_remote_skip_node_file,
+                        read_remote_replay_config_file,
                         read_remote_trace,
                     )
                 except ImportError:
@@ -308,12 +310,13 @@ class ExgrReplayManager:
                     )
                     self.et = ExecutionTrace(json.load(et))
 
-                    # check if the remote path has skip-node.json
-                    skip_node_json = read_remote_skip_node_file(
+                    # check if the remote path has replay-config.json
+                    replay_config_json = read_remote_replay_config_file(
                         f"{self.args.trace_path}"
                     )
-                    if skip_node_json:
-                        self.actual_skip_nodes = json.load(skip_node_json)
+                    if replay_config_json:
+                        self.replay_config = json.load(replay_config_json)
+                        self.actual_skip_nodes = self.replay_config["skip nodes"]
                         self.initial_skip_node_count = len(self.actual_skip_nodes)
             else:
                 self.trace_file = f"{self.args.trace_path}/rank-{self.comms_env_params['global_rank']}.json"
@@ -328,14 +331,16 @@ class ExgrReplayManager:
             base_path, os.path.splitext(file_name)[-2] + "_resources"
         )
 
-        if self.args.skip_node_file:
+        if self.args.replay_config:
             try:
-                with open(self.args.skip_node_file) as json_file:
-                    self.actual_skip_nodes = json.load(json_file)
+                with open(self.args.replay_config) as json_file:
+                    self.replay_config = json.load(json_file)
+                    self.actual_skip_nodes = self.replay_config["skip nodes"]
+                    import_third_party_modules(self.replay_config["import modules"])
                     self.initial_skip_node_count = len(self.actual_skip_nodes)
             except OSError:
                 logger.info(
-                    f"Failed to load skip node file {self.args.skip_node_file}."
+                    f"Failed to load replay config file {self.args.replay_config}."
                 )
 
         self.kernel_map = {}
@@ -491,11 +496,12 @@ class ExgrReplayManager:
 
         self.select_parallel_nodes()
 
-        if self.args.skip_node_file is not None and self.args.update_skip_node_file:
+        if self.args.replay_config is not None and self.args.update_replay_config:
             actual_skip_node_count = len(self.actual_skip_nodes)
             if actual_skip_node_count > self.initial_skip_node_count:
-                with open(self.args.skip_node_file, "w") as outfile:
-                    json.dump(self.actual_skip_nodes, outfile, indent=4)
+                self.replay_config["skip nodes"] = self.actual_skip_nodes
+                with open(self.args.replay_config, "w") as outfile:
+                    json.dump(self.replay_config, outfile, indent=4)
 
     def select_parallel_nodes(self):
         def is_parallel_parent(node):
@@ -1296,7 +1302,7 @@ class ExgrReplayManager:
         if self.generator:
             return 0
 
-        if self.args.update_skip_node_file:
+        if self.args.update_replay_config:
             if os.environ.get("CUDA_LAUNCH_BLOCKING", "0") != "1":
                 logger.info(
                     "Please set CUDA_LAUNCH_BLOCKING=1 to get accurate skip node list."
@@ -1307,8 +1313,9 @@ class ExgrReplayManager:
             self.remove_op_with_runtime_error()
             actual_skip_node_count = len(self.actual_skip_nodes)
             if actual_skip_node_count > self.initial_skip_node_count:
-                with open(self.args.skip_node_file, "w") as outfile:
-                    json.dump(self.actual_skip_nodes, outfile, indent=4)
+                self.replay_config["skip nodes"] = self.actual_skip_nodes
+                with open(self.args.replay_config, "w") as outfile:
+                    json.dump(self.replay_config, outfile, indent=4)
                 benchmark_result["execution finished"] = False
             else:
                 benchmark_result["execution finished"] = True
@@ -1613,17 +1620,17 @@ class ExgrReplayManager:
             help="Replay on cpu.",
         )
         parser.add_argument(
-            "--skip-node-file",
+            "--replay-config",
             type=str,
             required=False,
             default="",
-            help="Path to the file that contains the list of nodes to skip.",
+            help="Path to the file that defines the configration of replay.",
         )
         parser.add_argument(
-            "--update-skip-node-file",
+            "--update-replay-config",
             action="store_true",
             default=False,
-            help="When true, the node skip list will be updated with the nodes that are skipped during replay.",
+            help="When true, the replay config file will be updated with the nodes that are skipped during replay.",
         )
 
         parser.add_argument(

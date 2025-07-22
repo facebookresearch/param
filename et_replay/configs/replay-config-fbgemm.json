@@ -1,0 +1,12 @@
+{
+    "import modules": [
+        "fbgemm_gpu.split_table_batched_embeddings_ops_training"
+    ],
+    "skip nodes": {
+        "aten::_foreach_copy_": "Failed to build function",
+        "aten::_foreach_norm": "Failed to build function",
+        "aten::_foreach_div_": "Failed to build function",
+        "aten::_foreach_mul_": "Failed to build function",
+        "aten::_foreach_add_": "Failed to build function"
+    }
+}
