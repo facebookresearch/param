@@ -209,12 +209,8 @@ def _parse_comms_op_node(  # noqa: C901
             comm_args.worldSize = total_ranks
         if comm_args.comms == "all_to_all":
             # flatten each tensor and store the # of elements into split field
-            comm_args.inSplit = [
-                node.input_shapes[0][0] / comm_args.worldSize
-            ] * comm_args.worldSize
-            comm_args.outSplit = [
-                node.input_shapes[0][0] / comm_args.worldSize
-            ] * comm_args.worldSize
+            comm_args.inSplit = [math.prod(i) for i in node.input_shapes[0]]
+            comm_args.outSplit = [math.prod(i) for i in node.output_shapes[0]]
         elif comm_args.comms == "all_to_allv":
             comm_args.inSplit = json.loads(node.commArgs.in_split_size)
             comm_args.outSplit = json.loads(node.commArgs.out_split_size)
