@@ -668,6 +668,7 @@ class commsParamsHolderBase:
         self.init_method = args.init_method
         self.enable_local_report = args.enable_local_report
         self.enable_profiler = args.enable_profiler
+        self.output_path = args.output_path
         self.use_perf_logger = args.use_perf_logger
         self.init_only = args.init_only
 
