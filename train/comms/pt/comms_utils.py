@@ -526,12 +526,12 @@ def startProfiler(rank: int, device: str, numWarmupIters: int, numIters: int) ->
             rank=rank,
             device=device,
             warmup=numWarmupIters,
-            iters=numIters,
+            active=numIters,
         )
         fbStartProfiler()
         return True
     else:
-        logger.debug("Internal profiler is not available, skip...")
+        logger.warning("Internal profiler is not available, skip...")
         return False
 
 
@@ -901,6 +901,7 @@ class commsParamsHolder(commsParamsHolderBase):
         self.bootstrap_info = bootstrap_info
 
         self.size_start_profiler = args.size_start_profiler
+        self.profiler_active_iters = args.profiler_active_iters
         self.groupRanks = groupRanks
 
         self.include_0B = args.include_0B
