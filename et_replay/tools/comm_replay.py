@@ -1270,7 +1270,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         # sync everything before starting real runs
         with paramProfile(description="# PARAM replay warmup post-replay global sync"):
-            self.backendFuncs.sync_barrier(self.collectiveArgs)
+            self.backendFuncs.barrier_all_ranks()
 
         if self.backendFuncs.get_global_rank() == 0:
             logger.info(
@@ -1290,7 +1290,7 @@ class commsTraceReplayBench(paramCommsBench):
             with paramProfile(
                 description=f"# PARAM replay {self.replayIter} post-replay global sync"
             ):
-                self.backendFuncs.sync_barrier(self.collectiveArgs)
+                self.backendFuncs.barrier_all_ranks()
 
         traceStartTime = time.monotonic_ns()
 
@@ -1305,7 +1305,7 @@ class commsTraceReplayBench(paramCommsBench):
                 with paramProfile(
                     description=f"# PARAM replay {self.replayIter} post-replay global sync"
                 ):
-                    self.backendFuncs.sync_barrier(self.collectiveArgs)
+                    self.backendFuncs.barrier_all_ranks()
 
                 if prof:
                     prof.step()
