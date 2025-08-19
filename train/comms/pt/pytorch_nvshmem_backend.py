@@ -23,6 +23,8 @@ class PyTorchNVShmemBackend(PyTorchDistBackend):
     # Init functions
     def __init__(self, bootstrap_info, commsParams):
         super().__init__(bootstrap_info, commsParams)
+        # Set NVSHMEM as SymmMem backend
+        symm_mem.set_backend("NVSHMEM")
 
     def alloc_empty(self, sizeArr, curRankDevice, dtype):
         return symm_mem.empty(sizeArr, device=curRankDevice, dtype=dtype)
@@ -49,7 +51,7 @@ class PyTorchNVShmemBackend(PyTorchDistBackend):
             else collectiveArgs.opTensor_pair[pairIdx]
         )
 
-        torch.ops.symm_mem.nvshmem_all_to_all_vdev(
+        torch.ops.symm_mem.all_to_all_vdev(
             ipTensor,
             opTensor,
             collectiveArgs.in_out_splits,
