@@ -65,3 +65,29 @@ class PyTorchNVShmemBackend(PyTorchDistBackend):
 
         if retFlag:
             return work
+
+    def all_to_all(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        # This is really a dummy async work since the above op is a blocking call
+
+        group_name = collectiveArgs.group.group_name
+
+        symm_mem.enable_symm_mem_for_group(group_name)
+
+        dtype = torch.float
+        numel_per_peer = 10
+        numel = self.get_world_size() * numel_per_peer
+        inp = symm_mem.empty(numel, dtype=dtype, device=self.get_device()).fill_(
+            self.get_global_rank()
+        )
+        out = symm_mem.empty(numel, dtype=dtype, device=self.get_device()).fill_(-1)
+
+        symm_mem.rendezvous(inp, group=group_name)
+        symm_mem.rendezvous(out, group=group_name)
+        torch.ops.symm_mem.nvshmem_all_to_all(inp, out, group_name)
+        work = DummyWork()
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(work)
+
+        if retFlag:
+            return work
