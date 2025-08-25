@@ -5,7 +5,7 @@
 To install `et_replay`, use the following commands:
 
 ```bash
-$ git clone https://github.com/pytorch-labs/chakra_replay/
+$ git clone https://github.com/meta-pytorch/chakra_replay/
 $ conda create -n et_replay python=3.10
 $ conda activate et_replay
 $ cd chakra_replay
