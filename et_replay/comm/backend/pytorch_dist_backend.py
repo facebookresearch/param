@@ -108,6 +108,7 @@ class PyTorchDistBackend(BaseBackend):
 
     # Collectives
     def all_reduce(self, collectiveArgs, retFlag=False, pair=False):
+        collectiveArgs.opTensor = collectiveArgs.ipTensor
         # pair=True mode does not support quantization
         if (
             collectiveArgs.allreduce_qcomm != 32
