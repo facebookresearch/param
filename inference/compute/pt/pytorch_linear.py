@@ -120,6 +120,7 @@ def infer_gpu(model, device, data_type, input_size, output_size, batch_size, arg
             "benchmark.onnx",
             input_names=["input"],
             output_names=["output"],
+            dynamo=False,
         )
         import migraphx
 
