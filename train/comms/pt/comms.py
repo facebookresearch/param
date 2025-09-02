@@ -1159,21 +1159,21 @@ class commsCollBench(paramCommsBench):
         )
 
         return commsCollPerfMetrics(
-            self.collectiveArgs.collective,
-            self.collectiveArgs.data_type,
-            benchType.Collective,
-            commsParams.backend,
-            self.tag,
-            results["memSize"],
-            results["memSize"],
-            results["numElements"],
-            float(p50),
-            float(p75),
-            float(p95),
-            float(minlat),
-            float(maxlat),
-            algBW,
-            busBW,
+            commsOp=self.collectiveArgs.collective,
+            Datatype=self.collectiveArgs.data_type,
+            BenchCommsType=benchType.Collective,
+            Backend=commsParams.backend,
+            Tags=self.tag,
+            InputSize=results["memSize"],
+            OutputSize=results["memSize"],
+            NumElements=results["numElements"],
+            p50_latency_us=float(p50),
+            p75_latency_us=float(p75),
+            p95_latency_us=float(p95),
+            min_latency_us=float(minlat),
+            max_latency_us=float(maxlat),
+            AlgoBW_GBs=float(algBW),
+            BusBW_GBs=float(busBW),
         )
 
     def reportBenchTimePt2Pt(self, commsParams, resultsAcrossRanks, results):
