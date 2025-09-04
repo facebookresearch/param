@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 import ast
 import functools
 import json
@@ -444,7 +445,7 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         f.write("\n")
 
         f.write(
-            f'{"      ":>66s} {" (B)":>12s} {"    ":>6s}|{"    ":>5s}|{" (ms)":>10s} '
+            f'{"      ":>66s} {" (B)":>12s} {"    ":>6s}|{"    ":>5s}|{" (us)":>10s} '
         )
         for _ in range(5):  # average, p50, p90, p99
             f.write(f'{"(GB/s)":>8s}|')
@@ -452,8 +453,34 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
 
         for k, v in comm_bw_summary.items():
             f.write(
-                f"{k[0]:>50s} {k[1]:>15s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]/1e3:>10.3f} "
+                f"{k[0]:>50s} {k[1]:>15s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]:>10.3f} "
             )
             for i in range(2, len(v)):
                 f.write(f"{v[i]:>8.2f}|")
             f.write("\n")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="PyTorch profiler trace analyzer",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--trace_dir",
+        type=str,
+        required=True,
+        help="dir path of input traces, where trace name should be in 'rank-n.json' format.",
+    )
+    parser.add_argument(
+        "--report_dir",
+        type=str,
+        required=True,
+        help="dir path for generated reports",
+    )
+    args = parser.parse_args()
+
+    analyze_profiler_trace(args.trace_dir, args.report_dir)
+
+
+if __name__ == "__main__":
+    main()
