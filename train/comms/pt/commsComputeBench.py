@@ -139,6 +139,7 @@ class commsComputeBench(commsCollBench):
     # Check arguments that may be custmized per benchmark in a single run
     # does not depend on data type
     def checkArgs(self, args):  # noqa: C901
+        super().checkArgs(args)
         if (
             len(args.mm_dim) > 3
             or len(args.mm_dim) == 0
