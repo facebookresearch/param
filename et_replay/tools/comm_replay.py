@@ -1138,7 +1138,8 @@ class commsTraceReplayBench(paramCommsBench):
         self.et_data_accuracy = {}
         if self.data_accuracy_checkmode:
             self.data_accuracy_hashTable = torch.load(
-                f"{self.data_accuracy_path}/et_data_accuracy_{self.backendFuncs.get_global_rank()}_{self.replayIter}.pt"
+                f"{self.data_accuracy_path}/et_data_accuracy_{self.backendFuncs.get_global_rank()}_{self.replayIter}.pt",
+                map_location="cpu",
             )
         for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
             self.replaySingle(commsParams, curComm, cnt, warmup)
