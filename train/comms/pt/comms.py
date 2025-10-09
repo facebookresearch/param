@@ -41,7 +41,9 @@ logger = logging.getLogger(__name__)
 # define the collective benchmark
 class commsCollBench(paramCommsBench):
     def __init__(self):
-        super().__init__(supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu"])
+        super().__init__(
+            supportedNwstacks=["pytorch-dist", "pytorch-torchcomms", "pytorch-xla-tpu"]
+        )
         self.tag = ""
         self.backendFuncs = None
 
@@ -1477,6 +1479,12 @@ class commsCollBench(paramCommsBench):
                 if commsParams.use_nvshmem
                 else PyTorchDistBackend(bootstrap_info, commsParams)
             )
+        elif commsParams.nw_stack == "pytorch-torchcomms":
+            from param_bench.train.comms.pt.fb.pytorch_torchcomms_backend import (
+                PyTorchTorchcommsBackend,
+            )
+
+            backendObj = PyTorchTorchcommsBackend(bootstrap_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":
             from param_bench.train.comms.pt.pytorch_tpu_backend import PyTorchTPUBackend
 
