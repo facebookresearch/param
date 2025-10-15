@@ -58,6 +58,7 @@ LOOP_TIMER_S = 0.02
 # index 0 is default value of trace type
 VALID_TRACE_TYPES = ["et"]
 VALID_DATA_CHECK_MODES = ["none", "save", "check"]
+VALID_DTYPES = ["none", "bfloat16", "float32"]
 
 
 def writeCommDetails(commsTracePerf: list, rank: int, folder: str = "./") -> None:
@@ -143,6 +144,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.profiler_num_replays = 5
         self.data_accuracy_rtol = 1e-4
         self.data_accuracy_atol = 1e-4
+        self.data_accuracy_dtype = "none"
 
         self.collInMsgBytes: dict[str, list] = {}
         self.collInUniMsgBytes: dict[str, set] = {}
@@ -311,10 +313,16 @@ class commsTraceReplayBench(paramCommsBench):
                    'save': Enable data accuracy savemode to store tensor inputs and outputs",
         )
         parser.add_argument(
-            "--data-accuracy-path",
+            "--data-accuracy-localpath",
             type=str,
             default="/tmp/et_data_accuracy",
-            help="File path to save and read for data accuracy checks.",
+            help="Local File path to save and read for data accuracy checks.",
+        )
+        parser.add_argument(
+            "--data-accuracy-uploadpath",
+            type=str,
+            default="/tmp/",
+            help="Upload file path to save and read for data accuracy checks.",
         )
         parser.add_argument(
             "--data-accuracy-rtol",
@@ -327,6 +335,13 @@ class commsTraceReplayBench(paramCommsBench):
             type=float,
             default=self.data_accuracy_atol,
             help="Absolute Tolerance for data accuracy checks",
+        )
+        parser.add_argument(
+            "--data-accuracy-dtype",
+            type=str,
+            choices=VALID_DTYPES,
+            default=VALID_DTYPES[0],
+            help=f"[{VALID_DTYPES}]. Data type to cast the input tensors to for data accuracy checks",
         )
         args, _ = parser.parse_known_args()
         return args
@@ -383,10 +398,12 @@ class commsTraceReplayBench(paramCommsBench):
             try:
                 import pathlib
 
-                pathlib.Path(args.data_accuracy_path).mkdir(parents=True, exist_ok=True)
+                pathlib.Path(args.data_accuracy_localpath).mkdir(
+                    parents=True, exist_ok=True
+                )
             except PermissionError:
                 logger.error(
-                    f"Permission denied to create directory {args.data_accuracy_path}"
+                    f"Permission denied to create directory {args.data_accuracy_localpath}"
                 )
 
     def reportBenchTime(self):
@@ -692,16 +709,24 @@ class commsTraceReplayBench(paramCommsBench):
         # Use exactly specified inMsgSize/outMsgSize if call from trace replay
         # This avoid regenerating sizes such as in _prep_all_gather_base
         commsParams.size_from_trace = True
-        commsParams.dtype = self.dtypeMap[curComm.dtype]
+        if (
+            self.data_accuracy_mode.lower() != "none"
+            and self.data_accuracy_dtype.lower() != "none"
+        ):
+            commsParams.dtype = self.dtypeMap[self.data_accuracy_dtype]
+        else:
+            commsParams.dtype = self.dtypeMap[curComm.dtype]
         if self.data_accuracy_checkmode:
             commsOpHash = curComm.id
             if commsOpHash in self.data_accuracy_hashTable:
                 (ipTensor, self.data_accuracy_op_tensor) = self.data_accuracy_hashTable[
                     commsOpHash
                 ]
-                ipTensor = ipTensor.to(self.collectiveArgs.device)
+                ipTensor = ipTensor.to(
+                    device=self.collectiveArgs.device, dtype=commsParams.dtype
+                )
                 self.data_accuracy_op_tensor = self.data_accuracy_op_tensor.to(
-                    self.collectiveArgs.device
+                    device=self.collectiveArgs.device, dtype=commsParams.dtype
                 )
                 logger.debug(
                     f"[Data accuracy]: Found data accuracy hash table for {commsOpHash}: {ipTensor}: {self.data_accuracy_op_tensor} "
@@ -927,7 +952,7 @@ class commsTraceReplayBench(paramCommsBench):
                     )
                     torch.save(
                         self.et_data_accuracy,
-                        f"{self.data_accuracy_path}/et_data_accuracy_{self.backendFuncs.get_global_rank()}_{self.replayIter}.pt",
+                        f"{self.data_accuracy_localpath}/et_data_accuracy_{self.backendFuncs.get_global_rank()}_{self.replayIter}.pt",
                     )
                 elif self.data_accuracy_checkmode:
                     equivalence_check = torch.all(
@@ -1138,7 +1163,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.et_data_accuracy = {}
         if self.data_accuracy_checkmode:
             self.data_accuracy_hashTable = torch.load(
-                f"{self.data_accuracy_path}/et_data_accuracy_{self.backendFuncs.get_global_rank()}_{self.replayIter}.pt",
+                f"{self.data_accuracy_localpath}/et_data_accuracy_{self.backendFuncs.get_global_rank()}_{self.replayIter}.pt",
                 map_location="cpu",
             )
         for cnt, curComm in enumerate(self.comms_trace[: self.max_msg_cnt]):
@@ -1427,6 +1452,17 @@ class commsTraceReplayBench(paramCommsBench):
 
         self.backendFuncs.barrier_all_ranks()
 
+        if self.data_accuracy_savemode:
+            try:
+                from et_replay.vendor_internal.fb_internal import upload_tensoroutputs
+
+                upload_tensoroutputs(
+                    self.data_accuracy_localpath,
+                    self.data_accuracy_uploadpath,
+                )
+            except ImportError:
+                logger.info("FB internals not present")
+
     def runBench(
         self,
         commsParams: commsParamsHolderBase,
@@ -1654,7 +1690,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.profiler_num_replays = args.profiler_num_replays
         self.disable_parallel_read = args.disable_parallel_read
         self.use_one_trace = args.use_one_trace
-
+        self.data_accuracy_mode = args.data_accuracy_mode
         self.data_accuracy_checkmode = (
             True if args.data_accuracy_mode == "check" else False
         )
@@ -1662,10 +1698,12 @@ class commsTraceReplayBench(paramCommsBench):
             True if args.data_accuracy_mode == "save" else False
         )
         self.data_accuracy_hashTable = {}
-        self.data_accuracy_path = args.data_accuracy_path
+        self.data_accuracy_localpath = args.data_accuracy_localpath
         self.data_accuracy_op_tensor = None
         self.data_accuracy_rtol = args.data_accuracy_rtol
         self.data_accuracy_atol = args.data_accuracy_atol
+        self.data_accuracy_dtype = args.data_accuracy_dtype
+        self.data_accuracy_uploadpath = args.data_accuracy_uploadpath
         if commsParams.bitwidth < 32:
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
 
