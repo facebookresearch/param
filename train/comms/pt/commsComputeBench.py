@@ -678,11 +678,19 @@ class commsComputeBench(commsCollBench):
 
             self.collectiveArgs.data_type = commsParams.data_type
             if commsParams.size_start_profiler == curSize:
+                profiler_active_iters = commsParams.profiler_active_iters
+                if profiler_active_iters is None:
+                    # not specified in arg
+                    profiler_active_iters = (
+                        self.collectiveArgs.graph_launches
+                        if self.collectiveArgs.graph_launches
+                        else self.collectiveArgs.numIters
+                    )
                 self.collectiveArgs.enable_profiler = comms_utils.startProfiler(
                     rank=self.backendFuncs.get_global_rank(),
                     device=self.collectiveArgs.device,
                     numWarmupIters=self.collectiveArgs.numWarmupIters,
-                    numIters=self.collectiveArgs.numIters,
+                    numIters=profiler_active_iters,
                 )
 
             # self.collectiveArgs has all the information on the experiment.

@@ -553,18 +553,21 @@ class commsCollBench(paramCommsBench):
 
     def runPt2Pt(self):
         self.backendFuncs.sync_barrier(self.collectiveArgs)
-        # warm-up
+        # pt2pt benchmark(with warmup)
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
-        self.getPingLatency(self.collectiveArgs.numWarmupIters)
-        self.getPingPongLatency(self.collectiveArgs.numWarmupIters)
-        self.getUniBW(self.collectiveArgs.numWarmupIters, memSize)
-        self.getBiBW(self.collectiveArgs.numWarmupIters, memSize)
         self.backendFuncs.sync_barrier(self.collectiveArgs, "runpt2pt_begin")
-        # pt2pt benchmark
-        pingPerIterNS = self.getPingLatency(self.collectiveArgs.numIters)
-        pingPongPerIterNS = self.getPingPongLatency(self.collectiveArgs.numIters)
-        avgUniBW = self.getUniBW(self.collectiveArgs.numIters, memSize)
-        avgBiBW = self.getBiBW(self.collectiveArgs.numIters, memSize)
+        pingPerIterNS = self.getPingLatency(
+            self.collectiveArgs.numWarmupIters, self.collectiveArgs.numIters
+        )
+        pingPongPerIterNS = self.getPingPongLatency(
+            self.collectiveArgs.numWarmupIters, self.collectiveArgs.numIters
+        )
+        avgUniBW = self.getUniBW(
+            self.collectiveArgs.numWarmupIters, self.collectiveArgs.numIters, memSize
+        )
+        avgBiBW = self.getBiBW(
+            self.collectiveArgs.numWarmupIters, self.collectiveArgs.numIters, memSize
+        )
         self.backendFuncs.sync_barrier(self.collectiveArgs, "runpt2pt")
         results = {
             "pingPerIterNS": pingPerIterNS,
@@ -575,7 +578,7 @@ class commsCollBench(paramCommsBench):
         }
         return results
 
-    def getPingLatency(self, numIters):
+    def getPingLatency(self, numWarmupIters, numIters):
         logger.debug(
             "STATUS: begin ping test with src_ranks=%s, dst_ranks=%s."
             % (self.collectiveArgs.src_ranks, self.collectiveArgs.dst_ranks)
@@ -583,7 +586,9 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.asyncOp = False
         # get one-way latency
         pingLatencyNS = []
-        for _ in range(numIters):
+        for nIter in range(numWarmupIters + numIters):
+            if self.collectiveArgs.enable_profiler:
+                comms_utils.sampleProfiler()
             self.backendFuncs.sync_barrier(self.collectiveArgs)
             start = time.monotonic()
             if self.collectiveArgs.global_rank in self.collectiveArgs.src_ranks:
@@ -603,13 +608,14 @@ class commsCollBench(paramCommsBench):
                     collectiveArgs=self.collectiveArgs,
                 )
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-            pingLatencyNS.append(
-                (time.monotonic() - start) * 1e9
-            )  # keeping time in NS, helps in divising data by nanosecond
+            if nIter >= numWarmupIters:
+                pingLatencyNS.append(
+                    (time.monotonic() - start) * 1e9
+                )  # keeping time in NS, helps in divising data by nanosecond
         logger.debug("STATUS: end ping test.")
         return pingLatencyNS
 
-    def getPingPongLatency(self, numIters):
+    def getPingPongLatency(self, numWarmupIters, numIters):
         logger.debug(
             "STATUS: begin ping-pong with src_ranks=%s, dst_ranks=%s."
             % (self.collectiveArgs.src_ranks, self.collectiveArgs.dst_ranks)
@@ -617,7 +623,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.asyncOp = False
         # get round-trip latency
         pingPongLatencyNS = []
-        for _ in range(numIters):
+        for nIter in range(numWarmupIters + numIters):
             self.backendFuncs.sync_barrier(self.collectiveArgs)
             start = time.monotonic()
             if self.collectiveArgs.global_rank in self.collectiveArgs.src_ranks:
@@ -645,13 +651,14 @@ class commsCollBench(paramCommsBench):
                     collectiveArgs=self.collectiveArgs,
                 )
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-            pingPongLatencyNS.append(
-                (time.monotonic() - start) * 1e9
-            )  # keeping time in NS, helps in divising data by nanosecond
+            if nIter >= numWarmupIters:
+                pingPongLatencyNS.append(
+                    (time.monotonic() - start) * 1e9
+                )  # keeping time in NS, helps in divising data by nanosecond
         logger.debug("STATUS: end ping-pong test.")
         return pingPongLatencyNS
 
-    def getUniBW(self, numIters, memSize):
+    def getUniBW(self, numWarmupIters, numIters, memSize):
         logger.debug(
             "STATUS: begin UniBW test with src_ranks=%s, dst_ranks=%s."
             % (self.collectiveArgs.src_ranks, self.collectiveArgs.dst_ranks)
@@ -659,7 +666,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.asyncOp = True
         # get unidirectional bandwidth
         uniLatencyNS = []
-        for _ in range(numIters):
+        for nIter in range(numWarmupIters + numIters):
             self.backendFuncs.sync_barrier(self.collectiveArgs)
             start = time.monotonic()
             for w in range(self.collectiveArgs.window):
@@ -686,9 +693,10 @@ class commsCollBench(paramCommsBench):
             self.backendFuncs.batch_isend_irecv(self.collectiveArgs)
 
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-            uniLatencyNS.append(
-                (time.monotonic() - start) * 1e9
-            )  # keeping time in NS, helps in divising data by nanosecond
+            if nIter >= numWarmupIters:
+                uniLatencyNS.append(
+                    (time.monotonic() - start) * 1e9
+                )  # keeping time in NS, helps in divising data by nanosecond
         uniLatencyNS = [lat / self.collectiveArgs.window for lat in uniLatencyNS]
         uniLatencyNS = np.mean(np.array(uniLatencyNS))
         _, avgUniBW = comms_utils.getAlgBW(
@@ -697,7 +705,7 @@ class commsCollBench(paramCommsBench):
         logger.debug("STATUS: end UniBW test.")
         return avgUniBW
 
-    def getBiBW(self, numIters, memSize):
+    def getBiBW(self, numWarmupIters, numIters, memSize):
         logger.debug(
             "STATUS: begin BiBW test with src_ranks=%s, dst_ranks=%s."
             % (self.collectiveArgs.src_ranks, self.collectiveArgs.dst_ranks)
@@ -705,7 +713,7 @@ class commsCollBench(paramCommsBench):
         self.collectiveArgs.asyncOp = True
         # get bidirectional bandwidth
         biLatencyNS = []
-        for _ in range(numIters):
+        for nIter in range(numWarmupIters + numIters):
             self.backendFuncs.sync_barrier(self.collectiveArgs)
             start = time.monotonic()
             for w in range(self.collectiveArgs.window):
@@ -743,9 +751,10 @@ class commsCollBench(paramCommsBench):
                     )
             self.backendFuncs.batch_isend_irecv(self.collectiveArgs)
             self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-            biLatencyNS.append(
-                (time.monotonic() - start) * 1e9
-            )  # keeping time in NS, helps in divising data by nanosecond
+            if nIter >= numWarmupIters:
+                biLatencyNS.append(
+                    (time.monotonic() - start) * 1e9
+                )  # keeping time in NS, helps in divising data by nanosecond
         biLatencyNS = [lat / self.collectiveArgs.window for lat in biLatencyNS]
         biLatencyNS = np.mean(np.array(biLatencyNS))
         _, avgBiBW = comms_utils.getAlgBW(
