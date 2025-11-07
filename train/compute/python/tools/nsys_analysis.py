@@ -273,7 +273,7 @@ def parse_sync_events(
 
 def analyze_events(op_events):
     for _name, run_info in op_events.items():
-        for id, op_event in run_info.items():
+        for op_event in run_info.values():
             T1 = op_event.event_data["analysis"]["T1"]  # total time
             T2 = op_event.event_data["analysis"]["T2"]  # op_start to first kernel_start
             T3 = op_event.event_data["analysis"]["T3"]  # total of kernel latencies
@@ -333,7 +333,7 @@ def main():
     else:
         out_file_name = os.path.splitext(args.file)[0] + ".json"
     with open(out_file_name, "w") as out_file:
-        for op, run_info in op_events.items():
+        for run_info in op_events.values():
             for _, op_range_info in run_info.items():
                 print(json.dumps(op_range_info, cls=CustomEncoder), file=out_file)
     logger.info(f"Output written to: {out_file_name}")
