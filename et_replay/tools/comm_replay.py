@@ -965,10 +965,11 @@ class commsTraceReplayBench(paramCommsBench):
                 if collName in ["reduce", "broadcast", "gather", "scatter"]:
                     self.collectiveArgs.srcOrDst = curComm.root
 
-                ipTensor = self.collectiveArgs.ipTensor.clone()
-                if self.data_accuracy_checkmode:
-                    self.collectiveArgs.ipTensor = ipTensor.clone()
-                self.collectiveArgs.opTensor = None
+                if self.data_accuracy_checkmode or self.data_accuracy_savemode:
+                    ipTensor = self.collectiveArgs.ipTensor.clone()
+                    if self.data_accuracy_checkmode:
+                        self.collectiveArgs.ipTensor = ipTensor.clone()
+                    self.collectiveArgs.opTensor = None
 
                 # call the collective function
                 retObj = self.backendFuncs.collectiveFunc[collName](
