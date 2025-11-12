@@ -1489,7 +1489,7 @@ class commsCollBench(paramCommsBench):
                 else PyTorchDistBackend(bootstrap_info, commsParams)
             )
         elif commsParams.nw_stack == "pytorch-torchcomms":
-            from param_bench.train.comms.pt.fb.pytorch_torchcomms_backend import (
+            from param_bench.train.comms.pt.pytorch_torchcomms_backend import (
                 PyTorchTorchcommsBackend,
             )
 
