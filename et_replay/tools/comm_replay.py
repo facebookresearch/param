@@ -748,9 +748,6 @@ class commsTraceReplayBench(paramCommsBench):
                 ipTensor = ipTensor.to(
                     device=self.collectiveArgs.device, dtype=commsParams.dtype
                 )
-                self.data_accuracy_op_tensor = self.data_accuracy_op_tensor.to(
-                    device=self.collectiveArgs.device, dtype=commsParams.dtype
-                )
                 logger.debug(
                     f"[Data accuracy]: Found data accuracy hash table for {commsOpHash}: {ipTensor}: {self.data_accuracy_op_tensor} "
                 )
@@ -966,9 +963,7 @@ class commsTraceReplayBench(paramCommsBench):
                     self.collectiveArgs.srcOrDst = curComm.root
 
                 if self.data_accuracy_checkmode or self.data_accuracy_savemode:
-                    ipTensor = self.collectiveArgs.ipTensor.clone()
-                    if self.data_accuracy_checkmode:
-                        self.collectiveArgs.ipTensor = ipTensor.clone()
+                    ipTensor = self.collectiveArgs.ipTensor.detach().to(device="cpu")
                     self.collectiveArgs.opTensor = None
 
                 # call the collective function
@@ -1000,7 +995,9 @@ class commsTraceReplayBench(paramCommsBench):
                         self.et_data_accuracy,
                         f"{self.data_accuracy_checkmodepath}/et_data_accuracy_{self.backendFuncs.get_global_rank()}_{self.replayIter}.pt",
                     )
-
+                    self.collectiveArgs.opTensor = (
+                        self.collectiveArgs.ipTensor.detach().to(device="cpu")
+                    )
                     equivalence_check = torch.all(
                         torch.isclose(
                             self.collectiveArgs.opTensor,
