@@ -17,7 +17,7 @@ from torchcomms import new_comm, objcol, ReduceOp
 
 logger = logging.getLogger(__name__)
 
-_VALID_BACKENDS = ["nccl", "ncclx"]
+_VALID_BACKENDS = ["nccl", "ncclx", "rcclx"]
 
 
 class PyTorchTorchcommsBackend(backendFunctions):

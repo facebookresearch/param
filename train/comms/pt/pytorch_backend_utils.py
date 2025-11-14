@@ -31,6 +31,7 @@ except ImportError:
 
 supportedDevices = ["cpu", "cuda", "rocm", "tpu"]
 supportedC10dBackends = ["nccl", "gloo", "mpi", "ucc", "xla"]
+supportedTorchcommsBackends = ["rcclx", "ncclx", "rccl"]
 supportedCollectives = [
     "reduce",
     "all_reduce",
