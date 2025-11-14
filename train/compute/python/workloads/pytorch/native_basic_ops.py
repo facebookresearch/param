@@ -1,5 +1,3 @@
-from typing import Dict
-
 import torch
 
 from ...lib.operator import OperatorInterface, register_operators
