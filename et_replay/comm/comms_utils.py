@@ -671,6 +671,7 @@ class commsParamsHolderBase:
         self.output_path = args.output_path
         self.use_perf_logger = args.use_perf_logger
         self.init_only = args.init_only
+        self.init_device = args.init_device
 
 
 class commsParamsHolder(commsParamsHolderBase):
@@ -1327,6 +1328,12 @@ class paramCommsBench(ABC):
             choices=supportedDevices,
             help="data placement",
         )  # device to place data for collective benchmarking
+        parser.add_argument(
+            "--init-device",
+            action="store_true",
+            default=False,
+            help="Toggle to perform device-specific initialization routine if present",
+        )
         parser.add_argument(
             "--backend",
             type=str,
