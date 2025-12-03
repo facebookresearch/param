@@ -826,6 +826,7 @@ class commsParamsHolderBase:
         self.init_only = args.init_only
         self.eager_init = args.eager_init
         self.use_device_time = args.use_device_time
+        self.init_device = args.init_device
 
 
 class commsDlrmParamsHolder(commsParamsHolderBase):
@@ -1870,6 +1871,12 @@ class ParamCommsBenchBase(ABC):
             action="store_true",
             default=False,
             help="Enable recording start-events for all ProcessGroupNCCL collectives, and compute accurate collective timing per-collective, may have significant performance impact",
+        )
+        parser.add_argument(
+            "--init-device",
+            action="store_true",
+            default=False,
+            help="Toggle to perform device-specific initialization routine if present",
         )
         pass
 
