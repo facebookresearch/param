@@ -12,7 +12,7 @@ import torch
 def measure_cpu(a, b, steps):
     global c
     start = time.perf_counter()
-    for i in range(steps):
+    for _ in range(steps):
         c = torch.mm(a, b)
     end = time.perf_counter()
     c.to("cpu")
@@ -23,7 +23,7 @@ def measure_gpu(a, b, steps):
     global c
     torch.cuda.synchronize()
     start = time.perf_counter()
-    for i in range(steps):
+    for _ in range(steps):
         c = torch.mm(a, b)
     torch.cuda.synchronize()
     end = time.perf_counter()
