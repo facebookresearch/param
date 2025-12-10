@@ -721,7 +721,7 @@ class paramStreamGuard(ContextDecorator):
 
     def __init__(
         self,
-        stream: torch.cuda.Stream | None,  # TODO: MAKE Generic Stream
+        stream: torch.Stream | None,
         curDevice: torch.device,
         backendFuncs: backendFunctions,
         is_blocking: bool = True,
