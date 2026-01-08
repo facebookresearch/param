@@ -157,7 +157,6 @@ class commsComputeBench(commsCollBench):
         self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_begin")
 
         elapsedTimeNS = 0.0
-        is_blocking = not self.collectiveArgs.asyncOp
         enable_comms = (
             False if (comm_fn is None or comm_fn == self.backendFuncs.noop) else True
         )
@@ -182,9 +181,6 @@ class commsComputeBench(commsCollBench):
             # reset tensor values for data validation check
             if enable_comms and dcheck:
                 self.setTensorVal(self.collectiveArgs.opTensor)
-            # for blocking mode, do barrier before starting collective
-            if is_blocking:
-                self.backendFuncs.sync_barrier(self.collectiveArgs)
 
             start = time.monotonic()  # available only in py3
             with paramStreamGuard(
@@ -202,6 +198,11 @@ class commsComputeBench(commsCollBench):
                 for _ in range(self.collectiveArgs.numCollPerIter):
                     comm_fn(self.collectiveArgs)
 
+                # If the calls are executed with async_op=True, then there is no guarantee in which stream they're enqueued on.
+                # To ensure our timers work properly, we need to join the work items from async ops here so that the start/exit
+                # events properly measure them
+                self.backendFuncs.complete_accel_ops(self.collectiveArgs, devSync=False)
+
             with paramStreamGuard(
                 stream=self.collectiveArgs.compute_stream,
                 curDevice=self.collectiveArgs.device,
@@ -214,28 +215,22 @@ class commsComputeBench(commsCollBench):
                     # Flush the cache
                     # _ = torch.rand(6 * 1024 * 1024 // 4).float() * 2  # V100 6MB L2 cache
                     compute_fn(self.collectiveArgs)
-            if is_blocking:  # should be sychronous, wait for the collective
-                self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-                # caputure per-op kernel time only for blocking case
-                if self.collectiveArgs.comm_dev_time:
-                    self.collectiveArgs.comm_dev_time.elapsedTime()
-                if self.collectiveArgs.compute_dev_time:
-                    self.collectiveArgs.compute_dev_time.elapsedTime()
+
+            # Sync at end of each iteration
+            self.backendFuncs.sync_barrier(self.collectiveArgs, desc="runColl_sync")
 
             # Measuring time.
             elapsedTimeNS += (
                 time.monotonic() - start
             ) * 1e9  # keeping time in NS, helps in divising data by nanosecond
 
-        start = time.monotonic()  # available only in py3
-        self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-        end = time.monotonic()  # available only in py3
+            # Now that all ops are complete, collect the timer's device timer information
+            if self.collectiveArgs.comm_dev_time:
+                self.collectiveArgs.comm_dev_time.elapsedTime()
+            if self.collectiveArgs.compute_dev_time:
+                self.collectiveArgs.compute_dev_time.elapsedTime()
 
         ensureTensorFlush(self.collectiveArgs.opTensor)
-
-        elapsedTimeNS += (
-            end - start
-        ) * 1e9  # keeping time in NS, helps in divising data by nanoseconds
 
         memSize = self.backendFuncs.get_mem_size(self.collectiveArgs)
 
