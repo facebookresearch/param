@@ -30,8 +30,8 @@ except ImportError:
     supportedCollectivesExt = []
 
 supportedDevices = ["cpu", "cuda", "rocm", "tpu"]
-supportedC10dBackends = ["nccl", "gloo", "mpi", "ucc", "xla"]
-supportedTorchcommsBackends = ["rcclx", "ncclx", "rccl"]
+supportedC10dBackends = ["nccl", "gloo", "mpi", "ucc", "xla", "mccl"]
+supportedTorchcommsBackends = ["rcclx", "ncclx", "rccl", "mccl"]
 supportedCollectives = [
     "reduce",
     "all_reduce",
