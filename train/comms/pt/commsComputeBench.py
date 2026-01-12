@@ -15,7 +15,6 @@ import numpy as np
 # pytorch
 import torch
 from param_bench.train.comms.pt import comms_utils
-
 from param_bench.train.comms.pt.comms import commsCollBench
 from param_bench.train.comms.pt.comms_utils import (
     ensureTensorFlush,

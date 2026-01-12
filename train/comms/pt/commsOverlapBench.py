@@ -15,7 +15,6 @@ import numpy as np
 # pytorch
 import torch
 from param_bench.train.comms.pt import comms_utils
-
 from param_bench.train.comms.pt.comms import commsCollBench
 from param_bench.train.comms.pt.comms_utils import (
     ensureTensorFlush,
@@ -264,7 +263,7 @@ class commsOverlapBench(commsCollBench):
         if self.collectiveArgs.comm_dev_time:
             elapsedTimeNS = self.collectiveArgs.comm_dev_time.elapsedTimeNS
             logger.debug(
-                f"elapsedCPUTimeNS={elapsedCPUTimeNS/self.collectiveArgs.numIters}, elapsedDeviceTimeNS={elapsedTimeNS/self.collectiveArgs.numIters}."
+                f"elapsedCPUTimeNS={elapsedCPUTimeNS / self.collectiveArgs.numIters}, elapsedDeviceTimeNS={elapsedTimeNS / self.collectiveArgs.numIters}."
             )
         else:
             elapsedTimeNS = elapsedCPUTimeNS

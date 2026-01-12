@@ -27,7 +27,6 @@ from enum import Enum
 
 import numpy as np
 import torch
-
 from et_replay.comm import comms_utils, param_profile
 from et_replay.comm.comms_utils import (
     bootstrap_info_holder,

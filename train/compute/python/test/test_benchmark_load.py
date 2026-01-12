@@ -2,7 +2,6 @@ import os
 import unittest
 
 from param_bench.train.compute.python.lib import pytorch as lib_pytorch
-
 from param_bench.train.compute.python.lib.config import BenchmarkConfig
 from param_bench.train.compute.python.lib.init_helper import load_modules
 from param_bench.train.compute.python.lib.pytorch.benchmark import (

@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import argparse
-
 import logging
 import os
 import random
@@ -21,7 +20,6 @@ from typing import Any
 
 import torch
 import torch.distributed._symmetric_memory as symm_mem
-
 from param_bench.train.comms.pt.param_profile import paramTimer
 from param_bench.train.comms.pt.pytorch_backend_utils import (
     backendFunctions,
@@ -1969,7 +1967,6 @@ def init_emb_lookup(collectiveArgs, commsParams, backendFuncs):
     try:
         # fbgemm_gpu can be downloaded from https://github.com/pytorch/FBGEMM/tree/main/fbgemm_gpu
         from fbgemm_gpu.split_embedding_utils import generate_requests
-
         from fbgemm_gpu.split_table_batched_embeddings_ops import (
             ComputeDevice,
             EmbeddingLocation,

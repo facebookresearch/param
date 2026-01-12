@@ -6,7 +6,6 @@ import time
 from typing import Any, Dict, Optional
 
 import torch
-
 from param_bench.train.compute.python.lib import __version__, pytorch as lib_pytorch
 from param_bench.train.compute.python.lib.config import BenchmarkConfig
 from param_bench.train.compute.python.lib.init_helper import load_modules

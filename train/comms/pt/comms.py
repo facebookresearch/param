@@ -517,7 +517,7 @@ class commsCollBench(paramCommsBench):
         if self.collectiveArgs.use_device_time:
             elapsedTimeNS = self.collectiveArgs.comm_dev_time.elapsedTimeNS
             logger.debug(
-                f"elapsedCPUTimeNS={elapsedCPUTimeNS/self.collectiveArgs.numIters}, elapsedDeviceTimeNS={elapsedTimeNS/self.collectiveArgs.numIters}."
+                f"elapsedCPUTimeNS={elapsedCPUTimeNS / self.collectiveArgs.numIters}, elapsedDeviceTimeNS={elapsedTimeNS / self.collectiveArgs.numIters}."
             )
         else:
             elapsedTimeNS = elapsedCPUTimeNS

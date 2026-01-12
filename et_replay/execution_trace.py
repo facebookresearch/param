@@ -782,10 +782,10 @@ class ExecutionTrace:
                 print(f"Missing source node for {prev_id}")
             elif prev_id:
                 print(
-                    f"{' '*16}{tensor_id}: {dtype} {shape} <-- {prev_id} ({self.nodes[prev_id].name})"
+                    f"{' ' * 16}{tensor_id}: {dtype} {shape} <-- {prev_id} ({self.nodes[prev_id].name})"
                 )
             else:
-                print(f"{' '*16}{tensor_id}: {dtype} {shape}")
+                print(f"{' ' * 16}{tensor_id}: {dtype} {shape}")
 
         print("       outputs:")
         for dtype, tensor_id, shape in n.get_output_tensors():
@@ -797,10 +797,10 @@ class ExecutionTrace:
                     next_id = s
             if next_id != sys.maxsize:
                 print(
-                    f"{' '*16}{tensor_id}: {dtype} {shape} --> {next_id} ({self.nodes[next_id].name})"
+                    f"{' ' * 16}{tensor_id}: {dtype} {shape} --> {next_id} ({self.nodes[next_id].name})"
                 )
             else:
-                print(f"{' '*16}{tensor_id}: {dtype} {shape}")
+                print(f"{' ' * 16}{tensor_id}: {dtype} {shape}")
 
     def tensor_depend(self, id: int):
         t = self.tensors[id]

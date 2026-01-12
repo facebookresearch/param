@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import argparse
-
 import logging
 import os
 import random
@@ -55,7 +54,6 @@ from et_replay.comm.backend.base_backend import (
     supportedC10dBackends,
     supportedDevices,
 )
-
 from et_replay.comm.param_profile import paramTimer
 from torch._C._distributed_c10d import ProcessGroup  # @manual
 

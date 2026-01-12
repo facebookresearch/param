@@ -427,28 +427,28 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         encoding="utf-8",
     ) as f:
         f.write(
-            f"avg. E2ETime of iters among all ranks: {sum(iter_e2e_time) / len(iter_e2e_time) / 1e3 :.3f} ms\n"
+            f"avg. E2ETime of iters among all ranks: {sum(iter_e2e_time) / len(iter_e2e_time) / 1e3:.3f} ms\n"
         )
         f.write(
-            f"avg. SharedBW (i.e. sum(busbw_data_size) / GPU_comm_busy_time  per rank) among all ranks: {sum(sbw_lst) / len(sbw_lst) :.3f} GB/s\n"
-        )
-
-        f.write(
-            f'\n{" ":>86s}|{" ":>5s}|{"AVG.":^19s}|{"p01":^8s}|{"p50":^8s}|{"p90":^8s}|{"p99":^8s}|\n'
+            f"avg. SharedBW (i.e. sum(busbw_data_size) / GPU_comm_busy_time  per rank) among all ranks: {sum(sbw_lst) / len(sbw_lst):.3f} GB/s\n"
         )
 
         f.write(
-            f'{"kernel":>50s} {"coll":>15s} {"size":>12s} {"#rks":>6s}|{"#pgs":>5s}|{"  dur":>10s} '
+            f"\n{' ':>86s}|{' ':>5s}|{'AVG.':^19s}|{'p01':^8s}|{'p50':^8s}|{'p90':^8s}|{'p99':^8s}|\n"
+        )
+
+        f.write(
+            f"{'kernel':>50s} {'coll':>15s} {'size':>12s} {'#rks':>6s}|{'#pgs':>5s}|{'  dur':>10s} "
         )
         for _ in range(5):  # average, p01, p50, p90, p99
-            f.write(f'{" busbw":>8s}|')
+            f.write(f"{' busbw':>8s}|")
         f.write("\n")
 
         f.write(
-            f'{"      ":>66s} {" (B)":>12s} {"    ":>6s}|{"    ":>5s}|{" (us)":>10s} '
+            f"{'      ':>66s} {' (B)':>12s} {'    ':>6s}|{'    ':>5s}|{' (us)':>10s} "
         )
         for _ in range(5):  # average, p50, p90, p99
-            f.write(f'{"(GB/s)":>8s}|')
+            f.write(f"{'(GB/s)':>8s}|")
         f.write("\n")
 
         for k, v in comm_bw_summary.items():

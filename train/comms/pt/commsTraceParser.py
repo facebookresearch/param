@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 
 from et_replay.execution_trace import ExecutionTrace
-
 from param_bench.train.comms.pt import comms_utils
 from param_bench.train.comms.pt.comms_utils import commsArgs
 from param_bench.train.comms.pt.pytorch_backend_utils import supportedP2pOps

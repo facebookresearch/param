@@ -166,9 +166,9 @@ class TorchScriptOp(OperatorInterface):
             var_types = [item if "Tensor" not in item else "Tensor" for item in types]
             return var_types
 
-        assert (
-            op_schema
-        ), f"TorchScriptOp {self.func_name} should have at non-empty op schema."
+        assert op_schema, (
+            f"TorchScriptOp {self.func_name} should have at non-empty op schema."
+        )
 
         func_name, func_signature = op_schema.split("(", 1)
         arg_str, output_str = func_signature.split("->", 1)

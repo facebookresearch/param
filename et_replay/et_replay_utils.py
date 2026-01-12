@@ -16,7 +16,6 @@ import os
 import re
 
 import torch
-
 from et_replay.execution_trace import NodeType
 
 

@@ -24,7 +24,6 @@ from contextlib import nullcontext
 
 import numpy as np
 import torch
-
 from et_replay.comm import comms_utils, commsTraceParser, profiler_trace_analysis
 from et_replay.comm.backend.base_backend import supportedC10dBackends, supportedP2pOps
 from et_replay.comm.comms_utils import (
@@ -1234,7 +1233,7 @@ class commsTraceReplayBench(paramCommsBench):
 
             # Running the kernel
             logger.info(
-                f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {curComm.compute}"
+                f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt + 1} / {self.max_msg_cnt}] Replaying {curComm.compute}"
             )
 
             # Run the kernel and report the total time
@@ -1284,7 +1283,7 @@ class commsTraceReplayBench(paramCommsBench):
                     )
 
                 logger.info(
-                    f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt+1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc} id = {curComm.id}"
+                    f"{logLable}[Rank {self.collectiveArgs.global_rank:3}] [{cnt + 1} / {self.max_msg_cnt}] Replaying {commDesc} with {groupDesc} id = {curComm.id}"
                 )
             else:
                 logger.warn(
@@ -1341,7 +1340,7 @@ class commsTraceReplayBench(paramCommsBench):
 
         if self.backendFuncs.get_global_rank() == 0:
             logger.info(
-                f"{logLable}[{cnt+1} / {self.max_msg_cnt}] Replayed {recordName} with id={curComm.id} in block [{curBlockStack}]... {global_latency:.2f} us"
+                f"{logLable}[{cnt + 1} / {self.max_msg_cnt}] Replayed {recordName} with id={curComm.id} in block [{curBlockStack}]... {global_latency:.2f} us"
             )
 
     def benchTime(self, commsParams: commsParamsHolderBase) -> None:

@@ -14,15 +14,12 @@
 from __future__ import annotations
 
 import json
-
 import logging
-
 import math
 
 from et_replay.comm import comms_utils
 from et_replay.comm.backend.base_backend import supportedP2pOps
 from et_replay.comm.comms_utils import commsArgs
-
 from et_replay.execution_trace import ExecutionTrace
 
 logger = logging.getLogger(__name__)

@@ -208,18 +208,20 @@ def parse_kernel_events(
         logger.debug(
             f"op_name: {op_name}, range_id: {range_id}, stage: {stage}, id: {id}, pass: {pass_name}"
         )
-        logger.debug(f"  start: {event[2]}, end: {event[3]}, dur: {event[3]-event[2]}")
+        logger.debug(
+            f"  start: {event[2]}, end: {event[3]}, dur: {event[3] - event[2]}"
+        )
         correlation_id = event[4]
         logger.debug(f"    correlation_id: {correlation_id}")
         kernel_name = event[5]
         logger.debug(f"    kernel: {kernel_name}")
         logger.debug(
-            f"      start: {event[6]}, end: {event[7]}, dur: {event[7]-event[6]}"
+            f"      start: {event[6]}, end: {event[7]}, dur: {event[7] - event[6]}"
         )
         runtime_name = event[8]
         logger.debug(f"    runtime: {runtime_name}")
         logger.debug(
-            f"      start: {event[9]}, end: {event[10]}, dur: {event[10]-event[9]}"
+            f"      start: {event[9]}, end: {event[10]}, dur: {event[10] - event[9]}"
         )
 
         op_event = create_op_event_range(

@@ -11,7 +11,6 @@ import functools
 import heapq
 
 import torch
-
 from triton import cdiv
 from triton.runtime import driver
 from triton.testing import (
@@ -146,7 +145,7 @@ def estimate_matmul_time(
         print(
             f"Total time: {total_time_ms}ms, compute time: {compute_ms}ms, "
             f"loading time: {load_ms}ms, store time: {store_ms}ms, "
-            f"Activate CTAs: {active_cta_ratio*100}%"
+            f"Activate CTAs: {active_cta_ratio * 100}%"
         )
     return total_time_ms
 
