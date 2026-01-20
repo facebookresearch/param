@@ -23,6 +23,10 @@ from typing import Any
 from et_replay.execution_trace import ExecutionTrace
 
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
 def get_tmp_trace_filename() -> str:
     """Generate a temporary filename using the current date, a UUID, and the process ID."""
     trace_fn = (
@@ -41,7 +45,7 @@ def trace_handler(prof: Any) -> None:
     """Export a chrome trace"""
     fn = get_tmp_trace_filename()
     prof.export_chrome_trace("/tmp/" + fn)
-    logging.warning(f"Chrome profile trace written to /tmp/{fn}")
+    logger.warning("Chrome profile trace written to /tmp/%s", fn)
 
 
 def load_execution_trace_file(et_file_path: str) -> ExecutionTrace:
@@ -52,10 +56,12 @@ def load_execution_trace_file(et_file_path: str) -> ExecutionTrace:
 
 def read_dictionary_from_json_file(file_path: str) -> dict[Any, Any]:
     """Read a json file and return it as a dictionary."""
-    with (
-        gzip.open(file_path, "rb") if file_path.endswith("gz") else open(file_path)
+    # fmt: off
+    with gzip.open(file_path, "rb") if file_path.endswith("gz") else open(
+        file_path
     ) as f:
         return json.load(f)
+    # fmt: on
 
 
 def write_dictionary_to_json_file(file_path: str, data: dict[Any, Any]) -> None:

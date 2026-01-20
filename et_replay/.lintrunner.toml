@@ -1,0 +1,534 @@
+[[linter]]
+code = 'FLAKE8'
+include_patterns = ['**/*.py']
+exclude_patterns = []
+command = [
+    'python3',
+    'lint-tools/linter/adapters/flake8_linter.py',
+    '--',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python3',
+    'lint-tools/linter/adapters/pip_init.py',
+    '--dry-run={{DRYRUN}}',
+    'flake8==7.3.0',
+    'flake8-bugbear==24.12.12',
+    'flake8-comprehensions==3.16.0',
+    'flake8-executable==2.1.3',
+    'flake8-logging-format==2024.24.12',
+    'flake8-pyi==25.5.0',
+    'flake8-simplify==0.22.0',
+    'mccabe==0.7.0',
+    'pycodestyle==2.14.0',
+    'pyflakes==3.4.0',
+    'torchfix==0.4.0 ; python_version >= "3.9" and python_version < "3.13"',
+]
+
+
+[[linter]]
+code = 'MYPY'
+include_patterns = [
+]
+exclude_patterns = [
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/mypy_linter.py',
+    '--config=mypy.ini',
+    '--',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python3',
+    'lint-tools/linter/adapters/pip_init.py',
+    '--dry-run={{DRYRUN}}',
+    'numpy==1.26.4 ; python_version >= "3.9" and python_version <= "3.11"',
+    'numpy==2.1.0 ; python_version >= "3.12"',
+    'expecttest==0.3.0',
+    'mypy==1.16.0',
+    'sympy==1.13.3',
+    'types-requests==2.27.25',
+    'types-pyyaml==6.0.2',
+    'types-tabulate==0.8.8',
+    'types-protobuf==5.29.1.20250403',
+    'types-setuptools==79.0.0.20250422',
+    'types-jinja2==2.11.9',
+    'types-colorama==0.4.6',
+    'filelock==3.18.0',
+    'junitparser==2.1.1',
+    'rich==14.1.0',
+    'pyyaml==6.0.2',
+    'optree==0.13.0',
+    'dataclasses-json==0.6.7',
+    'pandas==2.2.3',
+]
+
+
+[[linter]]
+code = 'MYPYSTRICT'
+include_patterns = [
+]
+exclude_patterns = [
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/mypy_linter.py',
+    '--config=mypy-strict.ini',
+    '--code=MYPYSTRICT',
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+
+[[linter]]
+code = 'TYPEIGNORE'
+include_patterns = ['**/*.py', '**/*.pyi']
+exclude_patterns = [
+    'vendor_internal/**',
+    '**/vendor_internal/**',
+    'test/test_jit.py',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/grep_linter.py',
+    '--pattern=# type:\s*ignore([^\[]|$)',
+    '--linter-name=TYPEIGNORE',
+    '--error-name=unqualified type: ignore',
+    """--error-description=\
+        This line has an unqualified `type: ignore`; \
+        please convert it to `type: ignore[xxxx]`\
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+[[linter]]
+code = 'TYPENOSKIP'
+include_patterns = ['mypy.ini']
+command = [
+    'python3',
+    'lint-tools/linter/adapters/grep_linter.py',
+    '--pattern=follow_imports\s*=\s*skip',
+    '--linter-name=TYPENOSKIP',
+    '--error-name=use of follow_imports = skip',
+    """--error-description=\
+        follow_imports = skip is forbidden from mypy.ini configuration as it \
+        is extremely easy to accidentally turn off type checking unintentionally.  If \
+        you need to suppress type errors, use a top level # mypy: ignore-errors.  \
+        Do not rely on automatic Any substitution; instead, manually # type: ignore \
+        at use sites or define a pyi type stub with more relaxed types. \
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+[[linter]]
+code = 'NOQA'
+include_patterns = ['**/*.py', '**/*.pyi']
+exclude_patterns = [
+    'vendor_internal/**',
+    '**/vendor_internal/**'
+    ]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/grep_linter.py',
+    '--pattern=# noqa([^:]|$)',
+    '--linter-name=NOQA',
+    '--error-name=unqualified noqa',
+    """--error-description=\
+        This line has an unqualified `noqa`; \
+        please convert it to `noqa: XXXX`\
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+[[linter]]
+code = 'NEWLINE'
+include_patterns=['**']
+exclude_patterns=[
+    '.lintbin/**',
+    '**/contrib/**',
+    'third_party/**',
+    '**/*.bat',
+    '**/*.expect',
+    '**/*.ipynb',
+    '**/*.ps1',
+    '**/*.ptl',
+    'vendor_internal/**',
+    '**/vendor_internal/**',
+    '**/*.png',
+    '**/*.gz',
+    '**/*.patch',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/newlines_linter.py',
+    '--',
+    '@{{PATHSFILE}}',
+]
+is_formatter = true
+
+[[linter]]
+code = 'SPACES'
+include_patterns = ['**']
+exclude_patterns = [
+    '**/contrib/**',
+    '**/*.diff',
+    '**/*.patch',
+    'third_party/**',
+    'vendor_internal/**',
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/grep_linter.py',
+    '--pattern=[[:blank:]]$',
+    '--linter-name=SPACES',
+    '--error-name=trailing spaces',
+    '--replace-pattern=s/[[:blank:]]+$//',
+    """--error-description=\
+        This line has trailing spaces; please remove them.\
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+[[linter]]
+code = 'TABS'
+include_patterns = ['**']
+exclude_patterns = [
+    '**/contrib/**',
+    'third_party/**',
+    '**/.gitattributes',
+    '**/.gitmodules',
+    'vendor_internal/**',
+    '**/vendor_internal/**',
+    '.lintrunner.toml',
+    '**/*.patch',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/grep_linter.py',
+    # @lint-ignore TXT2
+    '--pattern=	',
+    '--linter-name=TABS',
+    '--error-name=saw some tabs',
+    '--replace-pattern=s/\t/    /',
+    """--error-description=\
+        This line has tabs; please replace them with spaces.\
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+
+[[linter]]
+code = 'PYPIDEP'
+include_patterns = ['.github/**']
+exclude_patterns = [
+    '**/*.rst',
+    '**/*.py',
+    '**/*.md',
+    '**/*.diff',
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/grep_linter.py',
+    """--pattern=\
+    (pip|pip3|python -m pip|python3 -m pip|python3 -mpip|python -mpip) \
+    install ([a-zA-Z0-9][A-Za-z0-9\\._\\-]+)([^/=<>~!]+)[A-Za-z0-9\\._\\-\\*\\+\\!]*$\
+    """,
+    '--linter-name=PYPIDEP',
+    '--error-name=unpinned PyPI install',
+    """--error-description=\
+        This line has unpinned PyPi installs; \
+        please pin them to a specific version: e.g. 'thepackage==1.2'\
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+
+[[linter]]
+code = 'EXEC'
+include_patterns = ['**']
+exclude_patterns = [
+    '.lintbin/**',
+    'third_party/**',
+    'torch/bin/**',
+    '**/*.so',
+    '**/*.py',
+    '**/*.sh',
+    '**/*.bash',
+    '**/git-pre-commit',
+    '**/git-clang-format',
+    '**/gradlew',
+    'vendor_internal/**',
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/exec_linter.py',
+    '--',
+    '@{{PATHSFILE}}',
+]
+
+
+[[linter]]
+code = 'ROOT_LOGGING'
+include_patterns = [
+    '**/*.py',
+]
+# These are not library code, but scripts in their own right, and so
+# therefore are permitted to use logging
+exclude_patterns = [
+    'lint-tools/**',
+    'test/**',
+    'vendor_internal/**',
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/grep_linter.py',
+    '--pattern=logging\.(debug|info|warn|warning|error|critical|log|exception)\(',
+    '--replace-pattern=s/logging\.(debug|info|warn|warning|error|critical|log|exception)\(/log.\1(/',
+    '--linter-name=ROOT_LOGGING',
+    '--error-name=use of root logger',
+    """--error-description=\
+        Do not use root logger (logging.info, etc) directly; instead \
+        define 'log = logging.getLogger(__name__)' and call, e.g., log.info().
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+[[linter]]
+code = 'SHELLCHECK'
+include_patterns = [
+]
+exclude_patterns = [
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/shellcheck_linter.py',
+    '--',
+    '@{{PATHSFILE}}',
+]
+init_command = [
+    'python3',
+    'lint-tools/linter/adapters/pip_init.py',
+    '--dry-run={{DRYRUN}}',
+    'shellcheck-py==0.7.2.1',
+]
+
+[[linter]]
+code = 'ACTIONLINT'
+include_patterns = [
+    '.github/workflows/*.yml',
+    '.github/workflows/*.yaml',
+    # actionlint does not support composite actions yet
+    # '.github/actions/**/*.yml',
+    # '.github/actions/**/*.yaml',
+]
+exclude_patterns = [
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/actionlint_linter.py',
+    '--binary=.lintbin/actionlint',
+    '--',
+    '@{{PATHSFILE}}',
+]
+init_command = [
+    'python3',
+    'lint-tools/linter/adapters/s3_init.py',
+    '--config-json=lint-tools/linter/adapters/s3_init_config.json',
+    '--linter=actionlint',
+    '--dry-run={{DRYRUN}}',
+    '--output-dir=.lintbin',
+    '--output-name=actionlint',
+]
+
+
+[[linter]]
+code = 'WORKFLOWSYNC'
+include_patterns = [
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/workflow_consistency_linter.py',
+    '--',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python3',
+    'lint-tools/linter/adapters/pip_init.py',
+    '--dry-run={{DRYRUN}}',
+    'pyyaml==6.0.2',
+]
+
+[[linter]]
+code = 'NO_WORKFLOWS_ON_FORK'
+include_patterns = [
+    '.github/**/*.yml',
+    '.github/**/*.yaml',
+]
+exclude_patterns = [
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/no_workflows_on_fork.py',
+    '--',
+    '@{{PATHSFILE}}',
+]
+init_command = [
+    'python3',
+    'lint-tools/linter/adapters/pip_init.py',
+    '--dry-run={{DRYRUN}}',
+    'pyyaml==6.0.2',
+]
+
+[[linter]]
+code = 'CODESPELL'
+command = [
+    'python3',
+    'lint-tools/linter/adapters/codespell_linter.py',
+    '--',
+    '@{{PATHSFILE}}'
+]
+include_patterns = [
+    'et_replay/**/*.py',
+]
+exclude_patterns = [
+]
+init_command = [
+    'python3',
+    'lint-tools/linter/adapters/pip_init.py',
+    '--dry-run={{DRYRUN}}',
+    'codespell[toml]==2.4.1',
+]
+is_formatter = true
+
+# usort + ruff-format
+[[linter]]
+code = 'PYFMT'
+include_patterns = [
+    '**/*.py',
+    '**/*.pyi',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/pyfmt_linter.py',
+    '--',
+    '@{{PATHSFILE}}'
+]
+exclude_patterns = [
+    'lint-tools/**/*.py',
+    'mypy_plugins/**/*.py',
+    '**/vendor_internal/**',
+]
+init_command = [
+    'python3',
+    'lint-tools/linter/adapters/pip_init.py',
+    '--dry-run={{DRYRUN}}',
+    '--no-black-binary',
+    'black==23.12.1',
+    'usort==1.0.8.post1',
+    'isort==6.0.1',
+    'ruff==0.12.2',  # sync with RUFF
+]
+is_formatter = true
+
+[[linter]]
+code = 'PYPROJECT'
+command = [
+    'python3',
+    'lint-tools/linter/adapters/pyproject_linter.py',
+    '--',
+    '@{{PATHSFILE}}'
+]
+include_patterns = [
+    "**/pyproject.toml",
+]
+init_command = [
+    'python3',
+    'lint-tools/linter/adapters/pip_init.py',
+    '--dry-run={{DRYRUN}}',
+    'packaging==25.0',
+    'tomli==2.2.1 ; python_version < "3.11"',
+]
+
+
+[[linter]]
+code = 'COPYRIGHT'
+include_patterns = ['**']
+exclude_patterns = [
+    '.lintrunner.toml',
+    'vendor_internal/**',
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/grep_linter.py',
+    '--pattern=Confidential and proprietary',
+    '--linter-name=COPYRIGHT',
+    '--error-name=Confidential Code',
+    """--error-description=\
+        Proprietary and confidential source code\
+        should not be contributed to PyTorch codebase\
+    """,
+    '--',
+    '@{{PATHSFILE}}'
+]
+
+
+[[linter]]
+code = 'LINTRUNNER_VERSION'
+include_patterns = ['**']
+exclude_patterns = [
+    'vendor_internal/**',
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/lintrunner_version_linter.py'
+]
+
+[[linter]]
+code = 'RUFF'
+include_patterns = [
+    '**/*.py',
+    '**/*.pyi',
+    '**/*.ipynb',
+    'pyproject.toml',
+]
+exclude_patterns = [
+    'lint-tools/**',
+    'scripts/**',
+    'third_party/**',
+    'vendor_internal/**',
+    '**/vendor_internal/**',
+]
+command = [
+    'python3',
+    'lint-tools/linter/adapters/ruff_linter.py',
+    '--config=pyproject.toml',
+    '--show-disable',
+    '--',
+    '@{{PATHSFILE}}'
+]
+init_command = [
+    'python3',
+    'lint-tools/linter/adapters/pip_init.py',
+    '--dry-run={{DRYRUN}}',
+    'ruff==0.12.2',  # sync with PYFMT
+]
+is_formatter = true

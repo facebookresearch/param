@@ -33,16 +33,8 @@ class PyTorchTPUBackend(BaseBackend):
         world_size = self.get_world_size()
         master_ip = self.bootstrap_info.master_ip
         print(
-            "\tRunning on host: %s g-rank: %d, l-rank: %s world_size: %d master_ip: %s device: %s (%s)"
-            % (
-                myhost,
-                global_rank,
-                local_rank,
-                world_size,
-                master_ip,
-                device,
-                hw_device,
-            )
+            f"\tRunning on host: {myhost} g-rank: {global_rank}, l-rank: {local_rank} "
+            f"world_size: {world_size} master_ip: {master_ip} device: {device} ({hw_device})"
         )
 
     # Collectives

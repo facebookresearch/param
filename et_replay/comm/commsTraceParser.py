@@ -22,6 +22,7 @@ from et_replay.comm.backend.base_backend import supportedP2pOps
 from et_replay.comm.comms_utils import commsArgs
 from et_replay.execution_trace import ExecutionTrace
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -101,7 +102,9 @@ def _parse_proc_group_info(in_trace: ExecutionTrace):
             if not pg["pg_name"].isdecimal():
                 # TODO support local synchronization pg
                 logger.warning(
-                    f"Process group name is {pg['pg_name']} in node {node.id}, which is not supported. Skip."
+                    "Process group name is %s in node %s, which is not supported. Skip.",
+                    pg["pg_name"],
+                    node.id,
                 )
                 continue
             (pg_id, pg_desc, ranks, group_size, group_count) = (
@@ -135,22 +138,29 @@ def _parse_comms_op_node(  # noqa: C901
             comms_op_list.append(comm_args)
 
     pg_ranks_map_flatten = {}
-    for _, v in pg_ranks_map.items():
+    for v in pg_ranks_map.values():
         pg_ranks_map_flatten.update(v)
 
     comm_nodes = (
         node for node in in_trace.nodes.values() if node.name == "record_param_comms"
     )
-    is_seq_id = (
-        lambda x: isinstance(x, list)
-        and len(x) == 2
-        and isinstance(x[0], int)
-        and isinstance(x[1], bool)
-    )
+
+    def is_seq_id(x):
+        return (
+            isinstance(x, list)
+            and len(x) == 2
+            and isinstance(x[0], int)
+            and isinstance(x[1], bool)
+        )
+
     for node in comm_nodes:
-        # for ["wait", "barrier", "init"] ops, before having different seq_id for p2p op and non p2p op, seq_id is an integer for the first input
-        # After having different seq_id for p2p op and non p2p op, seq_id is a list of [seq_id, isP2P] for the first input
-        # Need to handle both cases, in the future this kind of change should have different version of schema, and we can use version to decide how to parse the trace
+        # For ["wait", "barrier", "init"] ops, before having different seq_id for p2p op
+        # and non p2p op, seq_id is an integer for the first input.
+        # After having different seq_id for p2p op and non p2p op, seq_id is a list of
+        # [seq_id, isP2P] for the first input.
+        # Need to handle both cases. In the future, this kind of change should have
+        # different versions of schema, and we can use version to decide how to parse
+        # the trace.
         if is_seq_id(node.inputs[0]) or isinstance(node.inputs[0], int):
             index_base = 0
         else:

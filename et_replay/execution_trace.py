@@ -22,17 +22,26 @@ import gzip
 import json
 import logging
 import sys
-from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, TextIO
+from typing import Any, TextIO, TYPE_CHECKING
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 import pydot
 
 
-FORMAT = "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
-logging.basicConfig(format=FORMAT)
-logging.getLogger().setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+formatter = logging.Formatter(
+    "%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
 
 PROFILER_STEP_ANNOTATION: str = "ProfilerStep"
 EXECUTION_TRACE_PROCESS_ANNOTATION = "[pytorch|profiler|execution_trace|process]"
@@ -373,7 +382,7 @@ class ExecutionTrace:
             input_tensors = self.nodes[id].get_input_tensors()
             output_tensors = self.nodes[id].get_output_tensors()
 
-            # track annonation to get thread ids of root nodes
+            # track annotation to get thread ids of root nodes
             if x["name"] == "[pytorch|profiler|execution_trace|thread]":
                 tid = self.nodes[id].tid
                 self.proc_group[pid][tid] = id
@@ -591,14 +600,14 @@ class ExecutionTrace:
         return self.nodes
 
     def set_iterations(self, step_annotation=PROFILER_STEP_ANNOTATION) -> None:
-        """Sets an array demarcating interations in the trace"""
+        """Sets an array demarcating integrations in the trace"""
         self.iteration_ids = [1]
 
         for id in sorted(self.nodes.keys()):
             if step_annotation in self.nodes[id].name:
                 self.iteration_ids.append(id)
         self.iteration_ids = sorted(self.iteration_ids)
-        logging.info(f"Iteration node ids list = {self.iteration_ids}")
+        logger.info("Iteration node ids list = %s", self.iteration_ids)
 
     def iterations(self) -> int | None:
         if len(self.iteration_ids) == 0:
@@ -649,7 +658,7 @@ class ExecutionTrace:
                     ops[n.name]["inputs"] = [
                         convert_inputs(n.inputs, n.input_types, n.input_shapes)
                     ]
-        # Remove dupliates
+        # Remove duplicates
         for attr in ops.values():
             # use json to serialize list of dict to string for set
             unique = {json.dumps(x, sort_keys=True) for x in attr["inputs"]}
@@ -701,8 +710,8 @@ class ExecutionTrace:
                 dot.add_edge(pydot.Edge(id, output))
                 edges += 1
         dot.write_svg(file_name, prog="dot")
-        logging.info(f"nodes: {nodes}")
-        logging.info(f"edges: {edges}")
+        logger.info("nodes: %s", nodes)
+        logger.info("edges: %s", edges)
 
     def gen_graphml(self, file_name):
         graphml = GraphML(self)
@@ -840,8 +849,11 @@ class ExecutionTrace:
         assert n < len(self.iteration_ids), "Iteration too high"
 
         start_id, end_id = self.iteration_ids[n], self.iteration_ids[n + 1]
-        logging.info(
-            f"Copying nodes for iter {n} for ids in the range [{start_id}, {end_id})"
+        logger.info(
+            "Copying nodes for iter %d for ids in the range [%d, %d]",
+            n,
+            start_id,
+            end_id,
         )
 
         clone = copy.deepcopy(self)
@@ -852,7 +864,7 @@ class ExecutionTrace:
         )
         clone.nodes = dict(trimmed_nodes)
         node_id_set = clone.nodes.keys()
-        logging.debug(f"filtered node ID set = {node_id_set}")
+        logger.debug("filtered node ID set = %s", node_id_set)
 
         # There may be incomplete user annotations that are parents to events
         # in the execution trace. If so just fix up the parent to the corresponding thread parent
@@ -870,8 +882,10 @@ class ExecutionTrace:
                 and node.parent_id != 1
                 and (node.parent_id not in node_id_set)
             ):
-                logging.info(
-                    f"Fixing parent for node id = {node.id}, parent = {node.parent_id}"
+                logger.info(
+                    "Fixing parent for node id = %d, parent = %d",
+                    node.id,
+                    node.parent_id,
                 )
 
                 thread_parent = thread_nodes[node.tid]
@@ -888,7 +902,7 @@ class ExecutionTrace:
         clone.clean_nodes = {}
         clone.remove_dataloader_ops()
 
-        logging.info(f"Nodes trimmed ET = {len(clone.get_nodes())}")
+        logger.info("Nodes trimmed ET = %d", len(clone.get_nodes()))
         return clone
 
 
@@ -908,8 +922,8 @@ class GraphML:
             for _, output, _ in n.get_output_tensors():
                 self._create_edge(id, output)
 
-        logging.info(f"nodes: {len(self.nodes)}")
-        logging.info(f"edges: {len(self.edges)}")
+        logger.info("nodes: %d", len(self.nodes))
+        logger.info("edges: %d", len(self.edges))
 
     def _create_node(
         self,
@@ -1105,10 +1119,9 @@ def main():
 
     execution_json: str = args.input
 
-    with (
-        gzip.open(execution_json, "rb")
-        if execution_json.endswith("gz")
-        else open(execution_json)
+    # fmt: off
+    with gzip.open(execution_json, "rb") if execution_json.endswith("gz") else open(
+        execution_json
     ) as execution_data:
         execution_data: TextIO
         execution_trace: ExecutionTrace = ExecutionTrace(json.load(execution_data))
@@ -1127,7 +1140,7 @@ def main():
             elif args.node in execution_trace.tensors:
                 execution_trace.tensor_depend(args.node)
             else:
-                logging.error(f"node {args.node} not found.")
+                logger.error("node %s not found.", args.node)
 
         if args.graph or args.graphviz or args.graphml:
             out_file: str = "execution_trace"
@@ -1137,6 +1150,7 @@ def main():
                 execution_trace.gen_graph(out_file, "graphml")
             else:
                 execution_trace.gen_graph(out_file)
+    # fmt: on
 
 
 if __name__ == "__main__":

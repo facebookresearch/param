@@ -25,6 +25,7 @@ import torch.nn as nn
 from et_replay.comm.backend.base_backend import BaseBackend, collectiveArgsHolder
 from et_replay.comm.param_profile import paramProfile
 
+
 try:
     from param_bench.et_replay.comm.vendor_internal.fb_internals import (
         all_to_all_internal,
@@ -91,7 +92,10 @@ class PyTorchDistBackend(BaseBackend):
         master_ip = self.bootstrap_info.master_ip
         device = self.get_device()
 
-        hello_msg = f"[Rank {global_rank:3}] host {myhost}, device: {device}, local_rank: {local_rank} world_size: {world_size}, master_ip: {master_ip}"
+        hello_msg = (
+            f"[Rank {global_rank:3}] host {myhost}, device: {device}, "
+            f"local_rank: {local_rank} world_size: {world_size}, master_ip: {master_ip}"
+        )
 
         self.store_set(f"hello_msg_{global_rank}", hello_msg)
         if global_rank == 0:
@@ -232,7 +236,7 @@ class PyTorchDistBackend(BaseBackend):
                 r.wait()
         else:
             if collectiveArgs.num_emb_tables_batched > 0:
-                logger.warn(
+                logger.warning(
                     "Not using batched embedding tables because extend distributed package not in use"
                 )
 
@@ -283,7 +287,9 @@ class PyTorchDistBackend(BaseBackend):
             # Have to make them the same dtype before calling all_to_allv
             # Otherwise, it will raise an error
             if collectiveArgs.opTensor.dtype != collectiveArgs.ipTensor.dtype:
-                logger.warn("all_to_allv: opTensor and ipTensor are not the same dtype")
+                logger.warning(
+                    "all_to_allv: opTensor and ipTensor are not the same dtype"
+                )
                 collectiveArgs.opTensor = collectiveArgs.opTensor.to(
                     collectiveArgs.ipTensor.dtype
                 )
@@ -819,7 +825,7 @@ class PyTorchDistBackend(BaseBackend):
                 ordinal = 0
             my_dev = torch.device(f"cuda:{ordinal}")
         elif dev_str != "cpu":
-            # sanity check, such error should be catched when parsing arguments
+            # sanity check, such error should be caught when parsing arguments
             raise ValueError(f"{dev_str} is not a valid device option")
 
         return my_dev
@@ -847,13 +853,13 @@ class PyTorchDistBackend(BaseBackend):
         if dev_str.startswith("cuda"):
             if local_rank > torch.cuda.device_count():
                 raise ValueError(
-                    "Insufficient #GPUs: "
-                    f"available {torch.cuda.device_count()} "
-                    f"requested {local_rank}"
+                    f"Insufficient #GPUs: available {torch.cuda.device_count()} requested {local_rank}"
                 )
             torch.cuda.set_device(local_rank)
 
-        logger.info(f"rank {global_rank} set torch device to {dev_str}:{local_rank}")
+        logger.info(
+            "rank %s set torch device to %s:%s", global_rank, dev_str, local_rank
+        )
 
     def get_new_stream(self):
         """get/allocate a new stream"""
@@ -967,7 +973,7 @@ class PyTorchDistBackend(BaseBackend):
             self.use_ext_dist = False
 
         if self.tcp_store is None:
-            # TCP store initializaiton for generic CPU data
+            # TCP store initialization for generic CPU data
             self.tcp_store = dist.TCPStore(
                 master_ip,
                 int(master_port),
@@ -1052,7 +1058,9 @@ class PyTorchDistBackend(BaseBackend):
                     pg_desc=self.commsParams.pgsDesc.get(pg_id, ""),
                 )
                 logger.debug(
-                    f"initialized_group: create new group, pg_ids = {pg_ids}, idxed_group_ranks = {idxed_group_ranks}"
+                    "initialized_group: create new group, pg_ids = %s, idxed_group_ranks = %s",
+                    pg_ids,
+                    idxed_group_ranks,
                 )
             if pg_id != -1:
                 groups[pg_id] = pg
@@ -1072,4 +1080,3 @@ class PyTorchDistBackend(BaseBackend):
     def __del__(self):
         if dist.is_initialized():
             dist.destroy_process_group()
-        pass

@@ -118,18 +118,17 @@ def main():
 
     execution_json = sys.argv[1]
 
-    with (
-        gzip.open(execution_json, "rb")
-        if execution_json.endswith("gz")
-        else open(execution_json)
+    # fmt: off
+    with gzip.open(execution_json, "rb") if execution_json.endswith("gz") else open(
+        execution_json
     ) as execution_data:
         execution_trace: ExecutionTrace = ExecutionTrace(json.load(execution_data))
         t = TraceValidator(execution_trace)
         print(
-            f"num ops = {t.num_ops()}, num comms = {t.num_comm_ops()}, "
-            f"num triton ops = {t.num_triton_ops()}"
+            f"num ops = {t.num_ops()}, num comms = {t.num_comm_ops()}, num triton ops = {t.num_triton_ops()}"
         )
         print("Trace validation result = ", t.validate())
+    # fmt: on
 
 
 if __name__ == "__main__":

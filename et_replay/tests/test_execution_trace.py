@@ -20,6 +20,7 @@ import unittest
 from et_replay.execution_trace import ExecutionTrace
 from et_replay.tools.validate_trace import TraceValidator
 
+
 CURR_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
@@ -28,15 +29,15 @@ class TestTraceLoadAndValidate(unittest.TestCase):
         self.trace_base = os.path.join(CURR_DIR, "inputs")
 
     def _test_and_validate_trace(self, trace_file):
-        with (
-            gzip.open(trace_file, "rb")
-            if trace_file.endswith("gz")
-            else open(trace_file)
+        # fmt: off
+        with gzip.open(trace_file, "rb") if trace_file.endswith("gz") else open(
+            trace_file
         ) as execution_data:
             execution_trace: ExecutionTrace = ExecutionTrace(json.load(execution_data))
             t = TraceValidator(execution_trace)
             self.assertTrue(t.validate())
             return t, execution_trace
+        # fmt: on
 
     def test_trace_load_resnet_1gpu_ptorch_1_0_3(self):
         et_file = os.path.join(

@@ -1,4 +1,5 @@
-torch
 future
+intervaltree
 numpy
 pydot
+torch
