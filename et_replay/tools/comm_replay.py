@@ -122,9 +122,9 @@ class commsTraceReplayBench(paramCommsBench):
     def __init__(self):
         super().__init__(supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu"])
         self.comms_trace = {}
-        self.trace_file = ""
+        self.trace_files = []  # List of paths
+        self.trace_file = ""  # Selected path in list
         self.trace_type = ""
-        self.use_remote_trace = False
         self.use_one_trace = False
         self.disable_parallel_read = False
         self.is_dry_run = False
@@ -384,16 +384,6 @@ class commsTraceReplayBench(paramCommsBench):
             None
         """
         super().checkArgs(args)
-
-        if (
-            not self.use_remote_trace
-            and not os.path.isfile(self.trace_file)
-            and not os.path.isdir(self.trace_file)
-        ):
-            raise ValueError(
-                f"The specified trace path '{self.trace_file}' is neither a "
-                "file nor a directory. Please provide a valid path."
-            )
 
         if args.disable_parallel_read and not args.use_one_trace:
             raise ValueError(
@@ -1586,12 +1576,6 @@ class commsTraceReplayBench(paramCommsBench):
         """
 
         global_rank = self.backendFuncs.get_global_rank()
-        logger.info(
-            "[Rank-%s] reading %s trace from %s",
-            global_rank,
-            self.trace_type,
-            self.trace_file,
-        )
         self.report = (
             True
             if global_rank == 0
@@ -1601,7 +1585,7 @@ class commsTraceReplayBench(paramCommsBench):
             )
             else False
         )
-        self.readTrace(remotePath=self.trace_file, rank=global_rank)
+        self.findAndReadTrace(paths=self.trace_files, rank=global_rank)
 
         self.initTraceStat()
         # only setup and perform collectives if not dry run mode
@@ -1654,8 +1638,7 @@ class commsTraceReplayBench(paramCommsBench):
             None
         """
         global_rank = self.backendFuncs.get_global_rank()
-        logger.info("[Rank-%s] reading trace from %s", global_rank, self.trace_file)
-        self.readTrace(remotePath=self.trace_file, rank=global_rank)
+        self.findAndReadTrace(paths=self.trace_files, rank=global_rank)
 
         self.initTraceStat()
         # only setup and perform collectives if not dry run mode
@@ -1823,14 +1806,11 @@ class commsTraceReplayBench(paramCommsBench):
             comms_utils.initQuantCommCtx(self.collectiveArgs, commsParams)
 
     def setTraceFile(self, args, comms_env_params):
-        # TODO: file name may get changed later
-        self.trace_file = args.trace_path
+        # Trace path can contain multiple candidates
+        self.trace_files = args.trace_path.split(",")
         self.trace_type = args.trace_type
-        # assume the prefix is always "xxx://" when reading remote trace, e.g., http://xxx
-        if "://" in args.trace_path:
-            self.use_remote_trace = True
 
-    def readRawTrace(self, remotePath: str, rank: int) -> None:
+    def readRawTrace(self, path: str, rank: int) -> None:
         """
         Read trace file from remote server or local disk, supporting both
         directory (with rank-specific files) and single file modes.
@@ -1842,12 +1822,12 @@ class commsTraceReplayBench(paramCommsBench):
         Returns:
             None
         """
-        if self.use_remote_trace:
+        if "://" in path:  # Remote path
             # format "<protocol prefix>://<url or path>"
-            protocol = remotePath.split("://", 2)[0]
+            protocol = path.split("://", 2)[0]
             raw_comms_trace = []
             if protocol in ("http", "https", "ftp"):
-                raw_comms_trace = comms_utils.commonUrlRead(remotePath=remotePath)
+                raw_comms_trace = comms_utils.commonUrlRead(remotePath=path)
             else:
                 try:
                     from param_bench.et_replay.comm.vendor_internal.fb_internals import (
@@ -1855,26 +1835,24 @@ class commsTraceReplayBench(paramCommsBench):
                     )
 
                 except ImportError:
-                    logger.error(
-                        "Not supported protocol for the URL provided %s", remotePath
-                    )
+                    logger.error("Not supported protocol for the URL provided %s", path)
                 else:
                     raw_comms_trace = readFbRemoteTrace(
-                        remotePath=remotePath,
+                        remotePath=path,
                         rank=rank,
                         full_trace_path=self.use_one_trace,
                         trace_type=self.trace_type,
                     )
             self.comms_trace = json.load(raw_comms_trace)
         else:
-            # Check if self.trace_file is a directory or a single file
-            if os.path.isdir(self.trace_file):
+            # Check if path is a directory or a single file
+            if os.path.isdir(path):
                 # Directory mode: construct the path to the rank-specific file
-                trace_file_path = f"{self.trace_file}/rank-{rank}.json"
+                trace_file_path = f"{path}/rank-{rank}.json"
             else:
-                # Single file mode: use self.trace_file as is
-                trace_file_path = self.trace_file
-            logger.info("[Rank-%s] reading trace from %s", rank, trace_file_path)
+                # Single file mode: use path as is
+                trace_file_path = path
+            logger.info("[Rank-%s] reading trace from %s", rank, path)
             # Read the json file from local disk
             # with open(trace_file_path) as f:
             with (
@@ -1884,12 +1862,12 @@ class commsTraceReplayBench(paramCommsBench):
             ) as execution_data:
                 self.comms_trace = json.load(execution_data)
 
-    def readTrace(self, remotePath: str, rank: int) -> None:
+    def readTrace(self, path: str, rank: int) -> None:
         """
         Read trace file and convert/parse traces files.
 
         Args:
-            remotePath: Path to read from remotely if use_remote_trace is enabled.
+            path: Path to read from. Can be remote or local.
             globalRead: Whether to read trace on all ranks
         Returns:
             None
@@ -1900,33 +1878,54 @@ class commsTraceReplayBench(paramCommsBench):
             assert self.use_one_trace
             # Rank 0 loads trace and broadcast
             if rank == 0:
-                logger.info("[Rank-%s] reading trace from %s", rank, remotePath)
-                self.readRawTrace(remotePath=remotePath, rank=rank)
+                logger.info("[Rank-%s] reading trace from %s", rank, path)
+                self.readRawTrace(path=path, rank=rank)
 
                 comms_trace_str = json.dumps(self.comms_trace)
                 logger.info("[Rank-%s] broadcasting comms_trace", rank)
-                self.backendFuncs.store_set(remotePath, comms_trace_str)
+                self.backendFuncs.store_set(path, comms_trace_str)
 
-            logger.info("[Rank-%s] receiving comms_trace with key %s", rank, remotePath)
-            comms_trace_str = self.backendFuncs.store_get(remotePath)
+            logger.info("[Rank-%s] receiving comms_trace with key %s", rank, path)
+            comms_trace_str = self.backendFuncs.store_get(path)
             self.comms_trace = json.loads(comms_trace_str.decode())
             logger.info("[Rank-%s] received trace", rank)
         else:
             # By default everyone loads trace in parallel
-            self.readRawTrace(remotePath=remotePath, rank=rank)
+            self.readRawTrace(path=path, rank=rank)
 
         # Convert trace to comms trace.
         self.comms_trace = commsTraceParser.parseTrace(
             self.comms_trace,
             self.trace_type,
-            (
-                self.trace_file
-                if not os.path.isdir(self.trace_file)
-                else f"{self.trace_file}/rank-{rank}.json"
-            ),
+            (path if not os.path.isdir(path) else f"{path}/rank-{rank}.json"),
             rank,
             self.backendFuncs.get_world_size(),
         )
+
+    def findAndReadTrace(self, paths: list[str], rank: int) -> None:
+        for trace_path in paths:
+            try:
+                logger.info(
+                    "[Rank-%s] reading %s trace from %s",
+                    rank,
+                    self.trace_type,
+                    trace_path,
+                )
+                self.readTrace(path=trace_path, rank=rank)
+            except Exception as e:
+                logger.info(
+                    "[Rank-%s] could not read trace from %s, trying next candidate: %s",
+                    rank,
+                    trace_path,
+                    e,
+                )
+                continue
+            self.trace_file = trace_path
+            return
+        logger.error(
+            "[Rank-%d] Could not find a suitable trace path, tried %s", rank, paths
+        )
+        raise Exception("Could not find a suitable trace path")
 
 
 def main() -> None:
