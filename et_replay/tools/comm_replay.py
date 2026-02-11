@@ -37,7 +37,7 @@ from torch.profiler import ProfilerActivity
 
 torch.set_printoptions(precision=25)
 try:
-    from param_bench.et_replay.comm.vendor_internal.fb_internals import (
+    from et_replay.vendor_internal.fb_internal import (
         get_fb_profiler_activities,
         get_fb_profiler_trace_handler,
     )
