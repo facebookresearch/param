@@ -986,18 +986,18 @@ class commsCollBench(paramCommsBench):
                     "TotalLatency(us):p50",
                 )
             else:
-                fmt = "{:>40}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
+                fmt = "{:>40}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}{:>18}"
                 header += fmt.format(
                     "total-size (B)",
                     "nElementsPerRank",
-                    "Latency(us):p50",
+                    "Time(us):p50",
                     "p75",
                     "p95",
                     "Min",
                     "Max",
                     "AlgBW(GB/s)",
                     "BusBW(GB/s)",
-                    "TotalLatency(us):p50",
+                    "TotalTime(us):p50",
                 )
 
         print(header)
@@ -1148,9 +1148,7 @@ class commsCollBench(paramCommsBench):
         # adjust busBW
         busBW *= commsParams.bitwidth / 32.0
 
-        fmt = (
-            "\tCOMMS-RES-{}-{}{}{:>18}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}"
-        )
+        fmt = "\tCOMMS-RES-{}-{}{}{:>18}{:>18}{:>18}{:>12}{:>12}{:>12}{:>12}{:>15}{:>12}{:>20}"
         print(
             fmt.format(
                 self.collectiveArgs.collective,
