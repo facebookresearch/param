@@ -20,7 +20,7 @@ gzip -d tests/inputs/resnet_et.json.gz
 ```
 Replay it with the following command.
 ```bash
-$ python3 -m et_replay.tools.et_replay --input tests/inputs/resnet_et.json -c --profile-replay
+$ python3 -m et_replay.tools.et_replay --input tests/inputs/resnet_et.json.gz -m comp 
 ```
 
 > Note: When analyzing performance values from et_replay, refer to the collected Kineto traces rather than the execution time reported by et_replay. Kineto traces are only collected when --profile-replay is provided.

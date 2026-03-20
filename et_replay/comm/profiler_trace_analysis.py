@@ -15,6 +15,7 @@
 import argparse
 import ast
 import functools
+import gzip
 import json
 import logging
 import os
@@ -97,10 +98,15 @@ _busbw_correction_factors_func_tbl: dict[str, Callable[[int], float]] = {
 # map collective name of event to key string for bw calculation
 _collname_to_busbw_corr_factor_func: dict[str, Callable[[int], float]] = {
     "allreduce": _busbw_correction_factors_func_tbl["all_reduce"],
+    "allreduce_coalesced": _busbw_correction_factors_func_tbl["all_reduce"],
     "all_gather": _busbw_correction_factors_func_tbl["all_gather"],
     "_allgather_base": _busbw_correction_factors_func_tbl["all_gather"],
+    "allgather_into_tensor_coalesced": _busbw_correction_factors_func_tbl["all_gather"],
     "reduce_scatter": _busbw_correction_factors_func_tbl["reduce_scatter"],
     "_reduce_scatter_base": _busbw_correction_factors_func_tbl["reduce_scatter"],
+    "reduce_scatter_tensor_coalesced": _busbw_correction_factors_func_tbl[
+        "reduce_scatter"
+    ],
     "all_to_all": _busbw_correction_factors_func_tbl["all_to_all"],
     "all_to_allv": _busbw_correction_factors_func_tbl["all_to_all"],
     "broadcast": _busbw_correction_factors_func_tbl["broadcast"],
@@ -358,6 +364,154 @@ def pick_comm_bw_(trace_data, comm_bw_data):
         )
 
 
+def save_analysis_report(report_dir, iter_e2e_time, sbw_lst, comm_bw_data):
+    comm_bw_summary = {}
+    for k, v in comm_bw_data.items():
+        t_lst = [i[0] for i in v]
+        busbw_lst = [i[2] for i in v]
+        pg_set = set()
+        for i in v:
+            if i[3] is None:
+                continue
+            # if pg_set is loaded from JSON file, it is a list
+            # otherwise it is a tuple
+            if isinstance(i[3], list):
+                pg_set.add(tuple(i[3]))
+            else:
+                pg_set.add(i[3])
+
+        comm_bw_summary[k] = [
+            len(pg_set),
+            np.average(t_lst),
+            np.average(busbw_lst),
+            np.percentile(busbw_lst, 1),
+            np.percentile(busbw_lst, 50),
+            np.percentile(busbw_lst, 90),
+            np.percentile(busbw_lst, 99),
+        ]
+    comm_bw_summary = dict(sorted(comm_bw_summary.items()))
+
+    # dump summary report
+    with open(
+        os.path.join(report_dir, "profiler_trace_summary_report.txt"),
+        "w",
+        encoding="utf-8",
+    ) as f:
+        f.write(
+            f"avg. E2ETime of iters among all ranks: {sum(iter_e2e_time) / len(iter_e2e_time) / 1e3:.3f} ms\n"
+        )
+        f.write(
+            f"avg. SharedBW (i.e. sum(busbw_data_size) / GPU_comm_busy_time  per rank) among all ranks: {sum(sbw_lst) / len(sbw_lst):.3f} GB/s\n"
+        )
+
+        f.write(
+            f"\n{' ':>106s}|{' ':>5s}|{'AVG.':^19s}|{'p01':^8s}|{'p50':^8s}|{'p90':^8s}|{'p99':^8s}|\n"
+        )
+
+        f.write(
+            f"{'kernel':>50s} {'coll':>35s} {'size':>12s} {'#rks':>6s}|{'#pgs':>5s}|{'  dur':>10s} "
+        )
+        for _ in range(5):  # average, p01, p50, p90, p99
+            f.write(f"{' busbw':>8s}|")
+        f.write("\n")
+
+        f.write(f"{' (B)':>99s} {'    ':>6s}|{'    ':>5s}|{' (us)':>10s} ")
+        for _ in range(5):  # average, p50, p90, p99
+            f.write(f"{'(GB/s)':>8s}|")
+        f.write("\n")
+
+        for k, v in comm_bw_summary.items():
+            f.write(
+                f"{k[0]:>50s} {k[1]:>35s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]:>10.3f} "
+            )
+            for i in range(2, len(v)):
+                f.write(f"{v[i]:>8.2f}|")
+            f.write("\n")
+
+
+# For large scale run, analyze_profiler_trace takes long time to process the data since
+# it runs only on rank 0. For example, a 16 rank llama4 run with 10 iterations takes
+# 15 minutes. To imporve it, preprocess_profiler_trace should be run on each rank to
+# extract the data from the trace on each rank and save it on disk, then call
+# summarize_profiler_trace on rank 0 to get the report.
+def preprocess_profiler_trace(trace_dir: str, rank: int):
+    """
+    Analyse input PyTorch profiler trace (i.e. Kineto trace) and save the eatracted data in a file.
+
+    Args:
+        trace_dir (str): dir path of input traces, where trace name should be in "rank-n.json" format.
+        rank (int): the current rank
+    """
+    logger.info(f'Preprocess profiler trace from "{trace_dir}"')
+
+    # list of iteration time in all ranks
+    iter_e2e_time = []
+
+    # list of shared bw
+    sbw_lst = []
+
+    # key is (kernel_name, coll name, data size, ranks count)
+    # value is list of [dur, algbw, busbw, pg]
+    comm_bw_data = defaultdict(list)
+
+    trace_fn = os.path.join(trace_dir, f"rank-{rank}.pt.json.gz")
+    with gzip.open(trace_fn, "rt") as f:
+        trace = json.load(f)
+
+    global_rank = trace["distributedInfo"]["rank"]
+    calculate_bw_(trace, global_rank)
+
+    sbw_lst.append(calculate_sbw(trace, global_rank))
+
+    pick_iter_e2e_time_(trace, iter_e2e_time)
+    pick_comm_bw_(trace, comm_bw_data)
+
+    # json.dump can not have a tuple as the key of a dictionary
+    # convert the key to list first
+    comm_bw_data = {json.dumps(k): v for k, v in comm_bw_data.items()}
+
+    summary = {
+        "iter_e2e_time": iter_e2e_time,
+        "sbw_lst": sbw_lst,
+        "comm_bw_data": comm_bw_data,
+    }
+    logger.info(f"Save summary temp to {trace_fn + '.tmp'}")
+    with open(trace_fn + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(summary, f)
+        f.flush()
+        os.fsync(f.fileno())  # ensure data is on disk
+
+
+def summarize_profiler_trace(trace_dir: str, world_size: int, report_dir: str):
+    # list of iteration time in all ranks
+    iter_e2e_time = []
+
+    # list of shared bw
+    sbw_lst = []
+
+    # key is (kernel_name, coll name, data size, ranks count)
+    # value is list of [dur, algbw, busbw, pg]
+    comm_bw_data = defaultdict(list)
+
+    for fpath in os.scandir(trace_dir):
+        if not fpath.is_file() or not fpath.name.endswith(".tmp"):
+            continue
+
+        with open(fpath.path, encoding="utf-8") as f:
+            extracted_data = json.load(f)
+
+        sbw_lst.extend(extracted_data["sbw_lst"])
+        iter_e2e_time.extend(extracted_data["iter_e2e_time"])
+        bw_data = extracted_data["comm_bw_data"]
+
+        for k, v in bw_data.items():
+            # Convert the key from list to tuple
+            k = tuple(json.loads(k))
+            comm_bw_data[k].extend(v)
+
+    save_analysis_report(report_dir, iter_e2e_time, sbw_lst, comm_bw_data)
+
+
 @timer_decorator
 def analyze_profiler_trace(trace_dir: str, report_dir: str):
     """
@@ -406,61 +560,7 @@ def analyze_profiler_trace(trace_dir: str, report_dir: str):
         pick_iter_e2e_time_(trace, iter_e2e_time)
         pick_comm_bw_(trace, comm_bw_data)
 
-    comm_bw_summary = {}
-    for k, v in comm_bw_data.items():
-        t_lst = [i[0] for i in v]
-        busbw_lst = [i[2] for i in v]
-        pg_set = {i[3] for i in v if i[3]}
-        comm_bw_summary[k] = [
-            len(pg_set),
-            np.average(t_lst),
-            np.average(busbw_lst),
-            np.percentile(busbw_lst, 1),
-            np.percentile(busbw_lst, 50),
-            np.percentile(busbw_lst, 90),
-            np.percentile(busbw_lst, 99),
-        ]
-    comm_bw_summary = dict(sorted(comm_bw_summary.items()))
-
-    # dump summary report
-    with open(
-        os.path.join(report_dir, "profiler_trace_summary_report.txt"),
-        "w",
-        encoding="utf-8",
-    ) as f:
-        f.write(
-            f"avg. E2ETime of iters among all ranks: {sum(iter_e2e_time) / len(iter_e2e_time) / 1e3:.3f} ms\n"
-        )
-        f.write(
-            "avg. SharedBW (i.e. sum(busbw_data_size) / GPU_comm_busy_time per rank) "
-            f"among all ranks: {sum(sbw_lst) / len(sbw_lst):.3f} GB/s\n"
-        )
-
-        f.write(
-            f"\n{' ':>86s}|{' ':>5s}|{'AVG.':^19s}|{'p01':^8s}|{'p50':^8s}|{'p90':^8s}|{'p99':^8s}|\n"
-        )
-
-        f.write(
-            f"{'kernel':>50s} {'coll':>15s} {'size':>12s} {'#rks':>6s}|{'#pgs':>5s}|{'  dur':>10s} "
-        )
-        for _ in range(5):  # average, p01, p50, p90, p99
-            f.write(f"{' busbw':>8s}|")
-        f.write("\n")
-
-        f.write(
-            f"{'      ':>66s} {' (B)':>12s} {'    ':>6s}|{'    ':>5s}|{' (us)':>10s} "
-        )
-        for _ in range(5):  # average, p50, p90, p99
-            f.write(f"{'(GB/s)':>8s}|")
-        f.write("\n")
-
-        for k, v in comm_bw_summary.items():
-            f.write(
-                f"{k[0]:>50s} {k[1]:>15s} {k[2]:>12d} {k[3]:>6d}|{v[0]:>5d}|{v[1]:>10.3f} "
-            )
-            for i in range(2, len(v)):
-                f.write(f"{v[i]:>8.2f}|")
-            f.write("\n")
+    save_analysis_report(report_dir, iter_e2e_time, sbw_lst, comm_bw_data)
 
 
 def main():

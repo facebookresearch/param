@@ -48,6 +48,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+logger.propagate = False
 handler = logging.StreamHandler()
 formatter = logging.Formatter(
     "[%(asctime)s] %(filename)s:%(lineno)d [%(levelname)s]: %(message)s"
@@ -450,9 +451,9 @@ class commsTraceReplayBench(paramCommsBench):
         #   1) dry run: output some statistics, e.g., # of msgs, distribution of sizes (max, min, avg, p50, p95...etc)
         #   2) normal run: output 1) as well as perf. breakdown (e.g., a2a latencies at different phase, some percentages...etc)
         # some basic stats
-        print(
-            f"\n+++++ {len(self.comms_trace)} msgs recorded in {self.trace_file} +++++\n"
-        )
+        logger.info("")
+        logger.info("+++++ %d msgs recorded +++++", len(self.comms_trace))
+        logger.info("")
 
         for curBlock, blockComms in self.comms_blocks.items():
             lat_list = []
@@ -467,25 +468,33 @@ class commsTraceReplayBench(paramCommsBench):
                 Lats.sum(),
             )
 
-        logger.info("\n%s Message size Statistics %s", "=" * 20, "=" * 20)
+        logger.info("")
+        logger.info("%s Message size Statistics %s", "=" * 20, "=" * 20)
 
         for name, collMsgs in self.collInMsgBytes.items():
             # input tensor
             msgSizes = np.array(collMsgs)
-            print("-" * 50)
-            print(f"+ {len(msgSizes)} {name}")
-            print("-" * 50)
-            print(
-                f"Size of Input tensors (bytes)\n"
-                f" {'Total (MB)':>10} {'Max.':>15} {'Min.':>10} {'Average':>13} {'p50':>13} {'p95':>13}"
+            logger.info("-" * 50)
+            logger.info("+ %d %s", len(msgSizes), name)
+            logger.info("-" * 50)
+            logger.info("Size of Input tensors (bytes)")
+            logger.info(
+                " %10s %15s %10s %13s %13s %13s",
+                "Total (MB)",
+                "Max.",
+                "Min.",
+                "Average",
+                "p50",
+                "p95",
             )
-            print(
-                f"{msgSizes.sum() / 1024.0 / 1024.0:>10.2f} "
-                f"{msgSizes.max():15.2f} "
-                f"{msgSizes.min():10.2f} "
-                f"{np.average(msgSizes):15.2f} "
-                f"{np.percentile(msgSizes, 50):15.2f} "
-                f"{np.percentile(msgSizes, 95):15.2f}"
+            logger.info(
+                "%10.2f %15.2f %10.2f %15.2f %15.2f %15.2f",
+                msgSizes.sum() / 1024.0 / 1024.0,
+                msgSizes.max(),
+                msgSizes.min(),
+                np.average(msgSizes),
+                np.percentile(msgSizes, 50),
+                np.percentile(msgSizes, 95),
             )
             logger.debug(
                 "  - Used sizes (bytes): %s", sorted(self.collInUniMsgBytes[name])
@@ -493,17 +502,24 @@ class commsTraceReplayBench(paramCommsBench):
 
             # output tensor
             msgSizes = np.array(self.collOutMsgBytes[name])
-            print(
-                f"Size of Output tensors (bytes)\n"
-                f" {'Total (MB)':>10} {'Max.':>15} {'Min.':>10} {'Average':>13} {'p50':>13} {'p95':>13}"
+            logger.info("Size of Output tensors (bytes)")
+            logger.info(
+                " %10s %15s %10s %13s %13s %13s",
+                "Total (MB)",
+                "Max.",
+                "Min.",
+                "Average",
+                "p50",
+                "p95",
             )
-            print(
-                f"{msgSizes.sum() / 1024.0 / 1024.0:>10.2f} "
-                f"{msgSizes.max():15.2f} "
-                f"{msgSizes.min():10.2f} "
-                f"{np.average(msgSizes):15.2f} "
-                f"{np.percentile(msgSizes, 50):15.2f} "
-                f"{np.percentile(msgSizes, 95):15.2f}"
+            logger.info(
+                "%10.2f %15.2f %10.2f %15.2f %15.2f %15.2f",
+                msgSizes.sum() / 1024.0 / 1024.0,
+                msgSizes.max(),
+                msgSizes.min(),
+                np.average(msgSizes),
+                np.percentile(msgSizes, 50),
+                np.percentile(msgSizes, 95),
             )
 
             logger.debug(
@@ -511,41 +527,48 @@ class commsTraceReplayBench(paramCommsBench):
             )
 
         if not self.is_dry_run:
-            print("\n{} Performance of replayed comms {}".format("=" * 20, "=" * 20))
-            print(
-                "{}\nE2E latency (us): {} for {} iters, {:10.2f} per iter in avg\n{}".format(
-                    "-" * 50,
-                    self.totalTraceLatency,
-                    self.num_replays,
-                    self.totalTraceLatency / self.num_replays,
-                    "-" * 50,
-                )
+            logger.info("")
+            logger.info("%s Performance of replayed comms %s", "=" * 20, "=" * 20)
+            logger.info("%s", "-" * 50)
+            logger.info(
+                "E2E latency (us): %s for %s iters, %10.2f per iter in avg",
+                self.totalTraceLatency,
+                self.num_replays,
+                self.totalTraceLatency / self.num_replays,
             )
+            logger.info("%s", "-" * 50)
             for coll, lats in self.collLat.items():
                 if len(lats) == 0:
                     continue
 
                 Lat = np.array(lats)
-                print(
-                    "{}\n Replayed {} {} ({:.2f}%): \n{}".format(
-                        "-" * 50,
-                        len(lats),
-                        coll,
-                        (Lat.sum() / self.totalCommsLatency) * 100,
-                        "-" * 50,
-                    )
+                logger.info("%s", "-" * 50)
+                logger.info(
+                    " Replayed %d %s (%.2f%%): ",
+                    len(lats),
+                    coll,
+                    (Lat.sum() / self.totalCommsLatency) * 100,
                 )
+                logger.info("%s", "-" * 50)
 
-                print(
-                    f"Latency (us)\n {'Total':>10} {'Max.':>10} {'Min.':>10} {'Average':>10} {'p50':>10} {'p95':>10}"
+                logger.info("Latency (us)")
+                logger.info(
+                    " %10s %10s %10s %10s %10s %10s",
+                    "Total",
+                    "Max.",
+                    "Min.",
+                    "Average",
+                    "p50",
+                    "p95",
                 )
-                print(
-                    f" {Lat.sum():10.2f} "
-                    f"{Lat.max():10.2f} "
-                    f"{Lat.min():10.2f} "
-                    f"{np.average(Lat):10.2f} "
-                    f"{np.percentile(Lat, 50):10.2f} "
-                    f"{np.percentile(Lat, 95):10.2f}"
+                logger.info(
+                    " %10.2f %10.2f %10.2f %10.2f %10.2f %10.2f",
+                    Lat.sum(),
+                    Lat.max(),
+                    Lat.min(),
+                    np.average(Lat),
+                    np.percentile(Lat, 50),
+                    np.percentile(Lat, 95),
                 )
                 msgSizeAndLatency = (
                     tuple(
@@ -559,19 +582,27 @@ class commsTraceReplayBench(paramCommsBench):
                 )
 
             if self.colls_per_batch > 0:
-                print("\n{} Batch Latency Performance {}".format("=" * 20, "=" * 20))
+                logger.info("")
+                logger.info("%s Batch Latency Performance %s", "=" * 20, "=" * 20)
                 BatchLat = np.array(self.batchLat)
-                print(
-                    f"Batch Latency (ms)\n"
-                    f" {'Total':>10} {'Max.':>10} {'Min.':>10} {'Average':>10} {'p50':>10} {'p95':>10}"
+                logger.info("Batch Latency (ms)")
+                logger.info(
+                    " %10s %10s %10s %10s %10s %10s",
+                    "Total",
+                    "Max.",
+                    "Min.",
+                    "Average",
+                    "p50",
+                    "p95",
                 )
-                print(
-                    f" {BatchLat.sum():10.2f} "
-                    f"{BatchLat.max():10.2f} "
-                    f"{BatchLat.min():10.2f} "
-                    f"{np.average(BatchLat):10.2f} "
-                    f"{np.percentile(BatchLat, 50):10.2f} "
-                    f"{np.percentile(BatchLat, 95):10.2f}"
+                logger.info(
+                    " %10.2f %10.2f %10.2f %10.2f %10.2f %10.2f",
+                    BatchLat.sum(),
+                    BatchLat.max(),
+                    BatchLat.min(),
+                    np.average(BatchLat),
+                    np.percentile(BatchLat, 50),
+                    np.percentile(BatchLat, 95),
                 )
 
     def initTraceStat(self):
@@ -967,6 +998,8 @@ class commsTraceReplayBench(paramCommsBench):
                 else:
                     self.collectiveArgs.wait_obj_key = None
 
+                self.collectiveArgs.asyncOp = curComm.asyncOp
+
                 # handle point-to-point separately
                 if collName in supportedP2pOps:
                     self.collectiveArgs.src_rank = curComm.src_rank
@@ -1032,6 +1065,8 @@ class commsTraceReplayBench(paramCommsBench):
                             f"[Data accuracy]: Rank: {self.backendFuncs.get_global_rank()}: Data accuracy check not passed for {curComm.id} on ReplayIteration: {self.replayIter} "
                         )
 
+                self.collectiveArgs.ipTensor = None
+                self.collectiveArgs.opTensor = None
             else:
                 # skip not supported ops
                 logger.warning(
@@ -1041,16 +1076,13 @@ class commsTraceReplayBench(paramCommsBench):
 
                 retObj = None
 
-            # if blocking, post outstanding ops and wait for them to complete. if nonblocking, just post op
-            if self.is_blocking:
-                self.backendFuncs.complete_accel_ops(self.collectiveArgs)
-
             # if nonblocking, then store the pair {(pg_id, reqID, isP2P), future} so that we can wait on it later
             # check if req id is recorded in trace for backwards compatibility
             if (
                 not self.is_blocking
                 and collName != "wait"
                 and self.collectiveArgs.wait_obj_key is not None
+                and self.collectiveArgs.asyncOp is True
             ):
                 self.collectiveArgs.waitObjIds[self.collectiveArgs.wait_obj_key] = (
                     retObj
@@ -1288,7 +1320,9 @@ class commsTraceReplayBench(paramCommsBench):
                     and curComm.dst_rank != self.backendFuncs.get_global_rank()
                 )
             ):
-                logger.warning("Skip collective %s id = %s", collName, curComm.id)
+                # Do not report if it is 'init' to reduce warning message size
+                if collName != "init":
+                    logger.warning("Skip collective %s id = %s", collName, curComm.id)
                 return
 
             (groupRank, groupDesc) = self.getCommGroupInfo(curComm, commsParams)
@@ -1311,7 +1345,7 @@ class commsTraceReplayBench(paramCommsBench):
                         f", Src_Rank={curComm.src_rank}, Dst_Rank={curComm.dst_rank}"
                     )
 
-                logger.info(
+                logger.debug(
                     "%s[Rank %3d] [%d / %d] Replaying %s with %s id = %s",
                     logLable,
                     self.collectiveArgs.global_rank,
@@ -1378,7 +1412,7 @@ class commsTraceReplayBench(paramCommsBench):
             )
 
         if self.backendFuncs.get_global_rank() == 0:
-            logger.info(
+            logger.debug(
                 "%s[%d / %d] Replayed %s with id=%s in block [%s]... %.2f us",
                 logLable,
                 cnt + 1,
@@ -1698,7 +1732,7 @@ class commsTraceReplayBench(paramCommsBench):
             bootstrap_info.master_port,
             backend=commsParams.backend,
         )
-        self.backendFuncs.sayHello()
+        self.backendFuncs.barrier_all_ranks()
 
     def setBench(
         self,
@@ -1742,7 +1776,7 @@ class commsTraceReplayBench(paramCommsBench):
         self.collectiveArgs.srcOrDst = 0
         # FIXME: assuming it's always sum for reduce/allreduce operations
         self.collectiveArgs.op = self.backendFuncs.get_reduce_op("sum")
-        self.collectiveArgs.asyncOp = not self.is_blocking
+        self.collectiveArgs.asyncOp = True
         self.collectiveArgs.ipTensor = None
         self.collectiveArgs.opTensor = None
         self.collectiveArgs.quant_threshold = commsParams.quant_threshold
@@ -1853,14 +1887,15 @@ class commsTraceReplayBench(paramCommsBench):
                 # Single file mode: use path as is
                 trace_file_path = path
             logger.info("[Rank-%s] reading trace from %s", rank, path)
-            # Read the json file from local disk
-            # with open(trace_file_path) as f:
-            with (
-                gzip.open(trace_file_path, "rb")
-                if trace_file_path.endswith("gz")
-                else open(trace_file_path)
-            ) as execution_data:
-                self.comms_trace = json.load(execution_data)
+            if os.path.exists(trace_file_path):
+                with open(trace_file_path) as f:
+                    self.comms_trace = json.load(f)
+            elif os.path.exists(trace_file_path + ".gz"):
+                with gzip.open(trace_file_path + ".gz", "rt") as f:
+                    self.comms_trace = json.load(f)
+            else:
+                logger.error(f"Failed to load trace file {trace_file_path}")
+                exit(1)
 
     def readTrace(self, path: str, rank: int) -> None:
         """
