@@ -1894,8 +1894,7 @@ class commsTraceReplayBench(paramCommsBench):
                 with gzip.open(trace_file_path + ".gz", "rt") as f:
                     self.comms_trace = json.load(f)
             else:
-                logger.error(f"Failed to load trace file {trace_file_path}")
-                exit(1)
+                raise FileNotFoundError(f"Failed to load trace file {trace_file_path}")
 
     def readTrace(self, path: str, rank: int) -> None:
         """
