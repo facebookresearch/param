@@ -1487,11 +1487,19 @@ class commsCollBench(paramCommsBench):
                 else PyTorchDistBackend(bootstrap_info, commsParams)
             )
         elif commsParams.nw_stack == "pytorch-torchcomms":
-            from param_bench.train.comms.pt.pytorch_torchcomms_backend import (
-                PyTorchTorchcommsBackend,
+            from param_bench.train.comms.pt.pytorch_backend_utils import (
+                customized_backend,
             )
 
-            backendObj = PyTorchTorchcommsBackend(bootstrap_info, commsParams)
+            tc_key = f"{commsParams.backend}_torchcomms"
+            if tc_key in customized_backend:
+                backendObj = customized_backend[tc_key](bootstrap_info, commsParams)
+            else:
+                from param_bench.train.comms.pt.pytorch_torchcomms_backend import (
+                    PyTorchTorchcommsBackend,
+                )
+
+                backendObj = PyTorchTorchcommsBackend(bootstrap_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":
             from param_bench.train.comms.pt.pytorch_tpu_backend import PyTorchTPUBackend
 
