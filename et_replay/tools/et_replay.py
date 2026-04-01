@@ -119,7 +119,7 @@ class CommsReplayManager(commsTraceReplayBench):  # pyre-ignore[13]:
         return (ip_tensor, op_tensor)
 
 
-class TensorAllcationMode(Enum):
+class TensorAllocationMode(Enum):
     """
     Enum to represent the tensor allocation mode
     """
@@ -245,8 +245,8 @@ class ExgrReplayManager:
 
         self.tensor_storage_id_to_last_node_id_map: dict[int, int] = defaultdict(int)
 
-        self.tensor_allocate_mode: TensorAllcationMode = (
-            TensorAllcationMode.PRE_ALLOCATE
+        self.tensor_allocate_mode: TensorAllocationMode = (
+            TensorAllocationMode.PRE_ALLOCATE
         )
 
         # Unrecognized nodes that are neither operators nor predefined label nodes.
@@ -295,7 +295,7 @@ class ExgrReplayManager:
         self.cpu = self.args.cpu
         self.tf32 = self.args.tf32
         if self.args.enable_lazy_tensor_allocation:
-            self.tensor_allocate_mode = TensorAllcationMode.LAZY_ALLOCATE
+            self.tensor_allocate_mode = TensorAllocationMode.LAZY_ALLOCATE
 
         # Single trace.
         if not self.args.trace_path:
@@ -474,7 +474,7 @@ class ExgrReplayManager:
         def analayze_node(node):
             for _, t_id, _ in get_input_tensors(node):
                 if self.tensor_with_device:
-                    t_id = tuple(list(t_id)[:5])
+                    t_id = t_id[:5]
                 if (
                     node.name == "record_param_comms"
                     and self.replay_mode == ReplayMode.COMP
@@ -490,7 +490,7 @@ class ExgrReplayManager:
             if self.replay_mode != ReplayMode.COMP:
                 for _, t_id, _ in get_output_tensors(node):
                     if self.tensor_with_device:
-                        t_id = tuple(list(t_id)[:5])
+                        t_id = t_id[:5]
                     if node.name != "record_param_comms":
                         continue
                     self.input_tensor_ids.add(t_id)
@@ -654,7 +654,7 @@ class ExgrReplayManager:
             for _, t_id, shape in get_input_tensors(node):
                 if self.tensor_with_device:
                     device = list(t_id)[5]
-                    t_id = tuple(list(t_id)[:5])
+                    t_id = t_id[:5]
                     if t_id in self.input_tensor_ids:
                         add_unique_tensor(
                             node.name, node.id, t_id, shape, input=True, device=device
@@ -666,7 +666,7 @@ class ExgrReplayManager:
             for _, t_id, shape in get_output_tensors(node):
                 if self.tensor_with_device:
                     device = list(t_id)[5]
-                    t_id = tuple(list(t_id)[:5])
+                    t_id = t_id[:5]
                     if t_id in self.input_tensor_ids:
                         # fake comm nodes output tensor as input
                         add_unique_tensor(
@@ -697,7 +697,7 @@ class ExgrReplayManager:
                 continue
             for _, t_id, _ in get_input_tensors(node):
                 if self.tensor_with_device:
-                    t_id = tuple(list(t_id)[:5])
+                    t_id = t_id[:5]
                 if (
                     t_id in self.input_tensor_ids
                     and self.tensors_mapping[(node.id, t_id, True)] not in output_set
@@ -706,7 +706,7 @@ class ExgrReplayManager:
 
             for _, t_id, _ in get_output_tensors(node):
                 if self.tensor_with_device:
-                    t_id = tuple(list(t_id)[:5])
+                    t_id = t_id[:5]
                 if t_id in self.input_tensor_ids:
                     if (
                         node.name == "record_param_comms"
@@ -749,7 +749,7 @@ class ExgrReplayManager:
             device = self.device
             if self.tensor_with_device:
                 device = t_id[5]
-                t_id = tuple(list(t_id)[:5])
+                t_id = t_id[:5]
 
             if is_comm_node:
                 # Both input/output tensors of the comm nodes are treated as input tensors
@@ -760,11 +760,11 @@ class ExgrReplayManager:
             if t_id not in self.input_tensor_ids:
                 continue
             found_tensor = False
-            if self.tensor_allocate_mode == TensorAllcationMode.PRE_ALLOCATE:
-                if replay_t_id in self.tensor_registry_permanent.keys():
+            if self.tensor_allocate_mode == TensorAllocationMode.PRE_ALLOCATE:
+                if replay_t_id in self.tensor_registry_permanent:
                     found_tensor = True
             else:
-                if replay_t_id in self.tensor_registry.keys():
+                if replay_t_id in self.tensor_registry:
                     found_tensor = True
             if not found_tensor:
                 try:
@@ -811,7 +811,7 @@ class ExgrReplayManager:
                         )
                         if (
                             self.tensor_allocate_mode
-                            == TensorAllcationMode.PRE_ALLOCATE
+                            == TensorAllocationMode.PRE_ALLOCATE
                         ):
                             self.tensor_registry_permanent[replay_t_id] = tensor
                         else:
@@ -822,7 +822,7 @@ class ExgrReplayManager:
                         node.id,
                         e,
                     )
-                    if self.tensor_allocate_mode == TensorAllcationMode.PRE_ALLOCATE:
+                    if self.tensor_allocate_mode == TensorAllocationMode.PRE_ALLOCATE:
                         self.tensor_registry_permanent[replay_t_id] = None
                     else:
                         self.tensor_registry[replay_t_id] = None
@@ -854,37 +854,27 @@ class ExgrReplayManager:
         data_type,
         strides,
     ):
+        _TORCH_TO_NUMPY_DTYPE = {
+            torch.int8: np.int8,
+            torch.uint8: np.uint8,
+            torch.int16: np.int16,
+            torch.uint16: np.uint16,
+            torch.int32: np.int32,
+            torch.uint32: np.uint32,
+            torch.int64: np.int64,
+            torch.long: np.int64,
+            torch.uint64: np.uint64,
+        }
+
         def to_numpy_data_type(data_type):
-            if data_type == torch.int8:
-                return np.int8
-            elif data_type == torch.uint8:
-                return np.uint8
-            elif data_type == torch.int16:
-                return np.int16
-            elif data_type == torch.uint16:
-                return np.uint16
-            elif data_type == torch.int32:
-                return np.int32
-            elif data_type == torch.uint32:
-                return np.uint32
-            elif data_type == torch.int64 or data_type == torch.long:
-                return np.int64
-            elif data_type == torch.uint64:
-                return np.uint64
-            else:
+            if data_type not in _TORCH_TO_NUMPY_DTYPE:
                 raise ValueError(f"Unsupported data type: {data_type}")
+            return _TORCH_TO_NUMPY_DTYPE[data_type]
 
         device = torch.device(device)
 
         # check if the tensor data file exists
-        storage_fn = (
-            self.resource_dir
-            + "/nid_"
-            + str(node_id)
-            + "_tid_"
-            + str(tensor_index)
-            + ".dat"
-        )
+        storage_fn = f"{self.resource_dir}/nid_{node_id}_tid_{tensor_index}.dat"
         if os.path.isfile(storage_fn):
             np_x = np.fromfile(storage_fn, dtype=to_numpy_data_type(data_type))
             if len(shape) == 0:
@@ -977,7 +967,7 @@ class ExgrReplayManager:
 
     def free_tensor_in_storage(self, storage_id, node_id):
         if (
-            self.tensor_allocate_mode == TensorAllcationMode.LAZY_ALLOCATE
+            self.tensor_allocate_mode == TensorAllocationMode.LAZY_ALLOCATE
             and storage_id in self.tensor_storage_id_to_last_node_id_map
             and node_id >= self.tensor_storage_id_to_last_node_id_map[storage_id]
         ):
@@ -985,7 +975,7 @@ class ExgrReplayManager:
 
     def get_data(self, node, is_input, is_comm_node):
         try:
-            if self.tensor_allocate_mode == TensorAllcationMode.LAZY_ALLOCATE:
+            if self.tensor_allocate_mode == TensorAllocationMode.LAZY_ALLOCATE:
                 self.allocate_node_tensors(node, is_input, is_comm_node)
             if is_input:
                 data_in = node.inputs
@@ -1101,6 +1091,7 @@ class ExgrReplayManager:
             return outputs
         except Exception as e:
             logger.info("Outputs error: %s at node: %d", e, node.id)
+            return []
 
     def free_device_memory(self, force: bool = False):
         free_memory = force
@@ -1134,7 +1125,7 @@ class ExgrReplayManager:
 
     def run_op(self, node, iter, cnt):  # noqa: C901
         if (
-            self.tensor_allocate_mode == TensorAllcationMode.LAZY_ALLOCATE
+            self.tensor_allocate_mode == TensorAllocationMode.LAZY_ALLOCATE
             and self.args.device_memory_threshold != 1.0
         ):
             self.free_device_memory()
@@ -1152,7 +1143,7 @@ class ExgrReplayManager:
             et_node = self.et.nodes[node.id]
             for _, t_id, _ in get_input_tensors(et_node) + get_output_tensors(et_node):
                 if self.tensor_with_device:
-                    t_id = tuple(list(t_id)[:5])
+                    t_id = t_id[:5]
                 replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
                 if (
                     node.id >= self.replay_tensor_id_to_last_node_id_map[replay_t_id]
@@ -1218,7 +1209,7 @@ class ExgrReplayManager:
 
                 for _, t_id, _ in get_input_tensors(node):
                     if self.tensor_with_device:
-                        t_id = tuple(list(t_id)[:5])
+                        t_id = t_id[:5]
                     replay_t_id = self.tensors_mapping[(node.id, t_id, True)]
                     if (
                         node.id
@@ -1230,7 +1221,7 @@ class ExgrReplayManager:
 
                 for (_, t_id, _), output in zip(get_output_tensors(node), outputs):
                     if self.tensor_with_device:
-                        t_id = tuple(list(t_id)[:5])
+                        t_id = t_id[:5]
 
                     if t_id in self.input_tensor_ids:
                         replay_t_id = self.tensors_mapping[(node.id, t_id, False)]
@@ -1311,10 +1302,7 @@ class ExgrReplayManager:
             success, msg = self.run_op(node, 0, cnt)
             if success:
                 continue
-            if (
-                msg.find("RuntimeError: CUDA error") != -1
-                or msg.find("torch.OutOfMemoryError") != -1
-            ):
+            if "RuntimeError: CUDA error" in msg or "torch.OutOfMemoryError" in msg:
                 logger.info("Can not keep replaying due to %s", msg)
                 self.add_skipped_nodes(node, msg)
                 break
@@ -1324,7 +1312,7 @@ class ExgrReplayManager:
             # can keep playing.
             for data_type, t_id, shape in get_output_tensors(node):
                 if self.tensor_with_device:
-                    t_id = tuple(list(t_id)[:5])
+                    t_id = t_id[:5]
                 if t_id not in self.input_tensor_ids:
                     continue
 
@@ -1384,7 +1372,7 @@ class ExgrReplayManager:
 
         if self.generator:
             self.generate_code()
-        elif self.tensor_allocate_mode == TensorAllcationMode.PRE_ALLOCATE:
+        elif self.tensor_allocate_mode == TensorAllocationMode.PRE_ALLOCATE:
             self.allocate_tensors()
 
     def benchTime(self):
@@ -1487,7 +1475,7 @@ class ExgrReplayManager:
                 prev_iter = iter
                 start_ns = time.time_ns()
 
-            if self.tensor_allocate_mode == TensorAllcationMode.PRE_ALLOCATE:
+            if self.tensor_allocate_mode == TensorAllocationMode.PRE_ALLOCATE:
                 self.reset_registry()
             ret = run_ops(event_1, event_2, iter)
             if iter >= self.numWarmupIters:
