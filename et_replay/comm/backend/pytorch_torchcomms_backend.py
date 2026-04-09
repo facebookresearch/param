@@ -198,28 +198,55 @@ class PyTorchTorchCommsBackend(BaseBackend):
     # Compute
     # =========================================================================
     def compute_mm(self, collectiveArgs):
-        raise NotImplementedError("compute_mm not yet implemented")
+        """Matrix multiplication compute kernel."""
+        self.gemm(collectiveArgs)
 
     def gemm(self, collectiveArgs):
-        raise NotImplementedError("gemm not yet implemented")
+        """General matrix multiplication."""
+        collectiveArgs.MMout = torch.mm(collectiveArgs.MMin1, collectiveArgs.MMin2)
 
     def add(self, collectiveArgs):
-        raise NotImplementedError("add not yet implemented")
+        """Element-wise tensor addition."""
+        collectiveArgs.compOut = torch.add(
+            collectiveArgs.compIn1, collectiveArgs.compIn2, alpha=2
+        )
 
     def sub(self, collectiveArgs):
-        raise NotImplementedError("sub not yet implemented")
+        """Element-wise tensor subtraction."""
+        collectiveArgs.compOut = torch.sub(
+            collectiveArgs.compIn1, collectiveArgs.compIn2, alpha=2
+        )
 
     def add_num(self, collectiveArgs):
-        raise NotImplementedError("add_num not yet implemented")
+        """Add scalar to tensor."""
+        collectiveArgs.compOut = torch.add(collectiveArgs.compIn1, 20)
 
     def sub_num(self, collectiveArgs):
-        raise NotImplementedError("sub_num not yet implemented")
+        """Subtract scalar from tensor."""
+        collectiveArgs.compOut = torch.sub(collectiveArgs.compIn1, 20)
 
     def copy(self, collectiveArgs):
-        raise NotImplementedError("copy not yet implemented")
+        """Copy tensor."""
+        collectiveArgs.compIn1.copy_(collectiveArgs.compOut)
 
     def emb_lookup(self, collectiveArgs):
-        raise NotImplementedError("emb_lookup not yet implemented")
+        """Embedding table lookup."""
+        if collectiveArgs.direction == "forward":
+            for i in range(len(collectiveArgs.embRequests)):
+                (indices, offsets, weights) = collectiveArgs.embRequests[i]
+                collectiveArgs.LookupOut = collectiveArgs.emb[i].forward(
+                    indices,
+                    offsets,
+                    weights,
+                )
+        else:
+            # Backward pass
+            for i in range(len(collectiveArgs.embRequests)):
+                (indices, offsets, weights) = collectiveArgs.embRequests[i]
+                collectiveArgs.LookupOut.backward(
+                    collectiveArgs.grad_output,
+                    retain_graph=collectiveArgs.reuseTensors,
+                )
 
     # =========================================================================
     # Metadata
