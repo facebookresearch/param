@@ -174,10 +174,10 @@ class PyTorchTorchCommsBackend(BaseBackend):
                 logger.info("Hello from Rank %d: %s", rank, rank_hello_msg)
 
     def store_get(self, key):
-        raise NotImplementedError("store_get not yet implemented")
+        return self.tcp_store.get(key)
 
     def store_set(self, key, val):
-        raise NotImplementedError("store_set not yet implemented")
+        self.tcp_store.set(key, val)
 
     # =========================================================================
     # Memory
