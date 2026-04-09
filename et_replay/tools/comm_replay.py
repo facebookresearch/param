@@ -121,7 +121,9 @@ class commsTraceReplayBench(paramCommsBench):
     """
 
     def __init__(self):
-        super().__init__(supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu"])
+        super().__init__(
+            supportedNwstacks=["pytorch-dist", "pytorch-xla-tpu", "pytorch-torchcomms"]
+        )
         self.comms_trace = {}
         self.trace_files = []  # List of paths
         self.trace_file = ""  # Selected path in list
@@ -1705,6 +1707,30 @@ class commsTraceReplayBench(paramCommsBench):
             from et_replay.comm.backend.pytorch_tpu_backend import PyTorchTPUBackend
 
             self.backendFuncs = PyTorchTPUBackend(bootstrap_info, commsParams)
+        elif commsParams.nw_stack == "pytorch-torchcomms":
+            torchcomms_backend_key = f"{commsParams.backend}_torchcomms"
+            try:
+                from et_replay.comm.backend.base_backend import customized_backend
+
+                if torchcomms_backend_key in customized_backend:
+                    self.backendFuncs = customized_backend[torchcomms_backend_key](
+                        bootstrap_info, commsParams
+                    )
+                else:
+                    from et_replay.comm.backend.pytorch_torchcomms_backend import (
+                        PyTorchTorchCommsBackend,
+                    )
+
+                    self.backendFuncs = PyTorchTorchCommsBackend(
+                        bootstrap_info, commsParams
+                    )
+            except KeyError as e:
+                logger.error(
+                    "Unsupported torchcomms backend %s: %s",
+                    commsParams.backend,
+                    e,
+                )
+                comms_utils.gracefulExit()
         else:
             # check for customized backend
             try:
