@@ -91,17 +91,49 @@ class PyTorchTorchCommsBackend(BaseBackend):
     # =========================================================================
     # P2P
     # =========================================================================
+    def send(self, collectiveArgs, retFlag=False, tag=0):
+        work = self.torchcomm.send(
+            collectiveArgs.ipTensor, collectiveArgs.dst_rank, async_op=False
+        )
+        if retFlag:
+            return work
+
+    def recv(self, collectiveArgs, retFlag=False, tag=0):
+        work = self.torchcomm.recv(
+            collectiveArgs.opTensor, collectiveArgs.src_rank, async_op=False
+        )
+        if retFlag:
+            return work
+
     def isend(self, collectiveArgs, retFlag=False, tag=0):
-        raise NotImplementedError("isend not yet implemented")
+        """Async send to destination rank."""
+        retObj = self.torchcomm.send(
+            collectiveArgs.ipTensor, collectiveArgs.dst_rank, async_op=True
+        )
+        collectiveArgs.waitObj.append(retObj)
+        if retFlag:
+            return retObj
 
     def irecv(self, collectiveArgs, retFlag=False, tag=0):
-        raise NotImplementedError("irecv not yet implemented")
+        """Async receive from source rank."""
+        retObj = self.torchcomm.recv(
+            collectiveArgs.opTensor, collectiveArgs.src_rank, async_op=True
+        )
+        collectiveArgs.waitObj.append(retObj)
+        if retFlag:
+            return retObj
 
     def P2POp(self, collectiveArgs, retFlag=False, tag=0):
-        raise NotImplementedError("P2POp not yet implemented")
+        raise NotImplementedError(
+            "P2POp is not supported in torchcomms backend. "
+            "Torchcomms does not have a native dist.P2POp equivalent."
+        )
 
     def batch_isend_irecv(self, collectiveArgs, retFlag=False):
-        raise NotImplementedError("batch_isend_irecv not yet implemented")
+        raise NotImplementedError(
+            "batch_isend_irecv is not supported in torchcomms backend. "
+            "Torchcomms does not have a native dist.batch_isend_irecv equivalent."
+        )
 
     # =========================================================================
     # Sync
