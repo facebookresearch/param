@@ -18,12 +18,13 @@ from __future__ import annotations
 
 import logging
 import os
+from itertools import cycle
 
 import numpy as np
 import torch
 import torch.nn as nn
 from et_replay.comm.backend.base_backend import BaseBackend, collectiveArgsHolder
-from torchcomms import ReduceOp
+from torchcomms import new_comm, ReduceOp
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -720,18 +721,93 @@ class PyTorchTorchCommsBackend(BaseBackend):
     # Init
     # =========================================================================
     def __init__(self, bootstrap_info, commsParams):
-        raise NotImplementedError("__init__ not yet implemented")
+        super().__init__()
+
+        self.bootstrap_info = bootstrap_info
+        self.commsParams = commsParams
+        self.torchcomm = None
+        self.tcp_store = None
+        self.groupRanks = {}
+
+        # extra ops supported (Note these are not supported in pytorch_tpu_backend.py)
+        self.collectiveFunc["wait"] = (
+            self.wait
+        )  # a noop until all collective operations can post a wait operation or specify async vs not async
+
+        # ExecutionTraceObserver dump records from cpp level, which are always async send/recv.
+        # Then replay in torch.distributed API level, we should use isend/irecv.
+        self.collectiveFunc["send"] = self.isend
+        self.collectiveFunc["recv"] = self.irecv
+        self.collectiveFunc["batch_isend_irecv"] = (
+            self.noop
+        )  # torchcomms does not support batch_isend_irecv
+        self.collectiveFunc["pt2pt"] = (
+            self.noop
+        )  # dummy entry to support pt2pt benchmark
+
+        self.computeFunc["emb_lookup"] = self.emb_lookup
+        self.computeFunc["add"] = self.add
+        self.computeFunc["sub"] = self.sub
+        self.computeFunc["add_num"] = self.add_num
+        self.computeFunc["sub_num"] = self.sub_num
+        self.computeFunc["copy"] = self.copy
 
     def initialize_backend(
         self, master_ip, master_port, backend="ncclx", eager_mode=False
     ):
-        raise NotImplementedError("initialize_backend not yet implemented")
+        """Initialize the torchcomms backend."""
+
+        # Create TCP store for coordination (sayHello, store_get/set)
+        world_size = self.bootstrap_info.world_size
+        global_rank = self.bootstrap_info.global_rank
+        is_master = global_rank == 0
+
+        self.tcp_store = torch.distributed.TCPStore(
+            host_name=master_ip,
+            port=int(master_port),
+            world_size=world_size,
+            is_master=is_master,
+            rank=global_rank,
+            use_libuv=True,
+        )
+
+        # Initialize torchcomms
+        device = self.get_device()
+
+        # Use the specified backend, defaulting to ncclx for torchcomms
+        self.torchcomm = new_comm(
+            backend,
+            device,
+            name="et_replay_comm",
+            rank=self.bootstrap_info.global_rank,
+            world_size=self.bootstrap_info.world_size,
+        )
+
+        logger.info(
+            "Initialized torchcomms backend with %s on device %s", backend, device
+        )
+
+        self.groups = {}
+        self.groups[0] = self.get_default_group()
+        self.num_pgs = len(self.groups)
+        self.round_robin_group = cycle(list(self.groups.values()))
 
     def initialize_groups(self, backend="ncclx"):
-        raise NotImplementedError("initialize_groups not yet implemented")
+        """Initialize additional process groups if provided"""
+        """Following the pattern in param bench, we only support 1 group for now"""
+        raise NotImplementedError("multi-groups not implemented for torchcomms")
 
     def benchmark_comms(self, benchTime, commsParams):
-        raise NotImplementedError("benchmark_comms not yet implemented")
+        """Run communication benchmarks."""
+        index = 0
+        if commsParams.init_only:
+            import time
+
+            time.sleep(10)
+        else:
+            benchTime(index, commsParams, self)
 
     def __del__(self):
-        raise NotImplementedError("__del__ not yet implemented")
+        """Cleanup torchcomms resources."""
+        if hasattr(self, "torchcomm") and self.torchcomm is not None:
+            self.torchcomm.finalize()
