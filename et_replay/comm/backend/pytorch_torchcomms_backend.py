@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import os
 
+import numpy as np
 import torch
 from et_replay.comm.backend.base_backend import BaseBackend, collectiveArgsHolder
 
@@ -277,26 +278,57 @@ class PyTorchTorchCommsBackend(BaseBackend):
     # Stream Management
     # =========================================================================
     def get_new_stream(self):
-        raise NotImplementedError("get_new_stream not yet implemented")
+        """Get/allocate a new stream."""
+        if self.commsParams.device == "cuda":
+            return torch.cuda.Stream(device=self.get_device(), priority=0)
+        else:
+            return None
 
     def get_new_event(self, enable_timing=False):
-        raise NotImplementedError("get_new_event not yet implemented")
+        if self.commsParams.device == "cuda":
+            return torch.cuda.Event(enable_timing)
+        else:
+            return None
 
     def get_current_stream(self, device: torch.device | None):
-        raise NotImplementedError("get_current_stream not yet implemented")
+        if self.commsParams.device == "cuda":
+            return torch.cuda.current_stream(device)
+        else:
+            return None
 
     def switch_stream(self, stream, device: torch.device | None):
-        raise NotImplementedError("switch_stream not yet implemented")
+        """switch to a new stream and return the current stream"""
+        if device is None:
+            device = self.get_device()
+        if stream is not None and device.type == "cuda":
+            cur_stream = torch.cuda.current_stream(device=device)
+            torch.cuda.set_stream(stream)
+            return cur_stream
+        else:
+            return None
 
     def sync_stream(
         self,
         stream: torch.cuda.Stream | None = None,
         device: torch.device | None = None,
     ):
-        raise NotImplementedError("sync_stream not yet implemented")
+        """Synchronize a stream with its associated device"""
+        if device is not None and device.type == "cuda":
+            # if the stream is None, sync on the current default stream
+            cur_stream = (
+                stream
+                if stream is not None
+                else torch.cuda.current_stream(device=device)
+            )
+            cur_stream.synchronize()
+        else:
+            # no stream available, do nothing
+            pass
 
     def tensor_list_to_numpy(self, tensorList):
-        raise NotImplementedError("tensor_list_to_numpy not yet implemented")
+        if isinstance(tensorList, list):
+            tensorList = [t.cpu().detach().numpy() for t in tensorList]
+        return np.array(tensorList)
 
     # =========================================================================
     # Init
