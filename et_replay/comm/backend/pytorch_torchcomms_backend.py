@@ -21,8 +21,8 @@ import os
 
 import numpy as np
 import torch
+import torch.nn as nn
 from et_replay.comm.backend.base_backend import BaseBackend, collectiveArgsHolder
-
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -184,7 +184,41 @@ class PyTorchTorchCommsBackend(BaseBackend):
     # Memory
     # =========================================================================
     def get_mem_size(self, collectiveArgs, pair=False):
-        raise NotImplementedError("get_mem_size not yet implemented")
+        """Get memory size of input/output tensors in bytes."""
+        _sizeBytes = 0
+        if isinstance(collectiveArgs.opTensor, list):
+            _sizeBytes = sum(
+                [t.nelement() * t.element_size() for t in collectiveArgs.opTensor]
+            )
+        elif isinstance(collectiveArgs.ipTensor, list):
+            _sizeBytes = sum(
+                [t.nelement() * t.element_size() for t in collectiveArgs.ipTensor]
+            )
+        elif collectiveArgs.collective in ["reduce_scatter_v", "reduce_scatter_base"]:
+            _sizeBytes = (
+                collectiveArgs.ipTensor.nelement()
+                * collectiveArgs.ipTensor.element_size()
+            )
+        else:
+            _sizeBytes = (
+                collectiveArgs.opTensor.nelement()
+                * collectiveArgs.opTensor.element_size()
+            )
+        if pair:
+            if isinstance(collectiveArgs.opTensor_pair, list):
+                _sizeBytes = sum(
+                    [
+                        t.nelement() * t.element_size()
+                        for t in collectiveArgs.opTensor_pair
+                    ]
+                )
+            else:
+                _sizeBytes = (
+                    collectiveArgs.opTensor_pair.nelement()
+                    * collectiveArgs.opTensor_pair.element_size()
+                )
+
+        return _sizeBytes
 
     def alloc_random(
         self,
@@ -193,16 +227,58 @@ class PyTorchTorchCommsBackend(BaseBackend):
         dtype=torch.float32,
         scaleFactor=1.0,
     ):
-        raise NotImplementedError("alloc_random not yet implemented")
+        """Allocate a tensor with random values on the specified device."""
+        if dtype in (
+            torch.int8,
+            torch.uint8,
+            torch.short,
+            torch.int16,
+            torch.int32,
+            torch.long,
+        ):
+            ipTensor = torch.randint(
+                low=0, high=10, size=tuple(sizeArr), device=curRankDevice, dtype=dtype
+            )
+        elif dtype == torch.bool:
+            ipTensor = (
+                torch.rand(sizeArr, device=curRankDevice, dtype=torch.float32) < 0.5
+            )
+        else:
+            ipTensor = torch.rand(sizeArr, device=curRankDevice, dtype=dtype)
+            if (scaleFactor) != 0:
+                ipTensor = ipTensor / scaleFactor
+        return ipTensor
 
     def alloc_embedding_tables(self, n, m, curRankDevice, dtype):
-        raise NotImplementedError("alloc_embedding_tables not yet implemented")
+        """Allocate embedding tables with random values."""
+        EE = nn.EmbeddingBag(n, m, mode="sum", sparse=True)
+
+        W = np.random.uniform(
+            low=-(np.sqrt(1 / n)), high=np.sqrt(1 / n), size=(n, m)
+        ).astype(np.float32)
+
+        EE.weight.data = torch.tensor(
+            W, dtype=dtype, requires_grad=True, device=curRankDevice
+        )
+        return EE
 
     def alloc_empty(self, sizeArr, dtype, curRankDevice):
-        raise NotImplementedError("alloc_empty not yet implemented")
+        """Allocate an empty tensor (uninitialized) on the specified device."""
+        return torch.empty(sizeArr, device=curRankDevice, dtype=dtype)
 
     def clear_memory(self, collectiveArgs):
-        raise NotImplementedError("clear_memory not yet implemented")
+        """Clear memory by deleting tensors and running garbage collection."""
+        if collectiveArgs.ipTensor is not None:
+            del collectiveArgs.ipTensor
+
+        if collectiveArgs.opTensor is not None:
+            del collectiveArgs.opTensor
+
+        if collectiveArgs.ipTensor_pair is not None:
+            del collectiveArgs.ipTensor_pair
+            del collectiveArgs.opTensor_pair
+
+        torch.cuda.empty_cache()
 
     # =========================================================================
     # Rank / World Info
