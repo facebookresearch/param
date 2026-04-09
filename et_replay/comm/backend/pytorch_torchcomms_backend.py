@@ -23,6 +23,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from et_replay.comm.backend.base_backend import BaseBackend, collectiveArgsHolder
+from torchcomms import ReduceOp
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -106,25 +107,60 @@ class PyTorchTorchCommsBackend(BaseBackend):
     # Sync
     # =========================================================================
     def device_sync(self, collectiveArgs):
-        raise NotImplementedError("device_sync not yet implemented")
+        """Synchronize the device."""
+        dev_str = self.commsParams.device
+        if dev_str == "cuda":
+            torch.cuda.synchronize(collectiveArgs.device)
 
     def complete_accel_ops(self, collectiveArgs, devSync=True):
-        raise NotImplementedError("complete_accel_ops not yet implemented")
+        """Complete all pending accelerator operations."""
+        for waitReq in collectiveArgs.waitObj:
+            if waitReq is not None:
+                waitReq.wait()
+        collectiveArgs.waitObj.clear()
+        collectiveArgs.waitObjIds.clear()
+
+        if devSync:
+            self.device_sync(collectiveArgs)
 
     def wait(self, collectiveArgs, retFlag=False):
-        raise NotImplementedError("wait not yet implemented")
+        """Wait for a specific async operation identified by wait_obj_key."""
+        # Wait on op with the matching (pg_id, req_id, is_p2p)
+        if collectiveArgs.wait_obj_key in collectiveArgs.waitObjIds:
+            work = collectiveArgs.waitObjIds.pop(collectiveArgs.wait_obj_key)
+            for i, w in enumerate(collectiveArgs.waitObj):
+                if w is work:
+                    collectiveArgs.waitObj.pop(i)
+                    break
+            work.wait()
 
     def barrier(self, collectiveArgs, name="dummy", retFlag=False):
-        raise NotImplementedError("barrier not yet implemented")
+        """Execute a barrier on the default group."""
+        work = self.torchcomm.barrier(async_op=collectiveArgs.asyncOp)
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(work)
+
+        if retFlag:
+            return work
 
     def barrier_all_ranks(self):
-        raise NotImplementedError("barrier_all_ranks not yet implemented")
+        """Execute a barrier across all ranks."""
+        self.torchcomm.barrier(async_op=False)
 
     def sync_barrier(self, collectiveArgs, desc="dummy"):
-        raise NotImplementedError("sync_barrier not yet implemented")
+        """Synchronize device, execute barrier, then sync again."""
+        self.complete_accel_ops(collectiveArgs)
+        self.barrier(collectiveArgs, name=desc)
+        self.complete_accel_ops(collectiveArgs)
 
     def get_reduce_op(self, opName):
-        raise NotImplementedError("get_reduce_op not yet implemented")
+        """Get the reduce operation for the given operation name."""
+        if opName == "sum":
+            return ReduceOp.SUM
+        elif opName == "max":
+            return ReduceOp.MAX
+        else:
+            return ReduceOp.SUM
 
     # =========================================================================
     # Compute
