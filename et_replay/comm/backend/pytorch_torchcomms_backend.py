@@ -207,37 +207,71 @@ class PyTorchTorchCommsBackend(BaseBackend):
     # Rank / World Info
     # =========================================================================
     def get_local_rank(self):
-        raise NotImplementedError("get_local_rank not yet implemented")
+        return self.bootstrap_info.local_rank
 
     def get_local_size(self):
-        raise NotImplementedError("get_local_size not yet implemented")
+        return self.bootstrap_info.local_size
 
     def get_global_rank(self):
-        raise NotImplementedError("get_global_rank not yet implemented")
+        if self.torchcomm is not None:
+            return self.torchcomm.get_rank()
+        return self.bootstrap_info.global_rank
 
     def get_world_size(self):
-        raise NotImplementedError("get_world_size not yet implemented")
+        if self.torchcomm is not None:
+            return self.torchcomm.get_size()
+        return self.bootstrap_info.world_size
 
     def get_group_rank(self, group):
-        raise NotImplementedError("get_group_rank not yet implemented")
+        if group is not None and hasattr(group, "get_rank"):
+            return group.get_rank()
+        return self.get_global_rank()
 
     def get_group_size(self, group):
-        raise NotImplementedError("get_group_size not yet implemented")
+        if group is not None and hasattr(group, "get_size"):
+            return group.get_size()
+        return self.get_world_size()
 
     def get_device(self):
-        raise NotImplementedError("get_device not yet implemented")
+        """Get current device"""
+        dev_str = self.commsParams.device
+        my_dev = torch.device(dev_str)
+        if dev_str == "cuda":
+            # explicitly select the device ordinal based on the local rank
+            ordinal = self.get_local_rank()
+            if self.get_local_rank() == -1:
+                logger.warning(
+                    "Cannot determine device ordinal since LOCAL_RANK is -1. Try GPU 0 and continue. "
+                )
+                ordinal = 0
+            my_dev = torch.device(f"cuda:{ordinal}")
+        elif dev_str != "cpu":
+            # sanity check, such error should be caught when parsing arguments
+            raise ValueError(f"{dev_str} is not a valid device option")
+        return my_dev
 
     def get_hw_device(self):
-        raise NotImplementedError("get_hw_device not yet implemented")
+        return self.get_device()
 
     def get_default_group(self):
-        raise NotImplementedError("get_default_group not yet implemented")
+        return self.torchcomm
 
     def get_groups(self):
-        raise NotImplementedError("get_groups not yet implemented")
+        return self.groups
 
     def set_device(self, local_rank, global_rank):
-        raise NotImplementedError("set_device not yet implemented")
+        """Set current device"""
+        dev_str = self.commsParams.device
+        if dev_str.startswith("cuda"):
+            if local_rank >= torch.cuda.device_count():
+                raise ValueError(
+                    f"Insufficient #GPUs: available {torch.cuda.device_count()} requested {local_rank}"
+                )
+            torch.cuda.set_device(local_rank)
+
+        logger.info(
+            "rank %s set torch device to %s:%s", global_rank, dev_str, local_rank
+        )
 
     # =========================================================================
     # Stream Management
