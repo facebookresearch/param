@@ -41,52 +41,267 @@ class PyTorchTorchCommsBackend(BaseBackend):
     # Collectives
     # =========================================================================
     def all_reduce(self, collectiveArgs, retFlag=False, pair=False):
-        raise NotImplementedError("all_reduce not yet implemented")
+        collectiveArgs.opTensor = collectiveArgs.ipTensor
+        tensor = collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
 
-    def allreduce_coalesced(self, collectiveArgs, retFlag=False, pair=False):
-        raise NotImplementedError("allreduce_coalesced not yet implemented")
+        op = self.get_reduce_op(
+            collectiveArgs.op if hasattr(collectiveArgs, "op") else "sum"
+        )
+
+        retObj = self.torchcomm.all_reduce(tensor, op, async_op=collectiveArgs.asyncOp)
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
 
     def reduce(self, collectiveArgs, retFlag=False, pair=False):
-        raise NotImplementedError("reduce not yet implemented")
+        tensor = collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
+
+        op = self.get_reduce_op(
+            collectiveArgs.op if hasattr(collectiveArgs, "op") else "sum"
+        )
+
+        retObj = self.torchcomm.reduce(
+            tensor,
+            collectiveArgs.srcOrDst,
+            op,
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
 
     def all_to_all(
         self, collectiveArgs: collectiveArgsHolder, retFlag=False, pair=False
     ):
-        raise NotImplementedError("all_to_all not yet implemented")
+        work = self.torchcomm.all_to_all(
+            collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
+            collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(work)
+
+        if retFlag:
+            return work
+
+    def all_to_all_single(self, collectiveArgs, retFlag=False, pair=False):
+        work = self.torchcomm.all_to_all_single(
+            collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
+            collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(work)
+
+        if retFlag:
+            return work
 
     def all_to_allv(self, collectiveArgs, retFlag=False, pair=False):
-        raise NotImplementedError("all_to_allv not yet implemented")
+        # Handle dtype mismatch between opTensor and ipTensor
+        opTensor = collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair
+        ipTensor = collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
+        if opTensor.dtype != ipTensor.dtype:
+            logger.warning("all_to_allv: opTensor and ipTensor are not the same dtype")
+            opTensor = opTensor.to(ipTensor.dtype)
+            if not pair:
+                collectiveArgs.opTensor = opTensor
+            else:
+                collectiveArgs.opTensor_pair = opTensor
+
+        work = self.torchcomm.all_to_all_v_single(
+            opTensor,
+            ipTensor,
+            (
+                collectiveArgs.opTensor_split
+                if not pair
+                else collectiveArgs.opTensor_split_pair
+            ),
+            (
+                collectiveArgs.ipTensor_split
+                if not pair
+                else collectiveArgs.ipTensor_split_pair
+            ),
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(work)
+
+        if retFlag:
+            return work
 
     def all_gather(self, collectiveArgs, retFlag=False, pair=False):
-        raise NotImplementedError("all_gather not yet implemented")
+        retObj = self.torchcomm.all_gather(
+            tensor_list=(
+                collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair
+            ),
+            tensor=(
+                collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
+            ),
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
+    def all_gather_base(self, collectiveArgs, retFlag=False, pair=False):
+        if pair:
+            ipTensor = collectiveArgs.ipTensor_pair
+            opTensor = collectiveArgs.opTensor_pair
+        else:
+            ipTensor = collectiveArgs.ipTensor
+            opTensor = collectiveArgs.opTensor
+
+        retObj = self.torchcomm.all_gather_single(
+            output_tensor=opTensor,
+            input_tensor=ipTensor,
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
+    def gather(self, collectiveArgs, retFlag=False, pair=False):
+        if pair:
+            ipTensors = collectiveArgs.ipTensor_pair
+            opTensors = collectiveArgs.opTensor_pair
+        else:
+            ipTensors = collectiveArgs.ipTensor
+            opTensors = collectiveArgs.opTensor
+
+        retObj = self.torchcomm.gather(
+            opTensors
+            if (collectiveArgs.global_rank == collectiveArgs.srcOrDst)
+            else None,
+            ipTensors,
+            collectiveArgs.srcOrDst,
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
+    def scatter(self, collectiveArgs, retFlag=False, pair=False):
+        if pair:
+            ipTensors = collectiveArgs.ipTensor_pair
+            opTensors = collectiveArgs.opTensor_pair
+        else:
+            ipTensors = collectiveArgs.ipTensor
+            opTensors = collectiveArgs.opTensor
+
+        retObj = self.torchcomm.scatter(
+            opTensors,
+            ipTensors
+            if (collectiveArgs.global_rank == collectiveArgs.srcOrDst)
+            else None,
+            collectiveArgs.srcOrDst,
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
+    def reduce_scatter(self, collectiveArgs, retFlag=False, pair=False):
+        if pair:
+            ipTensor = collectiveArgs.ipTensor_pair
+            opTensor = collectiveArgs.opTensor_pair
+        else:
+            ipTensor = collectiveArgs.ipTensor
+            opTensor = collectiveArgs.opTensor
+
+        op = self.get_reduce_op(
+            collectiveArgs.op if hasattr(collectiveArgs, "op") else "sum"
+        )
+
+        retObj = self.torchcomm.reduce_scatter(
+            output=opTensor,
+            input_list=ipTensor,
+            op=op,
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
+    def reduce_scatter_base(self, collectiveArgs, retFlag=False, pair=False):
+        if pair:
+            ipTensor = collectiveArgs.ipTensor_pair
+            opTensor = collectiveArgs.opTensor_pair
+        else:
+            ipTensor = collectiveArgs.ipTensor
+            opTensor = collectiveArgs.opTensor
+
+        op = self.get_reduce_op(
+            collectiveArgs.op if hasattr(collectiveArgs, "op") else "sum"
+        )
+
+        retObj = self.torchcomm.reduce_scatter_single(
+            output=opTensor,
+            input=ipTensor,
+            op=op,
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
+    def broadcast(self, collectiveArgs, retFlag=False, pair=False):
+        retObj = self.torchcomm.broadcast(
+            tensor=(
+                collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair
+            ),
+            src=collectiveArgs.srcOrDst,
+            async_op=collectiveArgs.asyncOp,
+        )
+
+        if collectiveArgs.asyncOp:
+            collectiveArgs.waitObj.append(retObj)
+
+        if retFlag:
+            return retObj
+
+    def allreduce_coalesced(self, collectiveArgs, retFlag=False, pair=False):
+        raise NotImplementedError("allreduce_coalesced not supported in TorchComms")
 
     def allgather_into_tensor_coalesced(
         self, collectiveArgs, retFlag=False, pair=False
     ):
-        raise NotImplementedError("allgather_into_tensor_coalesced not yet implemented")
-
-    def gather(self, collectiveArgs, retFlag=False, pair=False):
-        raise NotImplementedError("gather not yet implemented")
-
-    def scatter(self, collectiveArgs, retFlag=False, pair=False):
-        raise NotImplementedError("scatter not yet implemented")
-
-    def reduce_scatter(self, collectiveArgs, retFlag=False, pair=False):
-        raise NotImplementedError("reduce_scatter not yet implemented")
-
-    def reduce_scatter_base(self, collectiveArgs, retFlag=False, pair=False):
-        raise NotImplementedError("reduce_scatter_base not yet implemented")
+        raise NotImplementedError(
+            "allgather_into_tensor_coalesced not supported in TorchComms"
+        )
 
     def reduce_scatter_tensor_coalesced(
         self, collectiveArgs, retFlag=False, pair=False
     ):
-        raise NotImplementedError("reduce_scatter_tensor_coalesced not yet implemented")
-
-    def all_gather_base(self, collectiveArgs, retFlag=False, pair=False):
-        raise NotImplementedError("all_gather_base not yet implemented")
-
-    def broadcast(self, collectiveArgs, retFlag=False, pair=False):
-        raise NotImplementedError("broadcast not yet implemented")
+        raise NotImplementedError(
+            "reduce_scatter_tensor_coalesced not supported in TorchComms"
+        )
 
     # =========================================================================
     # P2P
