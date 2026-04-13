@@ -768,14 +768,9 @@ class PyTorchTorchcommsBackend(backendFunctions):
         """Initialize additional process groups using torchcomms split communicators.
 
         Uses self.torchcomm.split() to create lightweight child communicators
-        from the parent world communicator. This leverages torchcomms' split
-        communicator primitive (ncclCommSplit) instead of PG's dist.new_group()
-        (ncclCommInitRank), which is faster and reuses parent transport resources.
-
-        Only groups where this rank is a member are added to self.groups,
-        since split() returns None for non-member ranks and collectives
-        should only be called on groups this rank belongs to.
-        """
+        from the parent world communicator. Unlike PG's dist.new_group() which
+        requires all ranks to participate, torchcomm.split() must only be called
+        by member ranks — non-member ranks skip the split call entirely."""
         if groupRanks is not None:
             self.groupRanks = groupRanks
         else:
@@ -796,27 +791,27 @@ class PyTorchTorchcommsBackend(backendFunctions):
                     f"Group {pg_id} has {len(group_ranks)} ranks but world size is {world_size}"
                 )
 
+            if global_rank not in group_ranks:
+                logger.info(
+                    f"Rank {global_rank} not in group pg_{pg_id} ({group_ranks}), skipping"
+                )
+                continue
+
             if len(group_ranks) == world_size and (
                 first_global_pg or not force_new_group
             ):
                 groups[pg_id] = self.get_default_group()
                 first_global_pg = False
             else:
-                # split() is collective: ALL ranks must call it, but only
-                # member ranks get a valid communicator back (non-members get None).
                 split_comm = self.torchcomm.split(group_ranks, name=f"pg_{pg_id}")
                 if split_comm is not None:
                     groups[pg_id] = split_comm
                     logger.info(
                         f"Rank {global_rank} joined split group pg_{pg_id} with ranks {group_ranks}"
                     )
-                elif global_rank in group_ranks:
+                else:
                     logger.error(
                         f"Rank {global_rank} is in group pg_{pg_id} ({group_ranks}) but split() returned None"
-                    )
-                else:
-                    logger.info(
-                        f"Rank {global_rank} not in group pg_{pg_id} ({group_ranks}), skipping"
                     )
 
         if groups:
