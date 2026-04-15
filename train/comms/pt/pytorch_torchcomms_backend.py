@@ -671,7 +671,7 @@ class PyTorchTorchcommsBackend(backendFunctions):
         return list(self.groups.values())
 
     def get_num_pgs(self):
-        return len(self.groups)
+        return self.num_pgs
 
     def get_next_group(self):
         if hasattr(self, "round_robin_group"):
@@ -768,9 +768,10 @@ class PyTorchTorchcommsBackend(backendFunctions):
         """Initialize additional process groups using torchcomms split communicators.
 
         Uses self.torchcomm.split() to create lightweight child communicators
-        from the parent world communicator. Unlike PG's dist.new_group() which
-        requires all ranks to participate, torchcomm.split() must only be called
-        by member ranks — non-member ranks skip the split call entirely."""
+        from the parent world communicator. This leverages torchcomms' split
+        communicator primitive (ncclCommSplit) instead of PG's dist.new_group()
+        (ncclCommInitRank), which is faster and reuses parent transport resources.
+        """
         if groupRanks is not None:
             self.groupRanks = groupRanks
         else:
@@ -791,37 +792,44 @@ class PyTorchTorchcommsBackend(backendFunctions):
                     f"Group {pg_id} has {len(group_ranks)} ranks but world size is {world_size}"
                 )
 
-            if global_rank not in group_ranks:
-                logger.info(
-                    f"Rank {global_rank} not in group pg_{pg_id} ({group_ranks}), skipping"
-                )
-                continue
-
             if len(group_ranks) == world_size and (
                 first_global_pg or not force_new_group
             ):
                 groups[pg_id] = self.get_default_group()
                 first_global_pg = False
             else:
+                # split() is collective: ALL ranks must call it, but only
+                # member ranks get a valid communicator back (non-members get None).
                 split_comm = self.torchcomm.split(group_ranks, name=f"pg_{pg_id}")
                 if split_comm is not None:
                     groups[pg_id] = split_comm
                     logger.info(
                         f"Rank {global_rank} joined split group pg_{pg_id} with ranks {group_ranks}"
                     )
-                else:
+                elif global_rank in group_ranks:
                     logger.error(
                         f"Rank {global_rank} is in group pg_{pg_id} ({group_ranks}) but split() returned None"
                     )
+                    groups[pg_id] = None
+                else:
+                    logger.info(
+                        f"Rank {global_rank} not in group pg_{pg_id} ({group_ranks}), skipping"
+                    )
+                    groups[pg_id] = None
 
         if groups:
             self.groups = groups
 
-        self.num_pgs = len(self.groups)
-        self.round_robin_group = cycle(list(self.groups.values()))
+        # num_pgs and round_robin only count groups this rank is a member of
+        # (non-None values), but self.groups retains None entries so that
+        # list(self.groups.values())[pgId] indexing works correctly.
+        member_groups = [g for g in self.groups.values() if g is not None]
+        self.num_pgs = len(member_groups)
+        self.round_robin_group = cycle(member_groups)
 
         logger.info(
-            f"Rank {global_rank}: initialized {len(self.groups)} process groups via torchcomms split"
+            f"Rank {global_rank}: initialized {self.num_pgs} member process groups "
+            f"({len(self.groups)} total including non-member placeholders) via torchcomms split"
         )
 
     def benchmark_comms(self, benchTime, commsParams):
