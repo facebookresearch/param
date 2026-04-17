@@ -165,8 +165,8 @@ class PyTorchTorchCommsBackend(BaseBackend):
             opTensor = collectiveArgs.opTensor
 
         retObj = self.torchcomm.all_gather_single(
-            output_tensor=opTensor,
-            input_tensor=ipTensor,
+            opTensor,
+            ipTensor,
             async_op=collectiveArgs.asyncOp,
         )
 
@@ -795,7 +795,10 @@ class PyTorchTorchCommsBackend(BaseBackend):
     def initialize_groups(self, backend="ncclx"):
         """Initialize additional process groups if provided"""
         """Following the pattern in param bench, we only support 1 group for now"""
-        raise NotImplementedError("multi-groups not implemented for torchcomms")
+        """With --auto-shrink, all collectives use the default world group,
+    so split communicators are not needed. This is a safe no-op.
+    """
+        pass
 
     def benchmark_comms(self, benchTime, commsParams):
         """Run communication benchmarks."""
