@@ -845,5 +845,15 @@ class PyTorchTorchcommsBackend(backendFunctions):
         return
 
     def __del__(self):
-        if self.torchcomm:
-            self.torchcomm.finalize()
+        # Finalize split communicators before the world communicator
+        for group in getattr(self, "groups", {}).values():
+            if group is not None and group is not getattr(self, "torchcomm", None):
+                try:
+                    group.finalize()
+                except Exception:
+                    pass
+        if getattr(self, "torchcomm", None):
+            try:
+                self.torchcomm.finalize()
+            except Exception:
+                pass
