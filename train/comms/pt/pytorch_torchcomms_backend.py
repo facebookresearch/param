@@ -67,8 +67,20 @@ class PyTorchTorchcommsBackend(backendFunctions):
         # This is a placeholder implementation
         pass
 
+    def _get_comm(self, collectiveArgs):
+        """Get the active communicator for this collective.
+
+        Returns collectiveArgs.group (split communicator) if available,
+        otherwise falls back to self.torchcomm (world communicator).
+        """
+        group = getattr(collectiveArgs, "group", None)
+        if group is not None:
+            return group
+        return self.torchcomm
+
     # Collectives
     def all_reduce(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         tensor = (
             collectiveArgs.ipTensor
             if not pair
@@ -80,16 +92,17 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.all_reduce(tensor, op, async_op=True)
+            work = comm.all_reduce(tensor, op, async_op=True)
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.all_reduce(tensor, op, async_op=False)
+            work = comm.all_reduce(tensor, op, async_op=False)
             if retFlag:
                 return work
 
     def reduce(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         tensor = (
             collectiveArgs.ipTensor
             if not pair
@@ -101,22 +114,19 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.reduce(
-                tensor, collectiveArgs.srcOrDst, op, async_op=True
-            )
+            work = comm.reduce(tensor, collectiveArgs.srcOrDst, op, async_op=True)
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.reduce(
-                tensor, collectiveArgs.srcOrDst, op, async_op=False
-            )
+            work = comm.reduce(tensor, collectiveArgs.srcOrDst, op, async_op=False)
             if retFlag:
                 return work
 
     def all_to_all(
         self, collectiveArgs: collectiveArgsHolder, retFlag=False, pair=False, pairIdx=0
     ):
+        comm = self._get_comm(collectiveArgs)
         output_tensors = (
             collectiveArgs.opTensor
             if not pair
@@ -129,20 +139,17 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.all_to_all(
-                output_tensors, input_tensors, async_op=True
-            )
+            work = comm.all_to_all(output_tensors, input_tensors, async_op=True)
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.all_to_all(
-                output_tensors, input_tensors, async_op=False
-            )
+            work = comm.all_to_all(output_tensors, input_tensors, async_op=False)
             if retFlag:
                 return work
 
     def all_to_allv(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         output_tensor = (
             collectiveArgs.opTensor
             if not pair
@@ -165,20 +172,21 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.all_to_all_v_single(
+            work = comm.all_to_all_v_single(
                 output_tensor, input_tensor, output_splits, input_splits, async_op=True
             )
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.all_to_all_v_single(
+            work = comm.all_to_all_v_single(
                 output_tensor, input_tensor, output_splits, input_splits, async_op=False
             )
             if retFlag:
                 return work
 
     def all_to_all_single(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         output_tensor = (
             collectiveArgs.opTensor
             if not pair
@@ -191,20 +199,17 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.all_to_all_single(
-                output_tensor, input_tensor, async_op=True
-            )
+            work = comm.all_to_all_single(output_tensor, input_tensor, async_op=True)
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.all_to_all_single(
-                output_tensor, input_tensor, async_op=False
-            )
+            work = comm.all_to_all_single(output_tensor, input_tensor, async_op=False)
             if retFlag:
                 return work
 
     def all_gather(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         tensor_list = (
             collectiveArgs.opTensor
             if not pair
@@ -217,18 +222,19 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.all_gather(tensor_list, tensor, async_op=True)
+            work = comm.all_gather(tensor_list, tensor, async_op=True)
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.all_gather(tensor_list, tensor, async_op=False)
+            work = comm.all_gather(tensor_list, tensor, async_op=False)
             if retFlag:
                 return work
 
     def all_gather_object(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         retObj = objcol.all_gather_object(
-            self.torchcomm,
+            comm,
             object_list=(
                 collectiveArgs.opTensor
                 if not pair
@@ -244,6 +250,7 @@ class PyTorchTorchcommsBackend(backendFunctions):
             return retObj
 
     def all_gather_base(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         output_tensor = (
             collectiveArgs.opTensor
             if not pair
@@ -256,20 +263,17 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.all_gather_single(
-                output_tensor, input_tensor, async_op=True
-            )
+            work = comm.all_gather_single(output_tensor, input_tensor, async_op=True)
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.all_gather_single(
-                output_tensor, input_tensor, async_op=False
-            )
+            work = comm.all_gather_single(output_tensor, input_tensor, async_op=False)
             if retFlag:
                 return work
 
     def gather(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         output_list = (
             collectiveArgs.opTensor
             if not pair
@@ -282,20 +286,21 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.gather(
+            work = comm.gather(
                 output_list, input_tensor, collectiveArgs.srcOrDst, async_op=True
             )
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.gather(
+            work = comm.gather(
                 output_list, input_tensor, collectiveArgs.srcOrDst, async_op=False
             )
             if retFlag:
                 return work
 
     def scatter(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         output_tensor = (
             collectiveArgs.opTensor
             if not pair
@@ -308,20 +313,21 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.scatter(
+            work = comm.scatter(
                 output_tensor, input_list, collectiveArgs.srcOrDst, async_op=True
             )
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.scatter(
+            work = comm.scatter(
                 output_tensor, input_list, collectiveArgs.srcOrDst, async_op=False
             )
             if retFlag:
                 return work
 
     def reduce_scatter(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         output_tensor = (
             collectiveArgs.opTensor
             if not pair
@@ -338,20 +344,17 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.reduce_scatter(
-                output_tensor, input_list, op, async_op=True
-            )
+            work = comm.reduce_scatter(output_tensor, input_list, op, async_op=True)
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.reduce_scatter(
-                output_tensor, input_list, op, async_op=False
-            )
+            work = comm.reduce_scatter(output_tensor, input_list, op, async_op=False)
             if retFlag:
                 return work
 
     def reduce_scatter_base(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         output_tensor = (
             collectiveArgs.opTensor
             if not pair
@@ -368,14 +371,14 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.reduce_scatter_single(
+            work = comm.reduce_scatter_single(
                 output_tensor, input_tensor, op, async_op=True
             )
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.reduce_scatter_single(
+            work = comm.reduce_scatter_single(
                 output_tensor, input_tensor, op, async_op=False
             )
             if retFlag:
@@ -386,6 +389,7 @@ class PyTorchTorchcommsBackend(backendFunctions):
         raise NotImplementedError("Incast not implemented for torchcomms")
 
     def broadcast(self, collectiveArgs, retFlag=False, pair=False, pairIdx=0):
+        comm = self._get_comm(collectiveArgs)
         tensor = (
             collectiveArgs.opTensor
             if not pair
@@ -393,24 +397,21 @@ class PyTorchTorchcommsBackend(backendFunctions):
         )
 
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.broadcast(
-                tensor, collectiveArgs.srcOrDst, async_op=True
-            )
+            work = comm.broadcast(tensor, collectiveArgs.srcOrDst, async_op=True)
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.broadcast(
-                tensor, collectiveArgs.srcOrDst, async_op=False
-            )
+            work = comm.broadcast(tensor, collectiveArgs.srcOrDst, async_op=False)
             if retFlag:
                 return work
 
     def broadcast_object_list(
         self, collectiveArgs, retFlag=False, pair=False, pairIdx=0
     ):
+        comm = self._get_comm(collectiveArgs)
         retObj = objcol.broadcast_object_list(
-            self.torchcomm,
+            comm,
             object_list=(
                 collectiveArgs.opTensor
                 if not pair
@@ -438,21 +439,24 @@ class PyTorchTorchcommsBackend(backendFunctions):
                 self.recv(collectiveArgs, collectiveArgs.srcOrDst)
 
     def send(self, collectiveArgs, retFlag=False, tag=0):
-        work = self.torchcomm.send(
+        comm = self._get_comm(collectiveArgs)
+        work = comm.send(
             collectiveArgs.ipTensor, collectiveArgs.dst_rank, async_op=False
         )
         if retFlag:
             return work
 
     def recv(self, collectiveArgs, retFlag=False, tag=0):
-        work = self.torchcomm.recv(
+        comm = self._get_comm(collectiveArgs)
+        work = comm.recv(
             collectiveArgs.opTensor, collectiveArgs.src_rank, async_op=False
         )
         if retFlag:
             return work
 
     def isend(self, collectiveArgs, retFlag=False, tag=0):
-        work = self.torchcomm.send(
+        comm = self._get_comm(collectiveArgs)
+        work = comm.send(
             collectiveArgs.ipTensor, collectiveArgs.dst_rank, async_op=True
         )
         collectiveArgs.waitObj.append(work)
@@ -460,7 +464,8 @@ class PyTorchTorchcommsBackend(backendFunctions):
             return work
 
     def irecv(self, collectiveArgs, retFlag=False, tag=0):
-        work = self.torchcomm.recv(
+        comm = self._get_comm(collectiveArgs)
+        work = comm.recv(
             collectiveArgs.opTensor, collectiveArgs.src_rank, async_op=True
         )
         collectiveArgs.waitObj.append(work)
@@ -468,13 +473,14 @@ class PyTorchTorchcommsBackend(backendFunctions):
             return work
 
     def barrier(self, collectiveArgs, name="dummy", retFlag=False):
+        comm = self._get_comm(collectiveArgs)
         if collectiveArgs.asyncOp:
-            work = self.torchcomm.barrier(async_op=True)
+            work = comm.barrier(async_op=True)
             collectiveArgs.waitObj.append(work)
             if retFlag:
                 return work
         else:
-            work = self.torchcomm.barrier(async_op=False)
+            work = comm.barrier(async_op=False)
             if retFlag:
                 return work
 
