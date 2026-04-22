@@ -16,8 +16,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+from collections import defaultdict
 from itertools import cycle
 
 import numpy as np
@@ -38,10 +40,18 @@ class PyTorchTorchCommsBackend(BaseBackend):
     torch.distributed. Quantization and extend_distributed are not applicable.
     """
 
+    def _get_comm(self, collectiveArgs):
+        """Get the active communicator for this collective."""
+        group = getattr(collectiveArgs, "group", None)
+        if group is not None:
+            return group
+        return self.torchcomm
+
     # =========================================================================
     # Collectives
     # =========================================================================
     def all_reduce(self, collectiveArgs, retFlag=False, pair=False):
+        comm = self._get_comm(collectiveArgs)
         collectiveArgs.opTensor = collectiveArgs.ipTensor
         tensor = collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
 
@@ -49,7 +59,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             collectiveArgs.op if hasattr(collectiveArgs, "op") else "sum"
         )
 
-        retObj = self.torchcomm.all_reduce(tensor, op, async_op=collectiveArgs.asyncOp)
+        retObj = comm.all_reduce(tensor, op, async_op=collectiveArgs.asyncOp)
 
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(retObj)
@@ -58,13 +68,14 @@ class PyTorchTorchCommsBackend(BaseBackend):
             return retObj
 
     def reduce(self, collectiveArgs, retFlag=False, pair=False):
+        comm = self._get_comm(collectiveArgs)
         tensor = collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
 
         op = self.get_reduce_op(
             collectiveArgs.op if hasattr(collectiveArgs, "op") else "sum"
         )
 
-        retObj = self.torchcomm.reduce(
+        retObj = comm.reduce(
             tensor,
             collectiveArgs.srcOrDst,
             op,
@@ -80,7 +91,8 @@ class PyTorchTorchCommsBackend(BaseBackend):
     def all_to_all(
         self, collectiveArgs: collectiveArgsHolder, retFlag=False, pair=False
     ):
-        work = self.torchcomm.all_to_all(
+        comm = self._get_comm(collectiveArgs)
+        work = comm.all_to_all(
             collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
             collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
             async_op=collectiveArgs.asyncOp,
@@ -93,7 +105,8 @@ class PyTorchTorchCommsBackend(BaseBackend):
             return work
 
     def all_to_all_single(self, collectiveArgs, retFlag=False, pair=False):
-        work = self.torchcomm.all_to_all_single(
+        comm = self._get_comm(collectiveArgs)
+        work = comm.all_to_all_single(
             collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair,
             collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair,
             async_op=collectiveArgs.asyncOp,
@@ -106,6 +119,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             return work
 
     def all_to_allv(self, collectiveArgs, retFlag=False, pair=False):
+        comm = self._get_comm(collectiveArgs)
         # Handle dtype mismatch between opTensor and ipTensor
         opTensor = collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair
         ipTensor = collectiveArgs.ipTensor if not pair else collectiveArgs.ipTensor_pair
@@ -117,7 +131,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             else:
                 collectiveArgs.opTensor_pair = opTensor
 
-        work = self.torchcomm.all_to_all_v_single(
+        work = comm.all_to_all_v_single(
             opTensor,
             ipTensor,
             (
@@ -140,7 +154,8 @@ class PyTorchTorchCommsBackend(BaseBackend):
             return work
 
     def all_gather(self, collectiveArgs, retFlag=False, pair=False):
-        retObj = self.torchcomm.all_gather(
+        comm = self._get_comm(collectiveArgs)
+        retObj = comm.all_gather(
             tensor_list=(
                 collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair
             ),
@@ -157,6 +172,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             return retObj
 
     def all_gather_base(self, collectiveArgs, retFlag=False, pair=False):
+        comm = self._get_comm(collectiveArgs)
         if pair:
             ipTensor = collectiveArgs.ipTensor_pair
             opTensor = collectiveArgs.opTensor_pair
@@ -164,7 +180,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             ipTensor = collectiveArgs.ipTensor
             opTensor = collectiveArgs.opTensor
 
-        retObj = self.torchcomm.all_gather_single(
+        retObj = comm.all_gather_single(
             opTensor,
             ipTensor,
             async_op=collectiveArgs.asyncOp,
@@ -177,6 +193,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             return retObj
 
     def gather(self, collectiveArgs, retFlag=False, pair=False):
+        comm = self._get_comm(collectiveArgs)
         if pair:
             ipTensors = collectiveArgs.ipTensor_pair
             opTensors = collectiveArgs.opTensor_pair
@@ -184,7 +201,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             ipTensors = collectiveArgs.ipTensor
             opTensors = collectiveArgs.opTensor
 
-        retObj = self.torchcomm.gather(
+        retObj = comm.gather(
             opTensors
             if (collectiveArgs.global_rank == collectiveArgs.srcOrDst)
             else None,
@@ -200,6 +217,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             return retObj
 
     def scatter(self, collectiveArgs, retFlag=False, pair=False):
+        comm = self._get_comm(collectiveArgs)
         if pair:
             ipTensors = collectiveArgs.ipTensor_pair
             opTensors = collectiveArgs.opTensor_pair
@@ -207,7 +225,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             ipTensors = collectiveArgs.ipTensor
             opTensors = collectiveArgs.opTensor
 
-        retObj = self.torchcomm.scatter(
+        retObj = comm.scatter(
             opTensors,
             ipTensors
             if (collectiveArgs.global_rank == collectiveArgs.srcOrDst)
@@ -223,6 +241,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             return retObj
 
     def reduce_scatter(self, collectiveArgs, retFlag=False, pair=False):
+        comm = self._get_comm(collectiveArgs)
         if pair:
             ipTensor = collectiveArgs.ipTensor_pair
             opTensor = collectiveArgs.opTensor_pair
@@ -234,7 +253,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             collectiveArgs.op if hasattr(collectiveArgs, "op") else "sum"
         )
 
-        retObj = self.torchcomm.reduce_scatter(
+        retObj = comm.reduce_scatter(
             output=opTensor,
             input_list=ipTensor,
             op=op,
@@ -248,6 +267,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             return retObj
 
     def reduce_scatter_base(self, collectiveArgs, retFlag=False, pair=False):
+        comm = self._get_comm(collectiveArgs)
         if pair:
             ipTensor = collectiveArgs.ipTensor_pair
             opTensor = collectiveArgs.opTensor_pair
@@ -259,7 +279,7 @@ class PyTorchTorchCommsBackend(BaseBackend):
             collectiveArgs.op if hasattr(collectiveArgs, "op") else "sum"
         )
 
-        retObj = self.torchcomm.reduce_scatter_single(
+        retObj = comm.reduce_scatter_single(
             output=opTensor,
             input=ipTensor,
             op=op,
@@ -273,7 +293,8 @@ class PyTorchTorchCommsBackend(BaseBackend):
             return retObj
 
     def broadcast(self, collectiveArgs, retFlag=False, pair=False):
-        retObj = self.torchcomm.broadcast(
+        comm = self._get_comm(collectiveArgs)
+        retObj = comm.broadcast(
             tensor=(
                 collectiveArgs.opTensor if not pair else collectiveArgs.opTensor_pair
             ),
@@ -308,14 +329,16 @@ class PyTorchTorchCommsBackend(BaseBackend):
     # P2P
     # =========================================================================
     def send(self, collectiveArgs, retFlag=False, tag=0):
-        work = self.torchcomm.send(
+        comm = self._get_comm(collectiveArgs)
+        work = comm.send(
             collectiveArgs.ipTensor, collectiveArgs.dst_rank, async_op=False
         )
         if retFlag:
             return work
 
     def recv(self, collectiveArgs, retFlag=False, tag=0):
-        work = self.torchcomm.recv(
+        comm = self._get_comm(collectiveArgs)
+        work = comm.recv(
             collectiveArgs.opTensor, collectiveArgs.src_rank, async_op=False
         )
         if retFlag:
@@ -323,7 +346,9 @@ class PyTorchTorchCommsBackend(BaseBackend):
 
     def isend(self, collectiveArgs, retFlag=False, tag=0):
         """Async send to destination rank."""
-        retObj = self.torchcomm.send(
+        comm = self._get_comm(collectiveArgs)
+
+        retObj = comm.send(
             collectiveArgs.ipTensor, collectiveArgs.dst_rank, async_op=True
         )
         collectiveArgs.waitObj.append(retObj)
@@ -332,7 +357,9 @@ class PyTorchTorchCommsBackend(BaseBackend):
 
     def irecv(self, collectiveArgs, retFlag=False, tag=0):
         """Async receive from source rank."""
-        retObj = self.torchcomm.recv(
+        comm = self._get_comm(collectiveArgs)
+
+        retObj = comm.recv(
             collectiveArgs.opTensor, collectiveArgs.src_rank, async_op=True
         )
         collectiveArgs.waitObj.append(retObj)
@@ -384,7 +411,9 @@ class PyTorchTorchCommsBackend(BaseBackend):
 
     def barrier(self, collectiveArgs, name="dummy", retFlag=False):
         """Execute a barrier on the default group."""
-        work = self.torchcomm.barrier(async_op=collectiveArgs.asyncOp)
+        comm = self._get_comm(collectiveArgs)
+
+        work = comm.barrier(async_op=collectiveArgs.asyncOp)
         if collectiveArgs.asyncOp:
             collectiveArgs.waitObj.append(work)
 
@@ -397,6 +426,8 @@ class PyTorchTorchCommsBackend(BaseBackend):
 
     def sync_barrier(self, collectiveArgs, desc="dummy"):
         """Synchronize device, execute barrier, then sync again."""
+        comm = self._get_comm(collectiveArgs)
+
         self.complete_accel_ops(collectiveArgs)
         self.barrier(collectiveArgs, name=desc)
         self.complete_accel_ops(collectiveArgs)
@@ -793,12 +824,103 @@ class PyTorchTorchCommsBackend(BaseBackend):
         self.round_robin_group = cycle(list(self.groups.values()))
 
     def initialize_groups(self, backend="ncclx"):
-        """Initialize additional process groups if provided"""
-        """Following the pattern in param bench, we only support 1 group for now"""
-        """With --auto-shrink, all collectives use the default world group,
-    so split communicators are not needed. This is a safe no-op.
-    """
-        pass
+        """Initialize additional process groups using torchcomms split communicators.
+
+        Uses self.torchcomm.split() to create lightweight child communicators
+        from the parent world communicator.
+        """
+        world_size = self.get_world_size()
+        global_rank = self.get_global_rank()
+        groups = {}
+
+        # Sync groupRanks across all ranks so every rank knows about every group.
+        # This mirrors the PG backend's sync logic and prevents hangs from
+        # ranks not participating in split() calls they don't know about.
+
+        sync_store = torch.distributed.PrefixStore("pg_sync_r", self.tcp_store)
+        sync_store.set(str(global_rank), json.dumps(self.commsParams.groupRanks))
+        self.barrier_all_ranks()
+
+        # Collect all unique (group_ranks, index) → pg_id mappings across ranks
+        idxed_group_ranks_to_pgId: dict[tuple[int, ...], int] = {}
+        for i in range(world_size):
+            json_data = sync_store.get(str(i))
+            pg_id_to_group_ranks = {
+                int(pg_id): ranks for pg_id, ranks in json.loads(json_data).items()
+            }
+
+            group_ranks_count: dict[tuple[int, ...], int] = defaultdict(int)
+            for pg_id, group_ranks in dict(
+                sorted(pg_id_to_group_ranks.items())
+            ).items():
+                group_ranks.sort()
+                rank_tuple = tuple(group_ranks)
+                count = group_ranks_count[rank_tuple]
+                group_ranks_count[rank_tuple] = count + 1
+                if global_rank == i:
+                    idxed_group_ranks_to_pgId[tuple(group_ranks + [count])] = pg_id
+                else:
+                    idxed_group_ranks_to_pgId.setdefault(
+                        tuple(group_ranks + [count]), -1
+                    )
+
+        # Create groups in sorted order so all ranks call split() in the same order
+        for idxed_group_ranks, pg_id in dict(
+            sorted(idxed_group_ranks_to_pgId.items())
+        ).items():
+            group_ranks = list(idxed_group_ranks[:-1])
+
+            if len(group_ranks) <= 1:
+                # Skip single-rank groups
+                if pg_id != -1:
+                    groups[pg_id] = None
+                continue
+
+            if len(group_ranks) > world_size:
+                raise ValueError(
+                    f"Group {pg_id} has {len(group_ranks)} ranks but world size is {world_size}"
+                )
+
+            if len(group_ranks) == world_size and idxed_group_ranks[-1] == 0:
+                if pg_id != -1:
+                    groups[pg_id] = self.get_default_group()
+            elif global_rank in group_ranks:
+                split_comm = self.torchcomm.split(group_ranks, name=f"pg_{pg_id}")
+                if pg_id != -1:
+                    if split_comm is not None:
+                        groups[pg_id] = split_comm
+                    else:
+                        logger.warning(
+                            "Rank %d: split returned None for pg_%d with ranks %s",
+                            global_rank,
+                            pg_id,
+                            group_ranks,
+                        )
+                        groups[pg_id] = None
+                elif split_comm is not None:
+                    # This rank is a member but has no local pg_id for this group
+                    split_comm.finalize()
+            elif pg_id != -1:
+                # Non-member rank: store None placeholder for pgId indexing
+                groups[pg_id] = None
+
+        if groups:
+            self.groups = groups
+
+        # num_pgs and round_robin only count groups this rank is a member of
+        # (non-None values), but self.groups retains None entries so that
+        # list-based pgId indexing works correctly.
+        member_groups = [g for g in self.groups.values() if g is not None]
+        self.num_pgs = len(member_groups)
+        self.round_robin_group = cycle(member_groups)
+
+        logger.info(
+            "Rank %d: initialized %d member process groups "
+            "(%d total including non-member placeholders) via torchcomms split",
+            global_rank,
+            self.num_pgs,
+            len(self.groups),
+        )
 
     def benchmark_comms(self, benchTime, commsParams):
         """Run communication benchmarks."""
@@ -812,5 +934,15 @@ class PyTorchTorchCommsBackend(BaseBackend):
 
     def __del__(self):
         """Cleanup torchcomms resources."""
-        if hasattr(self, "torchcomm") and self.torchcomm is not None:
-            self.torchcomm.finalize()
+        # Finalize split communicators before the world communicator
+        for group in getattr(self, "groups", {}).values():
+            if group is not None and group is not getattr(self, "torchcomm", None):
+                try:
+                    group.finalize()
+                except Exception:
+                    pass
+        if getattr(self, "torchcomm", None):
+            try:
+                self.torchcomm.finalize()
+            except Exception:
+                pass
