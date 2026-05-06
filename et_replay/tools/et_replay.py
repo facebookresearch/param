@@ -435,7 +435,7 @@ class ExgrReplayManager:
                     else (
                         v.cpu()
                         if self.tensor_device[k] == "cpu" or self.cpu
-                        else v.cuda(self.device)
+                        else v.to(self.device)
                     )
                 )
                 for k, v in self.tensor_registry_permanent.items()
@@ -448,7 +448,7 @@ class ExgrReplayManager:
                     else (
                         v.cpu()
                         if k in self.cpu_tensor or self.cpu
-                        else v.cuda(self.device)
+                        else v.to(self.device)
                     )
                 )
                 for k, v in self.tensor_registry_permanent.items()
@@ -884,7 +884,7 @@ class ExgrReplayManager:
                 np_x = np.reshape(np_x, shape)
                 x = torch.from_numpy(np_x)
                 if device != torch.device("cpu"):
-                    x = x.cuda(device)
+                    x = x.to(device)
             return x
         else:
             return None
@@ -948,7 +948,7 @@ class ExgrReplayManager:
         x = torch.empty(0, dtype=data_type)
         device = torch.device(device)
         if device != torch.device("cpu"):
-            x = x.cuda(device)
+            x = x.to(device)
         if strides is None:
             x = x.set_(
                 storage_tensor.untyped_storage(),
@@ -1302,7 +1302,14 @@ class ExgrReplayManager:
             success, msg = self.run_op(node, 0, cnt)
             if success:
                 continue
-            if "RuntimeError: CUDA error" in msg or "torch.OutOfMemoryError" in msg:
+            if any(
+                err in msg
+                for err in (
+                    "RuntimeError: CUDA error",
+                    "RuntimeError: HIP error",
+                    "torch.OutOfMemoryError",
+                )
+            ):
                 logger.info("Can not keep replaying due to %s", msg)
                 self.add_skipped_nodes(node, msg)
                 break
@@ -1326,10 +1333,10 @@ class ExgrReplayManager:
                     t = rng(shape).to(dtype)
                     if self.tensor_with_device:
                         if self.tensor_device[replay_t_id] != "cpu" and not self.cpu:
-                            t.cuda(self.tensor_device[replay_t_id])
+                            t = t.to(self.tensor_device[replay_t_id])
                     else:
                         if not self.cpu:
-                            t.cuda(self.device)
+                            t = t.to(self.device)
 
                 self.tensor_registry[replay_t_id] = t
 
@@ -1385,9 +1392,12 @@ class ExgrReplayManager:
             return 0
 
         if self.args.update_replay_config:
-            if os.environ.get("CUDA_LAUNCH_BLOCKING", "0") != "1":
+            launch_blocking = os.environ.get(
+                "CUDA_LAUNCH_BLOCKING", os.environ.get("HIP_LAUNCH_BLOCKING", "0")
+            )
+            if launch_blocking != "1":
                 logger.info(
-                    "Please set CUDA_LAUNCH_BLOCKING=1 to get accurate skip node list."
+                    "Please set CUDA_LAUNCH_BLOCKING=1 (or HIP_LAUNCH_BLOCKING=1 on AMD) to get accurate skip node list."
                 )
                 benchmark_result["execution finished"] = False
                 return benchmark_result
@@ -1694,10 +1704,12 @@ class ExgrReplayManager:
             help="Capture execution trace for replay.",
         )
         parser.add_argument(
+            "--gpu",
             "--cuda",
             type=int,
             default=-1,
-            help="cuda device id, if not specify, will use the default cuda device.",
+            dest="cuda",
+            help="GPU device id. If not specified, will use the default GPU device.",
         )
         parser.add_argument(
             "--debug",
