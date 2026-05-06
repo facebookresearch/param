@@ -28,18 +28,28 @@ ET_TEST_FILES = [
     "hf_GPT2_et.json.tar.gz",
 ]
 
-# pt2_et.json.tar.gz requires SM_80 architecture
-SM_80_TEST_FILES = [
+# pt2_et.json.tar.gz requires SM_80 (NVIDIA Ampere) or equivalent AMD architecture
+ADVANCED_ARCH_TEST_FILES = [
     "pt2_et.json.tar.gz",
 ]
 
 
-def is_sm_80_available() -> bool:
-    """Check if CUDA device has SM_80 (Ampere) architecture or higher."""
+def is_gpu_arch_supported() -> bool:
+    """Check if the GPU architecture supports PT2 triton kernels.
+
+    NVIDIA: SM_80 (Ampere) or higher.
+    AMD: MI200 (gfx90a) or higher (MI300/MI350/MI450).
+    """
     if not torch.cuda.is_available():
         return False
-    major, _ = torch.cuda.get_device_capability()
-    return major == 8
+    props = torch.cuda.get_device_properties(torch.cuda.current_device())
+    # AMD GPUs: check gcnArchName for MI200+ architectures
+    gcn_arch = getattr(props, "gcnArchName", "")
+    if gcn_arch:
+        supported_amd_archs = ("gfx90a", "gfx940", "gfx941", "gfx942", "gfx950")
+        return gcn_arch.startswith(supported_amd_archs)
+    # NVIDIA GPUs: SM_80 (Ampere) or higher
+    return props.major >= 8
 
 
 def get_et_files(include_sm_80: bool = False):
@@ -47,7 +57,7 @@ def get_et_files(include_sm_80: bool = False):
     inputs_dir = os.path.join(CURR_DIR, "inputs")
     test_files = ET_TEST_FILES.copy()
     if include_sm_80:
-        test_files.extend(SM_80_TEST_FILES)
+        test_files.extend(ADVANCED_ARCH_TEST_FILES)
     for f in test_files:
         tar_file = os.path.join(inputs_dir, f)
         tmp_dir = tempfile.mkdtemp()
@@ -61,7 +71,7 @@ def get_et_files(include_sm_80: bool = False):
 @unittest.skipIf(not torch.cuda.is_available(), "CUDA is not available")
 class ETReplayIntegrationTest(unittest.TestCase):
     def test_et_replay_integration_test(self) -> None:
-        full_path_et_test_files = get_et_files(include_sm_80=is_sm_80_available())
+        full_path_et_test_files = get_et_files(include_sm_80=is_gpu_arch_supported())
         for f in full_path_et_test_files:
             print(f"\n\nRunning {f}")
             replay_manager = ExgrReplayManager()

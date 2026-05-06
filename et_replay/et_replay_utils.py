@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import os
 import re
 
@@ -222,7 +223,18 @@ def build_triton_func(n, resources_dir, async_compile, device):
     try:
         func = async_compile.triton(n.name, code, device_str=device)
     except Exception:
-        func = async_compile.triton("triton_", code, device_str=device)
+        try:
+            func = async_compile.triton("triton_", code, device_str=device)
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                "Failed to compile triton kernel %s (node %d): %s. "
+                "This can happen when replaying a trace captured on a "
+                "different GPU architecture.",
+                n.name,
+                n.id,
+                e,
+            )
+            return None, 0
 
     return func, 0
 
