@@ -1,5 +1,3 @@
-from typing import Union
-
 from ..init_helper import get_logger
 
 logger = get_logger()
