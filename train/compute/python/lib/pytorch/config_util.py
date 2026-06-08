@@ -4,7 +4,7 @@ import os
 import platform
 import random
 import socket
-from typing import Any, Dict, List
+from typing import Any
 
 import torch
 from torch.utils.collect_env import get_nvidia_driver_version, run as run_cmd
