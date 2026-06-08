@@ -3,7 +3,7 @@
 import json
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import torch
 from param_bench.train.compute.python.lib import __version__, pytorch as lib_pytorch
