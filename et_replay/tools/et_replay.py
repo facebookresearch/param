@@ -15,7 +15,6 @@
 # limitations under the License.
 
 import argparse
-import gc
 import gzip
 import json
 import logging
