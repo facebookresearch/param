@@ -3,7 +3,7 @@ from ..init_helper import get_logger
 logger = get_logger()
 
 from collections.abc import Callable
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import torch
 from torch.autograd.profiler import record_function
