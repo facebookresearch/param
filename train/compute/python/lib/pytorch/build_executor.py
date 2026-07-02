@@ -12,7 +12,7 @@ import shlex
 import subprocess
 from datetime import datetime
 from multiprocessing import shared_memory
-from typing import Any, Dict, List, TextIO
+from typing import Any, TextIO
 
 from ..config import OperatorConfig
 from .config_util import create_op_info, get_benchmark_options
