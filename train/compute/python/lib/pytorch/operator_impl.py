@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from typing import List
 
 from ..init_helper import get_logger
 
