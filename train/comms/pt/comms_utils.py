@@ -1865,6 +1865,12 @@ class ParamCommsBenchBase(ABC):
             help="Toggle to initialize progress group immediately during init_process_group call by passing device_id, see https://pytorch.org/docs/stable/distributed.html#torch.distributed.init_process_group",
         )
         parser.add_argument(
+            "--use-device-time",
+            action="store_true",
+            default=False,
+            help="use device time measurement",
+        )
+        parser.add_argument(
             "--enable-torch-nccl-timing",
             action="store_true",
             default=False,

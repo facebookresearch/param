@@ -1,8 +1,12 @@
+import argparse
 import unittest
 from unittest import mock
 
 import torch
-from param_bench.train.comms.pt.comms_utils import commsArgs
+from param_bench.train.comms.pt.comms_utils import (
+    commsArgs,
+    commsParamsHolderBase,
+)
 from param_bench.train.comms.pt.commsTraceReplay import commsTraceReplayBench
 from param_bench.train.comms.pt.tests.mocks.backend_mock import MockBackendFunction
 from param_bench.train.comms.pt.tests.test_utils import (
@@ -10,6 +14,41 @@ from param_bench.train.comms.pt.tests.test_utils import (
     createCommsArgs,
     testArgs,
 )
+
+
+class TestReplayBenchArgs(unittest.TestCase):
+    """
+    Test that the replay bench defines the common args consumed by
+    commsParamsHolderBase. Previously --use-device-time was only registered by
+    commsCollBench, so running commsTraceReplay.py crashed with
+    AttributeError: 'Namespace' object has no attribute 'use_device_time'.
+    """
+
+    def test_use_device_time_arg_present(self):
+        testBench = commsTraceReplayBench()
+        parser = argparse.ArgumentParser(allow_abbrev=False)
+        args = testBench.readArgs(parser)
+        # commsParamsHolderBase.__init__ reads args.use_device_time; without this
+        # the common args holder cannot be constructed.
+        self.assertTrue(hasattr(args, "use_device_time"))
+        self.assertFalse(args.use_device_time)
+
+    def test_use_device_time_flag_accepted(self):
+        testBench = commsTraceReplayBench()
+        parser = argparse.ArgumentParser(allow_abbrev=False)
+        testBench.readArgs(parser)
+        args = parser.parse_args(
+            ["--use-device-time", "--master-ip", "127.0.0.1", "--trace-path", "."]
+        )
+        self.assertTrue(args.use_device_time)
+
+    def test_comms_params_holder_base_constructible(self):
+        testBench = commsTraceReplayBench()
+        parser = argparse.ArgumentParser(allow_abbrev=False)
+        args = testBench.readArgs(parser)
+        # Must not raise AttributeError for use_device_time.
+        commsParams = commsParamsHolderBase(args)
+        self.assertFalse(commsParams.use_device_time)
 
 
 class TestPrepComms(unittest.TestCase):

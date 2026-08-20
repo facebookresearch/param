@@ -198,12 +198,6 @@ class commsCollBench(paramCommsBench):
             default=0,
             help="Number of graph launches for each data-size",
         )
-        parser.add_argument(
-            "--use-device-time",
-            action="store_true",
-            default=False,
-            help="use device time measurement",
-        )
 
     def _checkPt2Pt(self, args):
         if args.pt2pt is None:
