@@ -92,8 +92,8 @@ class commsOverlapBench(commsCollBench):
             "--overlap-pair-pgs",
             action="store_true",
             default=False,
-            help="Toggle to enable overlapping collective pair with two pgs",
-        )  # overlap collective pair with two pgs
+            help="Toggle to enable overlapping collectives with separate pgs, one per collective (main + pairs)",
+        )
 
     # Check arguments that may be custmized per benchmark in a single run
     # does not depend on data type
@@ -225,7 +225,7 @@ class commsOverlapBench(commsCollBench):
                         is_blocking=False,
                         timer=self.collectiveArgs.comm_dev_time,
                     ):
-                        # post another collecitve if on comms pair mode, otherwise it's noop
+                        # post pair collective on a separate stream for overlapping evaluation
                         self.collectiveArgs.group = self.collectiveArgs.groups[
                             self.collectiveArgs.pairPgId[pairIdx]
                         ]
@@ -890,7 +890,7 @@ class commsOverlapBench(commsCollBench):
             self.backendFuncs.initialize_groups(backend)
 
         elif pair and overlap_pair_pgs:
-            # create two communicators each including all ranks
+            # create 1 + len(pair_collectives_list) communicators each including all ranks
             num_pgs = 1 + len(pair_collectives_list)
             for pgId in range(0, num_pgs):
                 if pgId > 0:
