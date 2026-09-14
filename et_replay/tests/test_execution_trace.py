@@ -15,6 +15,8 @@
 import gzip
 import json
 import os
+import tarfile
+import tempfile
 import unittest
 
 from et_replay.execution_trace import ExecutionTrace
@@ -49,13 +51,18 @@ class TestTraceLoadAndValidate(unittest.TestCase):
         self.assertEqual(t.num_triton_ops(), 0)
 
     def test_trace_load_resnet_2gpu_ptorch_1_1_0(self):
-        et_file = os.path.join(
+        tar_file = os.path.join(
             self.trace_base, "1.1.0-chakra.0.0.4/resnet_2gpu_et.json.gz"
         )
-        t, et = self._test_and_validate_trace(et_file)
-        self.assertGreater(t.num_ops(), 1000)
-        self.assertEqual(t.num_comm_ops(), 27)
-        self.assertEqual(t.num_triton_ops(), 0)
+        tmp_dir = tempfile.mkdtemp()
+        with tarfile.open(tar_file) as tar_ref:
+            tar_ref.extractall(tmp_dir)
+        for rank in (0, 1):
+            et_file = os.path.join(tmp_dir, f"resnet-2gpu/rank-{rank}.json")
+            t, et = self._test_and_validate_trace(et_file)
+            self.assertGreater(t.num_ops(), 1000)
+            self.assertEqual(t.num_comm_ops(), 27)
+            self.assertEqual(t.num_triton_ops(), 0)
 
 
 if __name__ == "__main__":
