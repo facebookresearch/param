@@ -20,7 +20,7 @@ from param_bench.train.compute.python.lib.pytorch.config_util import (
 )
 from param_bench.train.compute.python.workloads import pytorch as workloads_pytorch
 from torch.autograd.profiler import record_function
-from torch.profiler import _ExperimentalConfig, ExecutionTraceObserver
+from torch.profiler import ExecutionTraceObserver
 
 
 class BenchmarkHelper:
@@ -121,9 +121,6 @@ class BenchmarkHelper:
             )
             self.profile = True
 
-        self.cupti_profiler_metrics: str = getattr(
-            config, "cupti_profiler_metrics", "kineto__cuda_core_flops"
-        )
         self.cupti_profiler_measure_per_kernel: bool = getattr(
             config, "cupti_profiler_measure_per_kernel", True
         )
@@ -175,21 +172,11 @@ class BenchmarkHelper:
                 et.register_callback(self.et_file)
                 et.start()
 
-            cupti_profiler_config = (
-                _ExperimentalConfig(
-                    profiler_metrics=self.cupti_profiler_metrics.split(","),
-                    profiler_measure_per_kernel=self.cupti_profiler_measure_per_kernel,
-                )
-                if self.cupti_profiler
-                else None
-            )
-
             with torch.autograd.profiler.profile(
                 self.profile,
                 use_cuda=use_cuda,
                 use_kineto=True,
                 record_shapes=False,
-                experimental_config=cupti_profiler_config,
                 use_cpu=(not self.cupti_profiler)
                 or self.cupti_profiler_measure_per_kernel,
             ) as prof:

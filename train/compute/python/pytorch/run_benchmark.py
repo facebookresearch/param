@@ -6,7 +6,7 @@ from datetime import datetime
 
 import torch
 from torch.autograd.profiler import record_function
-from torch.profiler import _ExperimentalConfig, ExecutionTraceObserver
+from torch.profiler import ExecutionTraceObserver
 
 from ..lib import __version__, pytorch as lib_pytorch
 from ..lib.config import BenchmarkConfig
@@ -321,21 +321,11 @@ def main():
             et.register_callback(et_file)
             et.start()
 
-        cupti_profiler_config = (
-            _ExperimentalConfig(
-                profiler_metrics=args.cupti_profiler_metrics.split(","),
-                profiler_measure_per_kernel=args.cupti_profiler_measure_per_kernel,
-            )
-            if args.cupti_profiler
-            else None
-        )
-
         with torch.autograd.profiler.profile(
             args.profile,
             use_cuda=use_cuda,
             use_kineto=True,
             record_shapes=True,
-            experimental_config=cupti_profiler_config,
             # use_cpu enables profiling and recodring of CPU pytorch operators.
             # This is useful in CUPTI profiler mode if we are measuring per GPU kernel metrics.
             use_cpu=(not args.cupti_profiler) or args.cupti_profiler_measure_per_kernel,
