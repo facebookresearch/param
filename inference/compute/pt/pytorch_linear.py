@@ -33,7 +33,7 @@ class Net(nn.Module):
 
 
 def infer_nnpi(model, device, data_type, input_size, output_size, batch_size, args):
-    import torch_glow
+    import glow.fb.torch_glow.py.NNPI.torch_glow as torch_glow
 
     # Detailed structure for spec can be found at https://fburl.com/diffusion/79q4efud
     # Create compilation spec
