@@ -17,7 +17,7 @@ from torchcomms import new_comm, objcol, ReduceOp
 
 logger = logging.getLogger(__name__)
 
-_VALID_BACKENDS = ["nccl", "ncclx", "rcclx", "mccl"]
+_VALID_BACKENDS = ["nccl", "ncclx", "mccl"]
 
 
 class PyTorchTorchcommsBackend(backendFunctions):
@@ -742,6 +742,11 @@ class PyTorchTorchcommsBackend(backendFunctions):
         self, master_ip, master_port, backend="ncclx", eager_mode=False
     ):
         """Initialize the torchcomms backend"""
+        if torch.version.hip is not None:
+            raise ValueError(
+                "The pytorch-torchcomms stack does not support AMD GPUs. "
+                "Use --nw-stack pytorch-dist for AMD benchmarks."
+            )
         if backend not in _VALID_BACKENDS:
             raise ValueError(
                 f"Invalid backend {backend}. Valid backends are {_VALID_BACKENDS}"
