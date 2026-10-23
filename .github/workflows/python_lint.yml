@@ -27,13 +27,19 @@ jobs:
     - name: Run tests
       run: |
         python -m pip install -r requirements.txt
-        python -m pip install et_replay/
+        # et_replay/pyproject.toml is laid out for meta-pytorch/chakra_replay,
+        # where it sits one level above the et_replay package. Install from a
+        # copy staged in that layout.
+        mkdir "$RUNNER_TEMP/et_replay_pkg"
+        cp et_replay/pyproject.toml "$RUNNER_TEMP/et_replay_pkg/"
+        cp -r et_replay "$RUNNER_TEMP/et_replay_pkg/et_replay"
+        python -m pip install "$RUNNER_TEMP/et_replay_pkg"
         python et_replay/tests/test_execution_trace.py
 
     - name: Validate imports
       run: |
         python -m pip install fbgemm-gpu
-        python -c 'from et_replay import ExecutionTrace'
+        python -c 'from et_replay.execution_trace import ExecutionTrace'
         python -c 'from et_replay.comm import comms_utils'
         python -c 'from et_replay.tools.validate_trace import TraceValidator'
         python -c 'from et_replay.utils import trace_handler'
