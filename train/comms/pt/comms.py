@@ -1487,6 +1487,16 @@ class commsCollBench(paramCommsBench):
                 else PyTorchDistBackend(bootstrap_info, commsParams)
             )
         elif commsParams.nw_stack == "pytorch-torchcomms":
+            try:
+                from param_bench.train.comms.pt.pytorch_torchcomms_backend import (
+                    PyTorchTorchcommsBackend,
+                )
+            except ImportError:
+                logger.error(
+                    "pytorch-torchcomms nw-stack is not available in this build "
+                    "(HCCL builds omit the torchcomms backend)"
+                )
+                comms_utils.gracefulExit()
             from param_bench.train.comms.pt.pytorch_backend_utils import (
                 customized_backend,
             )
@@ -1495,10 +1505,6 @@ class commsCollBench(paramCommsBench):
             if tc_key in customized_backend:
                 backendObj = customized_backend[tc_key](bootstrap_info, commsParams)
             else:
-                from param_bench.train.comms.pt.pytorch_torchcomms_backend import (
-                    PyTorchTorchcommsBackend,
-                )
-
                 backendObj = PyTorchTorchcommsBackend(bootstrap_info, commsParams)
         elif commsParams.nw_stack == "pytorch-xla-tpu":
             from param_bench.train.comms.pt.pytorch_tpu_backend import PyTorchTPUBackend

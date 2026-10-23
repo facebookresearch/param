@@ -1710,6 +1710,16 @@ class commsTraceReplayBench(paramCommsBench):
         elif commsParams.nw_stack == "pytorch-torchcomms":
             torchcomms_backend_key = f"{commsParams.backend}_torchcomms"
             try:
+                from et_replay.comm.backend.pytorch_torchcomms_backend import (
+                    PyTorchTorchCommsBackend,
+                )
+            except ImportError:
+                logger.error(
+                    "pytorch-torchcomms nw-stack is not available in this build "
+                    "(HCCL builds omit the torchcomms backend)"
+                )
+                comms_utils.gracefulExit()
+            try:
                 from et_replay.comm.backend.base_backend import customized_backend
 
                 if torchcomms_backend_key in customized_backend:
@@ -1717,10 +1727,6 @@ class commsTraceReplayBench(paramCommsBench):
                         bootstrap_info, commsParams
                     )
                 else:
-                    from et_replay.comm.backend.pytorch_torchcomms_backend import (
-                        PyTorchTorchCommsBackend,
-                    )
-
                     self.backendFuncs = PyTorchTorchCommsBackend(
                         bootstrap_info, commsParams
                     )
